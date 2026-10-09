@@ -78,8 +78,12 @@ class Settings(BaseSettings):
         return self.entra_tenant_id is not None and self.entra_api_client_id is not None
 
     @property
+    def authority(self) -> str:
+        return f"https://login.microsoftonline.com/{self.entra_tenant_id}"
+
+    @property
     def issuer(self) -> str:
-        return f"https://login.microsoftonline.com/{self.entra_tenant_id}/v2.0"
+        return f"{self.authority}/v2.0"
 
     @property
     def jwks_url(self) -> str:

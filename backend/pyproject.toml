@@ -20,6 +20,7 @@ test = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra --strict-markers"
 markers = ["integration: requires an isolated PostgreSQL test database"]
 

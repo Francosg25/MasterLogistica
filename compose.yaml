@@ -23,6 +23,7 @@ services:
       APP_ENV: development
       DATABASE_URL: postgresql+psycopg://masterlogistica_app:${APP_DB_PASSWORD}@postgres:5432/masterlogistica
       MIGRATION_DATABASE_URL: postgresql+psycopg://masterlogistica_migrator:${POSTGRES_PASSWORD}@postgres:5432/masterlogistica
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
