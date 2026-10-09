@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: masterlogistica
+      POSTGRES_USER: masterlogistica_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/configure_local.py first}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run scripts/configure_local.py first}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/01-app-role.sh:/docker-entrypoint-initdb.d/01-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U masterlogistica_migrator -d masterlogistica"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build: ./backend
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://masterlogistica_app:${APP_DB_PASSWORD}@postgres:5432/masterlogistica
+      MIGRATION_DATABASE_URL: postgresql+psycopg://masterlogistica_migrator:${POSTGRES_PASSWORD}@postgres:5432/masterlogistica
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ./backend
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://masterlogistica_app:${APP_DB_PASSWORD}@postgres:5432/masterlogistica
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      ENTRA_API_CLIENT_ID: ${ENTRA_API_CLIENT_ID:-}
+      ENTRA_FRONTEND_CLIENT_ID: ${ENTRA_FRONTEND_CLIENT_ID:-}
+      ENTRA_ALLOWED_CLIENT_IDS: ${ENTRA_ALLOWED_CLIENT_IDS:-[]}
+      COMPANY_CODES: ${COMPANY_CODES:-["JE_MX"]}
+      ALLOWED_ORIGINS: '["http://localhost:4200","http://127.0.0.1:4200"]'
+      ALLOWED_HOSTS: '["localhost","127.0.0.1","api"]'
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+
