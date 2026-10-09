@@ -49,6 +49,10 @@ def test_unconfirmed_or_invalid_formats_rejected(raw):
         parse_reference(raw)
 
 
+def test_sequence_width_is_not_a_business_restriction():
+    assert parse_reference("RM1-1LI26-M23-MAT").normalized == "RM1-0001LI26-M23-MAT"
+
+
 def test_identifier_normalization_preserves_leading_zeroes():
     assert normalize_identifier(" 001-234/567 ") == "001234567"
     assert normalize_identifier(" msku 123456-7 ") == "MSKU1234567"

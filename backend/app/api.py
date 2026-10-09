@@ -374,8 +374,6 @@ def patch_shipment(
     row = shipment_for(session, user, shipment_id)
     version_matches(row, data.expected_version)
     updates = data.model_dump(exclude_unset=True, exclude={"expected_version"})
-    if updates.get("ship_date") and updates["ship_date"].year != row.reference_year:
-        raise HTTPException(422, "Ship date must agree with the reference operation year")
     for field in {"carrier_broker_id", "shipping_line_id"} & updates.keys():
         supplier_valid(session, updates[field])
     expedited = updates.get("expedited_status", row.expedited_status)

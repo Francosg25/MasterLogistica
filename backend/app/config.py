@@ -88,3 +88,34 @@ class Settings(BaseSettings):
     @property
     def jwks_url(self) -> str:
         return f"https://login.microsoftonline.com/{self.entra_tenant_id}/discovery/v2.0/keys"
+
+
+class MigrationSettings(BaseSettings):
+    """Database-only settings for a separate migration/bootstrap job, including production."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", case_sensitive=False, hide_input_in_errors=True
+    )
+    app_env: Literal["development", "test", "production"] = "development"
+    database_url: SecretStr
+    migration_database_url: SecretStr | None = None
+    entra_tenant_id: UUID | None = None
+
+    @field_validator("entra_tenant_id", mode="before")
+    @classmethod
+    def blank_identifier(cls, value):
+        return None if value == "" else value
+
+    @field_validator("database_url", "migration_database_url")
+    @classmethod
+    def postgres_only(cls, value):
+        return Settings.postgres_only(value)
+
+    @model_validator(mode="after")
+    def restricted_job(self):
+        url = make_url((self.migration_database_url or self.database_url).get_secret_value())
+        if url.username == "masterlogistica_app":
+            raise ValueError("Migrations require the separate migration database role")
+        if self.app_env == "production" and url.query.get("sslmode") != "verify-full":
+            raise ValueError("Production migrations require sslmode=verify-full")
+        return self

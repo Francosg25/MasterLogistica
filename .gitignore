@@ -15,6 +15,7 @@ build/
 *.xlsx
 *.xls
 *.pdf
+*.docx
 upload/
 data/
 .idea/

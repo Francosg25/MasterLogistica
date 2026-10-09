@@ -133,12 +133,6 @@ class ShipmentCreate(Schema):
     plant_code: Annotated[str, Field(max_length=32)] | None = None
     comments: Annotated[str, Field(max_length=10000)] | None = None
 
-    @model_validator(mode="after")
-    def operation_year(self):
-        if self.ship_date and self.ship_date.year != self.reference_year:
-            raise ValueError("Ship date must agree with the reference operation year")
-        return self
-
 
 class ShipmentPatch(Schema):
     expected_version: Annotated[int, Field(ge=1)]

@@ -30,7 +30,7 @@ OPERATIONS = {
 }
 PATTERN = re.compile(
     r"(?P<process>RM|AF|FG|DR|FA)(?P<analyst>[1-9])-"
-    r"(?P<sequence>\d{4,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5)"
+    r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5)"
     r"(?P<year>\d{2})-(?P<bu>[A-Z0-9]{1,32})-"
     r"(?P<department>PRJ|MAT|QUA|MAI|HUM|FIX|RAW|CTM|SCR)"
     r"(?:\.(?P<suffix>DMR|PFA|CS\d{1,32}))?",

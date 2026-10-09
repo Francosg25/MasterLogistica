@@ -1,7 +1,7 @@
 from alembic import context
-from sqlalchemy import create_engine, pool
+from sqlalchemy import create_engine, pool, text
 
-from app.config import Settings
+from app.config import MigrationSettings
 from app.models import Base
 
 config = context.config
@@ -9,7 +9,7 @@ target_metadata = Base.metadata
 
 
 def migration_url():
-    settings = Settings()
+    settings = MigrationSettings()
     value = settings.migration_database_url or settings.database_url
     return value.get_secret_value()
 
@@ -27,11 +27,25 @@ def run_offline():
 
 
 def run_online():
-    connectable = create_engine(migration_url(), poolclass=pool.NullPool, hide_parameters=True)
+    connectable = create_engine(
+        migration_url(),
+        poolclass=pool.NullPool,
+        hide_parameters=True,
+        connect_args={"connect_timeout": 10},
+    )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
-        with context.begin_transaction():
-            context.run_migrations()
+        connection.execute(text("SELECT pg_advisory_lock(638917241)"))
+        connection.commit()
+        try:
+            context.configure(
+                connection=connection, target_metadata=target_metadata, compare_type=True
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+        finally:
+            connection.rollback()
+            connection.execute(text("SELECT pg_advisory_unlock(638917241)"))
+            connection.commit()
     connectable.dispose()
 
 

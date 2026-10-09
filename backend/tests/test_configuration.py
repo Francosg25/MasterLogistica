@@ -2,9 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.config import Settings
+from app.config import MigrationSettings, Settings
 from app.main import create_app
-from app.schemas import ProvisionCreate, UserPatch
+from app.schemas import ProvisionCreate, ShipmentCreate, UserPatch
 
 
 def test_health_requires_no_auth_and_ready_fails_without_database(settings, rsa_key):
@@ -84,3 +84,35 @@ def test_financial_validation_finite_and_precision():
 def test_user_patch_cannot_clear_required_fields():
     with pytest.raises(ValidationError):
         UserPatch(expected_version=1, role=None)
+
+
+def test_operation_year_is_explicit_and_dates_can_cross_year_boundary():
+    shipment = ShipmentCreate(
+        company_code="JE_MX",
+        process_code="RM",
+        operation_code="LI",
+        reference_year=2026,
+        business_unit="M23",
+        department_code="MAT",
+        ship_date="2027-01-01",
+    )
+    assert shipment.reference_year == 2026 and shipment.ship_date.year == 2027
+
+
+def test_production_migration_job_uses_separate_settings_and_tls():
+    runtime = (
+        "postgresql+psycopg://masterlogistica_app@example.com/masterlogistica?sslmode=verify-full"
+    )
+    migrator = "postgresql+psycopg://masterlogistica_migrator@example.com/masterlogistica?sslmode=verify-full"
+    job = MigrationSettings(
+        _env_file=None, app_env="production", database_url=runtime, migration_database_url=migrator
+    )
+    assert job.app_env == "production"
+    with pytest.raises(ValidationError):
+        MigrationSettings(
+            _env_file=None,
+            app_env="production",
+            database_url=migrator.replace("?sslmode=verify-full", ""),
+        )
+    with pytest.raises(ValidationError):
+        MigrationSettings(_env_file=None, database_url=runtime)

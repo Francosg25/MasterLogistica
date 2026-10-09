@@ -8,13 +8,13 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from app.api import ADMIN_LOCK
-from app.config import Settings
+from app.config import MigrationSettings
 from app.models import ReconciliationLog, ReferenceCounter, User
 from app.schemas import UserRead
 
 
 def bootstrap_admin(
-    settings: Settings,
+    settings: MigrationSettings,
     object_id: UUID,
     email: str,
     display_name: str,
@@ -89,7 +89,7 @@ def main():
     args = parser.parse_args()
     try:
         bootstrap_admin(
-            Settings(),
+            MigrationSettings(),
             args.object_id,
             args.email,
             args.display_name,
