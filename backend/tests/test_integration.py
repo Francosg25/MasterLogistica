@@ -524,3 +524,77 @@ def test_bootstrap_refuses_restricted_role_and_existing_admin(environment, setti
     )
     with pytest.raises(ValueError, match="already exists"):
         bootstrap_admin(admin_settings, uuid4(), "bootstrap@example.com", "Bootstrap")
+
+
+def test_filtered_summary_uses_owner_scope_and_all_matching_rows(environment):
+    e = environment
+    create_shipment(
+        e,
+        "one",
+        operation_code="R1",
+        process_code="AF",
+        status="CUSTOMS",
+        ship_date="2026-10-01",
+        sender="Example 100% supplier",
+    )
+    create_shipment(e, "one", operation_code="LI", status="IN_TRANSIT", ship_date="2026-10-02")
+    create_shipment(
+        e, "two", operation_code="R1", process_code="AF", status="CUSTOMS", ship_date="2026-10-01"
+    )
+    client = e["client"]
+    for role, expected in [("one", 1), ("two", 1), ("manager", 2)]:
+        query = {
+            "operation_code": "R1",
+            "ship_date_from": "2026-10-01",
+            "ship_date_to": "2026-10-01",
+        }
+        response = client.get(
+            "/api/v1/shipments", headers=e["headers"](role), params={**query, "limit": 1}
+        )
+        summary = client.get("/api/v1/shipments/summary", headers=e["headers"](role), params=query)
+        assert response.status_code == summary.status_code == 200
+        assert response.json()["total"] == summary.json()["total"] == expected
+        assert summary.json()["by_status"] == {"CUSTOMS": expected}
+    # Supplying another owner's ID cannot remove the server-side owner condition.
+    query = {"owner_id": str(e["users"]["two"]["id"])}
+    assert (
+        client.get("/api/v1/shipments/summary", headers=e["headers"]("one"), params=query).json()[
+            "total"
+        ]
+        == 0
+    )
+    # Search wildcard characters are literal; they cannot match every row.
+    assert (
+        client.get("/api/v1/shipments", headers=e["headers"]("manager"), params={"q": "%"}).json()[
+            "total"
+        ]
+        == 1
+    )
+    assert (
+        client.get(
+            "/api/v1/shipments",
+            headers=e["headers"]("one"),
+            params={"ship_date_from": "2026-10-02", "ship_date_to": "2026-10-01"},
+        ).status_code
+        == 422
+    )
+
+
+def test_document_search_does_not_duplicate_shipments_or_expose_other_owners(environment):
+    e = environment
+    row = create_shipment(e)
+    for value in ["EXAMPLE-123-A", "EXAMPLE-123-B"]:
+        response = e["client"].post(
+            f"/api/v1/shipments/{row['id']}/identifiers",
+            headers=e["headers"]("one"),
+            json={"kind": "BL", "raw_value": value},
+        )
+        assert response.status_code == 201
+    for role, expected in [("one", 1), ("two", 0), ("manager", 1)]:
+        response = e["client"].get(
+            "/api/v1/shipments", headers=e["headers"](role), params={"q": "EXAMPLE-123"}
+        )
+        assert response.status_code == 200
+        assert response.json()["total"] == expected
+    owners = e["client"].get("/api/v1/masters/owners", headers=e["headers"]("one")).json()
+    assert owners == [{"id": str(e["users"]["one"]["id"]), "display_name": "one"}]

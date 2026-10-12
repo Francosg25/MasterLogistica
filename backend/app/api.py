@@ -1,9 +1,10 @@
 from dataclasses import asdict
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -144,7 +145,7 @@ def open_period(session, month):
 @router.get("/auth/config", tags=["Authentication"])
 def auth_config(request: Request):
     s = request.app.state.settings
-    enabled = s.entra_configured and bool(s.entra_allowed_client_ids)
+    enabled = s.entra_configured and s.entra_frontend_client_id in s.entra_allowed_client_ids
     return {
         "enabled": enabled,
         "authority": s.authority if enabled else None,
@@ -171,6 +172,7 @@ def reference_catalogs(request: Request, user: Actor):
         "business_units": request.app.state.settings.business_units,
         "business_units_configured": bool(request.app.state.settings.business_units),
         "sequence_digits": 4,
+        "company_codes": request.app.state.settings.company_codes,
     }
 
 
@@ -280,20 +282,73 @@ def create_period(data: PeriodCreate, request: Request, session: DB, user: Admin
     return record_change(session, request, user, "PERIOD_CREATED", row, PeriodRead)
 
 
+def filtered_shipments(
+    user: Actor,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    operation_code: str | None = None,
+    status: str | None = None,
+    business_unit: str | None = None,
+    company_code: str | None = None,
+    owner_id: UUID | None = None,
+    ship_date_from: date | None = None,
+    ship_date_to: date | None = None,
+):
+    if ship_date_from and ship_date_to and ship_date_from > ship_date_to:
+        raise HTTPException(422, "Start date must not be after end date")
+    statement = owned(select(Shipment), user)
+    for column, value in (
+        (Shipment.operation_code, operation_code),
+        (Shipment.status, status),
+        (Shipment.business_unit, business_unit),
+        (Shipment.company_code, company_code),
+        (Shipment.owner_id, owner_id),
+    ):
+        if value is not None:
+            statement = statement.where(column == value)
+    if q and q.strip():
+        value = q.strip()
+        identifiers = select(ShipmentIdentifier.shipment_id).where(
+            ShipmentIdentifier.raw_value.icontains(value, autoescape=True)
+        )
+        statement = statement.where(
+            or_(
+                Shipment.reference_raw.icontains(value, autoescape=True),
+                Shipment.sender.icontains(value, autoescape=True),
+                Shipment.consignee.icontains(value, autoescape=True),
+                Shipment.id.in_(identifiers),
+            )
+        )
+    if ship_date_from:
+        statement = statement.where(Shipment.ship_date >= ship_date_from)
+    if ship_date_to:
+        statement = statement.where(Shipment.ship_date <= ship_date_to)
+    return statement
+
+
+@router.get("/masters/owners", tags=["Masters"])
+def master_owners(session: DB, user: Actor):
+    statement = select(User).order_by(User.display_name, User.id)
+    if not consolidated(user):
+        statement = statement.where(User.id == user.id)
+    return [{"id": row.id, "display_name": row.display_name} for row in session.scalars(statement)]
+
+
+@router.get("/shipments/summary", tags=["Masters"])
+def shipment_summary(session: DB, statement=Depends(filtered_shipments)):
+    rows = statement.order_by(None).subquery()
+    counts = dict(
+        session.execute(select(rows.c.status, func.count()).group_by(rows.c.status)).all()
+    )
+    return {"total": sum(counts.values()), "by_status": counts}
+
+
 @router.get("/shipments", response_model=Page[ShipmentRead], tags=["Masters"])
 def shipments(
     session: DB,
-    user: Actor,
     limit: Limit = 50,
     offset: Offset = 0,
-    operation_code: str | None = None,
-    status: str | None = None,
+    statement=Depends(filtered_shipments),
 ):
-    statement = owned(select(Shipment), user)
-    if operation_code is not None:
-        statement = statement.where(Shipment.operation_code == operation_code)
-    if status is not None:
-        statement = statement.where(Shipment.status == status)
     return page(
         session,
         statement.order_by(Shipment.created_at.desc(), Shipment.id),

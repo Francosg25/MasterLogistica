@@ -134,3 +134,15 @@ def test_production_migration_job_uses_separate_settings_and_tls():
         )
     with pytest.raises(ValidationError):
         MigrationSettings(_env_file=None, database_url=runtime)
+
+
+def test_browser_auth_config_requires_an_allowed_frontend(settings, rsa_key):
+    for frontend, expected in [(settings.entra_frontend_client_id, True), (None, False)]:
+        app = create_app(
+            settings.model_copy(update={"entra_frontend_client_id": frontend}),
+            lambda token: rsa_key.public_key(),
+        )
+        with TestClient(app) as client:
+            result = client.get("/api/v1/auth/config")
+            assert result.status_code == 200
+            assert result.json()["enabled"] is expected

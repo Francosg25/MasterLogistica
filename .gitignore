@@ -24,3 +24,8 @@ data/
 *.pem
 *.key
 
+node_modules/
+.angular/
+out-tsc/
+test-results/
+playwright-report/

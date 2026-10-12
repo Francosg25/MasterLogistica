@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "./out-tsc/e2e", "types": [] },
+  "files": ["e2e/bootstrap.ts"]
+}

@@ -1,0 +1,372 @@
+<dialog
+  #dialog
+  class="editor"
+  aria-labelledby="editor-title"
+  (cancel)="$event.preventDefault(); close()"
+>
+  <header class="editor-head">
+    <div>
+      <p class="eyebrow">
+        {{ shipment() ? "DETALLE DEL MASTER" : "NUEVA OPERACIÓN" }}
+      </p>
+      <h2 id="editor-title">
+        {{ shipment()?.reference_raw || "Crear embarque" }}
+      </h2>
+      <p>
+        {{
+          shipment()
+            ? "Información operativa y documentos de la referencia."
+            : "La referencia se asignará al guardar la operación."
+        }}
+      </p>
+    </div>
+    <button
+      type="button"
+      class="icon-button"
+      aria-label="Cerrar detalle"
+      (click)="close()"
+      [disabled]="busy()"
+    >
+      ✕
+    </button>
+  </header>
+  <div class="editor-content">
+    @if (readOnly()) {
+      <div class="notice">
+        Vista de consulta. Tu acceso no permite modificar esta operación.
+      </div>
+    }
+    @if (error()) {
+      <div class="error" role="alert">
+        {{ error() }}
+        @if (conflict()) {
+          <button
+            type="button"
+            (click)="reloadRecord()"
+            class="button secondary"
+          >
+            Recargar registro
+          </button>
+        }
+      </div>
+    }
+    <form [formGroup]="form" (ngSubmit)="submit()" id="shipment-form">
+      @if (invalid) {
+        <p class="error" role="alert">
+          Completa los campos obligatorios y revisa el formato de los valores.
+        </p>
+      }
+      <fieldset [disabled]="busy() || readOnly() || conflict()">
+        <div class="section-title">
+          <span>01</span>
+          <h3>Identificación</h3>
+        </div>
+        @if (shipment()) {
+          <div class="identity-strip">
+            <div>
+              <small>Empresa</small
+              ><strong>{{ shipment()?.company_code }}</strong>
+            </div>
+            <div>
+              <small>Operación</small
+              ><strong>{{ operations[operation] || operation }}</strong>
+            </div>
+            <div>
+              <small>BU / Departamento</small
+              ><strong
+                >{{ shipment()?.business_unit }} /
+                {{ shipment()?.department_code }}</strong
+              >
+            </div>
+          </div>
+        } @else {
+          <div class="form-grid">
+            <label
+              >Empresa *<select
+                aria-label="Empresa *"
+                formControlName="company_code"
+              >
+                @for (code of catalogs().company_codes; track code) {
+                  <option [value]="code">{{ code }}</option>
+                }
+              </select></label
+            >
+            <label
+              >Proceso *<select
+                aria-label="Proceso *"
+                formControlName="process_code"
+              >
+                @for (code of catalogs().process_codes; track code) {
+                  <option [value]="code">
+                    {{ code }} · {{ processes[code] || code }}
+                  </option>
+                }
+              </select></label
+            >
+            <label
+              >Tipo de operación *<select
+                aria-label="Tipo de operación *"
+                formControlName="operation_code"
+              >
+                @for (code of catalogs().operation_codes; track code) {
+                  <option [value]="code">
+                    {{ code }} · {{ operations[code] || code }}
+                  </option>
+                }
+              </select></label
+            >
+            <label
+              >Año de operación *<input
+                type="number"
+                formControlName="reference_year"
+                min="2000"
+                max="2099"
+                step="1"
+            /></label>
+            <label
+              >Business unit *<select
+                aria-label="Business unit *"
+                formControlName="business_unit"
+              >
+                <option value="">Selecciona una BU</option>
+                @for (code of unitCodes(); track code) {
+                  <option [value]="code">
+                    {{ code }} · {{ catalogs().business_units[code] }}
+                  </option>
+                }
+              </select></label
+            >
+            <label
+              >Departamento *<select
+                aria-label="Departamento *"
+                formControlName="department_code"
+              >
+                @for (code of catalogs().department_codes; track code) {
+                  <option [value]="code">
+                    {{ code }} · {{ departments[code] || code }}
+                  </option>
+                }
+              </select></label
+            >
+          </div>
+        }
+        <div class="section-title">
+          <span>02</span>
+          <h3>
+            {{
+              compliance ? "Seguimiento de la operación" : "Ruta y seguimiento"
+            }}
+          </h3>
+        </div>
+        <div class="form-grid">
+          <label
+            >Estado<select aria-label="Estado" formControlName="status">
+              @for (code of statusCodes; track code) {
+                <option [value]="code">{{ status[code] }}</option>
+              }
+            </select></label
+          >
+          <label
+            >Planta<input
+              formControlName="plant_code"
+              maxlength="32"
+              placeholder="Código de planta"
+          /></label>
+          <label
+            >Remitente / Proveedor<input
+              formControlName="sender"
+              maxlength="250"
+              placeholder="Nombre de la empresa"
+          /></label>
+          <label
+            >Destinatario / Cliente<input
+              formControlName="consignee"
+              maxlength="250"
+              placeholder="Nombre de la empresa"
+          /></label>
+          <label
+            >Origen<input
+              formControlName="origin"
+              maxlength="150"
+              placeholder="Ciudad, país"
+          /></label>
+          <label
+            >Destino<input
+              formControlName="destination"
+              maxlength="150"
+              placeholder="Ciudad, país"
+          /></label>
+          <label
+            >Fecha de embarque<input type="date" formControlName="ship_date"
+          /></label>
+          <label
+            >Llegada estimada (ETA)<input type="date" formControlName="eta"
+          /></label>
+          <label
+            >Fecha de entrega<input type="date" formControlName="delivery_date"
+          /></label>
+          <label
+            >Carrier / Agente aduanal<select
+              aria-label="Carrier / Agente aduanal"
+              formControlName="carrier_broker_id"
+            >
+              <option value="">Sin asignar</option>
+              @for (s of suppliers(); track s.id) {
+                <option [value]="s.id" [disabled]="!s.is_active">
+                  {{ s.legal_name }}{{ s.is_active ? "" : " (inactivo)" }}
+                </option>
+              }
+            </select></label
+          >
+          @if (sea) {
+            <label
+              >Naviera<select
+                aria-label="Naviera"
+                formControlName="shipping_line_id"
+              >
+                <option value="">Sin asignar</option>
+                @for (s of suppliers(); track s.id) {
+                  <option [value]="s.id" [disabled]="!s.is_active">
+                    {{ s.legal_name }}
+                  </option>
+                }
+              </select></label
+            >
+          }
+        </div>
+        @if (shipment()) {
+          <div class="section-title">
+            <span>03</span>
+            <h3>Incidencias y expeditados</h3>
+          </div>
+          <div class="form-grid">
+            <label class="checkbox"
+              ><input type="checkbox" formControlName="damaged_material" />
+              Material dañado · DMR</label
+            >
+            <label
+              >Expeditado<select
+                aria-label="Expeditado"
+                formControlName="expedited_status"
+                (change)="resetApproval()"
+              >
+                <option value="NONE">Sin expeditado</option>
+                <option value="PENDING">PFA pendiente</option>
+                <option value="APPROVED">PFA aprobado</option>
+              </select></label
+            >
+            @if (form.controls.expedited_status.value === "APPROVED") {
+              <label
+                >Código PFA aprobado *<input
+                  formControlName="pfa_approval_code"
+                  placeholder="CS1234"
+                  maxlength="34"
+              /></label>
+            }
+          </div>
+        }
+        <label class="notes-label"
+          >Comentarios<textarea
+            formControlName="comments"
+            rows="3"
+            maxlength="10000"
+            placeholder="Información adicional para el seguimiento de esta operación"
+          ></textarea>
+        </label>
+      </fieldset>
+    </form>
+    @if (shipment()) {
+      <section class="identifiers" aria-label="Documentos de la operación">
+        <div class="section-title">
+          <span>04</span>
+          <h3>Referencias y documentos</h3>
+        </div>
+        @if (identifiersLoading()) {
+          <p role="status">Cargando documentos…</p>
+        }
+        @if (identifierError()) {
+          <p class="error" role="alert">{{ identifierError() }}</p>
+        }
+        <ul class="identifier-list">
+          @for (item of identifiers(); track item.id) {
+            <li>
+              <span class="tag">{{ item.kind }}</span
+              ><span>{{ item.raw_value }}</span>
+            </li>
+          } @empty {
+            @if (!identifiersLoading()) {
+              <li>Aún no hay documentos registrados.</li>
+            }
+          }
+        </ul>
+        @if (!readOnly()) {
+          <form
+            class="identifier-form"
+            [formGroup]="identifierForm"
+            (ngSubmit)="submitIdentifier()"
+          >
+            <label
+              >Documento<select aria-label="Documento" formControlName="kind">
+                <option value="PEDIMENTO">Pedimento</option>
+                <option value="BL">BL</option>
+                <option value="CONTAINER">Contenedor</option>
+                <option value="AWB">Guía aérea</option>
+                <option value="TRACKING">Guía de paquetería</option>
+              </select></label
+            >
+            <label
+              >Número de documento<input
+                formControlName="raw_value"
+                maxlength="200"
+                placeholder="Captura el identificador"
+            /></label>
+            <button
+              type="submit"
+              class="button secondary"
+              [disabled]="busy() || identifierForm.invalid"
+            >
+              Agregar
+            </button>
+          </form>
+        }
+      </section>
+    } @else {
+      <p class="hint">
+        Después de guardar podrás agregar pedimentos, BL, contenedores y guías.
+      </p>
+    }
+  </div>
+  <footer class="editor-footer">
+    <span class="hint">{{
+      shipment()
+        ? "La referencia conserva su identidad."
+        : "* Campos obligatorios"
+    }}</span>
+    <div>
+      <button
+        type="button"
+        class="button secondary"
+        [disabled]="busy()"
+        (click)="close()"
+      >
+        {{ readOnly() ? "Cerrar" : "Cancelar" }}
+      </button>
+      @if (!readOnly()) {
+        <button
+          type="submit"
+          form="shipment-form"
+          class="button primary"
+          [disabled]="busy() || conflict()"
+        >
+          {{
+            busy()
+              ? "Guardando…"
+              : shipment()
+                ? "Guardar cambios"
+                : "Crear embarque"
+          }}
+        </button>
+      }
+    </div>
+  </footer>
+</dialog>

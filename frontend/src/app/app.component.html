@@ -1,0 +1,447 @@
+@if (phase() === "loading") {
+  <main class="loading-screen">
+    <div class="brand-mark">M<span>↗</span></div>
+    <p role="status">Preparando tu espacio de trabajo…</p>
+  </main>
+} @else if (phase() === "login") {
+  <main class="login-page">
+    <section class="login-story">
+      <div class="wordmark">
+        <div class="brand-mark">M<span>↗</span></div>
+        <strong>MasterLogistica</strong>
+      </div>
+      <p class="eyebrow">CONTROL OPERATIVO</p>
+      <h1>Cada movimiento.<br />Una sola referencia.</h1>
+      <p class="login-description">
+        Un espacio compartido para dar seguimiento a tus embarques y mantener
+        conectada la información de cada operación.
+      </p>
+      <div class="route-art" aria-hidden="true">
+        <span>ORIGEN</span>
+        <div class="route-line"><i></i><b>↗</b><i></i></div>
+        <span>DESTINO</span>
+      </div>
+      <div class="login-foot">
+        OPERACIONES &nbsp; / &nbsp; TRAZABILIDAD &nbsp; / &nbsp; CONTROL
+      </div>
+    </section>
+    <section class="login-card">
+      <span class="section-number">01 / ACCESO</span>
+      <h2>Tu operación,<br />en un solo lugar.</h2>
+      <p>Inicia sesión con tu cuenta corporativa para acceder a tus Masters.</p>
+      @if (error()) {
+        <div class="error" role="alert">{{ error() }}</div>
+      }
+      @if (auth.configured) {
+        <button class="button primary full" (click)="login()">
+          <span class="microsoft-mark" aria-hidden="true">▦</span> Continuar con
+          Microsoft
+        </button>
+      } @else {
+        <div class="notice">
+          El acceso corporativo aún no está disponible. El administrador debe
+          completar la configuración de Microsoft Entra ID.
+        </div>
+      }
+      <div class="login-divider"><span>CONOCE EL ESPACIO</span></div>
+      <button class="button secondary full" (click)="preview()">
+        Ver demostración <span>↗</span>
+      </button>
+      <p class="hint centered">Datos ficticios · Sólo lectura</p>
+    </section>
+  </main>
+} @else {
+  <div class="workspace">
+    <aside class="sidebar">
+      <a href="/" class="wordmark" aria-label="MasterLogistica inicio"
+        ><div class="brand-mark">M<span>↗</span></div>
+        <strong>Master<span>Logistica</span></strong></a
+      >
+      <div class="workspace-label">ESPACIO DE TRABAJO</div>
+      <nav aria-label="Navegación principal">
+        <div class="nav-active" aria-current="page">
+          <span aria-hidden="true">▦</span> Masters
+          <span class="nav-dot"></span>
+        </div>
+      </nav>
+      <div class="roadmap-note">
+        <span class="eyebrow">EN DESARROLLO</span>
+        <p>Provisiones</p>
+        <p>Conciliación</p>
+        <small>Se incorporarán en las siguientes fases.</small>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="live-dot"></div>
+        <span>{{
+          demo() ? "Vista de demostración" : "Espacio corporativo"
+        }}</span>
+      </div>
+    </aside>
+    <div class="main-area">
+      <header class="topbar">
+        <div>
+          <span class="breadcrumb">Operaciones</span><span class="slash">/</span
+          ><strong>Masters</strong>
+        </div>
+        <div class="account">
+          <div class="avatar">{{ user()?.display_name?.slice(0, 1) }}</div>
+          <div>
+            <strong>{{ user()?.display_name }}</strong
+            ><small>{{ roleName() }}</small>
+          </div>
+          <button class="text-button" (click)="logout()">
+            {{ demo() ? "Salir de demo" : "Salir" }}
+          </button>
+        </div>
+      </header>
+      <main class="main-content" id="main">
+        @if (demo()) {
+          <div class="demo-banner">
+            <span>DEMOSTRACIÓN</span> Todos los registros son ficticios. Esta
+            vista no modifica información real.
+          </div>
+        }
+        <section class="page-title">
+          <div>
+            <p class="eyebrow">TU OPERACIÓN, CONECTADA</p>
+            <h1>Masters de logística<span>.</span></h1>
+            <p>
+              {{
+                consolidated()
+                  ? "Vista consolidada para seguir cada referencia de principio a fin."
+                  : "Tus embarques, documentos y próximos movimientos en un solo lugar."
+              }}
+            </p>
+          </div>
+          @if (canWrite()) {
+            <button
+              class="button primary"
+              [disabled]="!canCreate()"
+              (click)="openCreate()"
+            >
+              <span aria-hidden="true">+</span> Nuevo embarque
+            </button>
+          }
+        </section>
+        @if (canWrite() && !canCreate()) {
+          <div class="notice">
+            Para crear embarques, el administrador debe configurar el catálogo
+            de BU y asignar un código de analista a tu usuario.
+          </div>
+        }
+        @if (notice()) {
+          <div class="success" role="status">
+            {{ notice()
+            }}<button
+              class="icon-button"
+              aria-label="Cerrar aviso"
+              (click)="notice.set('')"
+            >
+              ✕
+            </button>
+          </div>
+        }
+        <section
+          class="metrics"
+          aria-label="Indicadores de los resultados filtrados"
+        >
+          <article class="metric">
+            <div><span>Operaciones</span><i aria-hidden="true">↗</i></div>
+            <strong>{{ summary()?.total ?? "—" }}</strong
+            ><small>Total con los filtros actuales</small>
+          </article>
+          <article class="metric">
+            <div><span>En tránsito</span><i aria-hidden="true">→</i></div>
+            <strong>{{ count("IN_TRANSIT") }}</strong
+            ><small>Movimientos en camino</small>
+          </article>
+          <article class="metric">
+            <div><span>En aduana</span><i aria-hidden="true">⌑</i></div>
+            <strong>{{ count("CUSTOMS") }}</strong
+            ><small>Seguimiento de despacho</small>
+          </article>
+          <article class="metric">
+            <div><span>Entregados</span><i aria-hidden="true">✓</i></div>
+            <strong>{{ count("DELIVERED") }}</strong
+            ><small>Operaciones completadas</small>
+          </article>
+        </section>
+        <section class="masters-panel" aria-labelledby="table-title">
+          <header class="panel-heading">
+            <div>
+              <h2 id="table-title">
+                {{ consolidated() ? "Todos los embarques" : "Mis embarques" }}
+                <span class="count-badge">{{ total() }}</span>
+              </h2>
+              <p>Consulta una referencia para ver su detalle y documentos.</p>
+            </div>
+            <button
+              class="button subtle"
+              (click)="refresh()"
+              [disabled]="loading()"
+            >
+              ↻ Actualizar
+            </button>
+          </header>
+          <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
+            <div class="filter-main">
+              <label class="search-label"
+                ><span>Buscar</span
+                ><input
+                  formControlName="q"
+                  placeholder="Referencia, documento, remitente o destinatario"
+                  maxlength="200" /></label
+              ><label
+                >Operación<select
+                  aria-label="Operación"
+                  formControlName="operation_code"
+                >
+                  <option value="">Todas las operaciones</option>
+                  @for (code of catalog()!.operation_codes; track code) {
+                    <option [value]="code">
+                      {{ operations[code] || code }}
+                    </option>
+                  }
+                </select></label
+              ><label
+                >Estado<select aria-label="Estado" formControlName="status">
+                  <option value="">Todos los estados</option>
+                  @for (code of statusCodes; track code) {
+                    <option [value]="code">{{ status[code] }}</option>
+                  }
+                </select></label
+              ><button
+                class="button primary"
+                type="submit"
+                [disabled]="loading()"
+              >
+                Aplicar
+              </button>
+            </div>
+            <details class="more-filters">
+              <summary>Más filtros <span>BU, empresa y fechas</span></summary>
+              <div class="filter-grid">
+                <label
+                  >Business unit<select
+                    aria-label="Business unit"
+                    formControlName="business_unit"
+                  >
+                    <option value="">Todas las BU</option>
+                    @for (code of unitCodes(); track code) {
+                      <option [value]="code">
+                        {{ code }} · {{ catalog()!.business_units[code] }}
+                      </option>
+                    }
+                  </select></label
+                ><label
+                  >Empresa<select
+                    aria-label="Empresa"
+                    formControlName="company_code"
+                  >
+                    <option value="">Todas las empresas</option>
+                    @for (code of catalog()!.company_codes; track code) {
+                      <option [value]="code">{{ code }}</option>
+                    }
+                  </select></label
+                >
+                @if (consolidated()) {
+                  <label
+                    >Owner<select aria-label="Owner" formControlName="owner_id">
+                      <option value="">Todos los responsables</option>
+                      @for (owner of owners(); track owner.id) {
+                        <option [value]="owner.id">
+                          {{ owner.display_name }}
+                        </option>
+                      }
+                    </select></label
+                  >
+                }
+                <label
+                  >Embarque desde<input
+                    type="date"
+                    formControlName="ship_date_from" /></label
+                ><label
+                  >Embarque hasta<input
+                    type="date"
+                    formControlName="ship_date_to"
+                /></label>
+              </div>
+            </details>
+            <button
+              type="button"
+              class="text-button clear-filters"
+              (click)="clear()"
+              [disabled]="loading()"
+            >
+              Limpiar filtros
+            </button>
+          </form>
+          @if (error()) {
+            <div class="error table-error" role="alert">
+              {{ error()
+              }}<button class="button secondary" (click)="refresh()">
+                Reintentar
+              </button>
+            </div>
+          }
+          @if (detailLoading()) {
+            <p class="table-loading" role="status">Cargando detalle…</p>
+          }
+          @if (loading()) {
+            <div class="table-loading" role="status">
+              <span class="spinner"></span> Consultando embarques…
+            </div>
+          } @else if (!error() && rows().length === 0) {
+            <div class="empty-state">
+              <span aria-hidden="true">⌕</span>
+              <h3>No hay embarques para mostrar</h3>
+              <p>Prueba otros filtros o registra tu primera operación.</p>
+              <button class="button secondary" (click)="clear()">
+                Limpiar filtros
+              </button>
+            </div>
+          } @else if (rows().length) {
+            <div
+              class="table-scroll"
+              tabindex="0"
+              role="region"
+              aria-label="Tabla de embarques. Desplaza horizontalmente para ver todas las columnas."
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>Referencia / Operación</th>
+                    <th>Ruta</th>
+                    <th>Cliente / Destinatario</th>
+                    <th>BU</th>
+                    <th>Embarque / ETA</th>
+                    <th>Estado</th>
+                    <th><span class="sr-only">Detalle</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of rows(); track row.id) {
+                    <tr>
+                      <td>
+                        <button
+                          class="reference-link"
+                          (click)="open(row)"
+                          [disabled]="detailLoading()"
+                        >
+                          {{ row.reference_raw || "Sin referencia" }}</button
+                        ><small
+                          >{{
+                            operations[row.operation_code || ""] ||
+                              row.operation_code
+                          }}
+                          @if (consolidated()) {
+                            · {{ ownerName(row.owner_id) }}
+                          }
+                        </small>
+                      </td>
+                      <td>
+                        <div class="route-cell">
+                          <span>{{ row.origin || "Sin origen" }}</span
+                          ><span class="route-arrow">↳</span
+                          ><span>{{ row.destination || "Sin destino" }}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span>{{ row.consignee || "Sin destinatario" }}</span
+                        ><small>{{ row.company_code }}</small>
+                      </td>
+                      <td>
+                        <span class="tag">{{ row.business_unit || "—" }}</span>
+                      </td>
+                      <td>
+                        <span>{{
+                          row.ship_date
+                            ? (row.ship_date + "T00:00:00Z"
+                              | date: "dd MMM yyyy" : "UTC" : "es-MX")
+                            : "Sin fecha"
+                        }}</span
+                        ><small
+                          >ETA
+                          {{
+                            row.eta
+                              ? (row.eta + "T00:00:00Z"
+                                | date: "dd MMM" : "UTC" : "es-MX")
+                              : "por definir"
+                          }}</small
+                        >
+                      </td>
+                      <td>
+                        <span class="status" [attr.data-status]="row.status"
+                          ><i></i>{{ status[row.status] || row.status }}</span
+                        >
+                      </td>
+                      <td>
+                        <button
+                          class="icon-button"
+                          (click)="open(row)"
+                          [disabled]="detailLoading()"
+                          [attr.aria-label]="'Ver ' + row.reference_raw"
+                        >
+                          ↗
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+          <footer class="table-footer">
+            <span
+              >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
+              {{ total() }} operaciones</span
+            >
+            <div>
+              <button
+                class="button secondary small"
+                aria-label="Página anterior"
+                [disabled]="loading() || offset() === 0"
+                (click)="changePage(-1)"
+              >
+                ←</button
+              ><span>Página {{ offset() / limit + 1 }}</span
+              ><button
+                class="button secondary small"
+                aria-label="Página siguiente"
+                [disabled]="loading() || offset() + limit >= total()"
+                (click)="changePage(1)"
+              >
+                →
+              </button>
+            </div>
+          </footer>
+        </section>
+        <footer class="page-footer">
+          <span>MasterLogistica</span
+          ><span
+            >{{ demo() ? "Entorno de demostración" : "Control de embarques" }} ·
+            Fase 3</span
+          >
+        </footer>
+      </main>
+    </div>
+  </div>
+  @if (modal() && catalog()) {
+    <shipment-editor
+      [catalogs]="catalog()!"
+      [suppliers]="suppliers()"
+      [shipment]="selected()"
+      [identifiers]="identifiers()"
+      [readOnly]="!canWrite()"
+      [busy]="saving()"
+      [error]="editorError()"
+      [conflict]="conflict()"
+      [identifierError]="identifierError()"
+      [identifiersLoading]="identifiersLoading()"
+      (closed)="closeEditor()"
+      (saved)="save($event)"
+      (reload)="reloadDetail()"
+      (addIdentifier)="addIdentifier($event)"
+    />
+  }
+}
