@@ -141,6 +141,14 @@ test("lists scoped data and applies operation filters to list and totals", async
     .getByRole("button", { name: "Limpiar filtros", exact: true })
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
+  const views = page.getByRole("navigation", { name: "Vistas de embarques" });
+  await views.getByRole("button", { name: "En tránsito", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(
+    views.getByRole("button", { name: "En tránsito", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await views.getByRole("button", { name: "Todas", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(8);
 });
 test("creates on server, never sends owner/reference, then attaches a pedimento", async ({
   page,

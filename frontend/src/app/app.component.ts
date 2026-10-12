@@ -57,6 +57,17 @@ export class AppComponent implements OnInit {
   identifierError = signal("");
   identifiersLoading = signal(false);
   conflict = signal(false);
+  readonly views = [
+    { status: "", label: "Todas" },
+    { status: "IN_TRANSIT", label: "En tránsito" },
+    { status: "CUSTOMS", label: "En aduana" },
+    { status: "DELIVERED", label: "Entregadas" },
+  ];
+  activeStatus = signal("");
+  async selectStatus(status: string): Promise<void> {
+    this.filters.controls.status.setValue(status);
+    await this.apply();
+  }
   status = STATUS;
   operations = OPERATIONS;
   statusCodes = Object.keys(STATUS);
@@ -170,6 +181,7 @@ export class AppComponent implements OnInit {
     this.demoRows = data.demoShipments;
     this.filters.reset();
     this.applied = {};
+    this.activeStatus.set("");
     this.offset.set(0);
     this.error.set("");
     this.notice.set("");
@@ -186,6 +198,7 @@ export class AppComponent implements OnInit {
       this.error.set("La fecha inicial no puede ser posterior a la final.");
       return;
     }
+    this.activeStatus.set(values.status);
     this.applied = Object.fromEntries(
       Object.entries(values)
         .map(([key, value]) => [key, value.trim()])

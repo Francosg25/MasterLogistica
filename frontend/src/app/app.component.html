@@ -11,7 +11,7 @@
         <strong>MasterLogistica</strong>
       </div>
       <p class="eyebrow">CONTROL OPERATIVO</p>
-      <h1>Cada movimiento.<br />Una sola referencia.</h1>
+      <h1>La logística<br />tiene un <em>hilo.</em></h1>
       <p class="login-description">
         Un espacio compartido para dar seguimiento a tus embarques y mantener
         conectada la información de cada operación.
@@ -52,36 +52,41 @@
   </main>
 } @else {
   <div class="workspace">
-    <aside class="sidebar">
-      <a href="/" class="wordmark" aria-label="MasterLogistica inicio"
-        ><div class="brand-mark">M<span>↗</span></div>
-        <strong>Master<span>Logistica</span></strong></a
+    <aside class="sidebar" aria-label="Espacio de trabajo">
+      <a href="/" class="rail-brand" aria-label="MasterLogistica inicio"
+        >m<span>↗</span></a
       >
-      <div class="workspace-label">ESPACIO DE TRABAJO</div>
-      <nav aria-label="Navegación principal">
-        <div class="nav-active" aria-current="page">
-          <span aria-hidden="true">▦</span> Masters
-          <span class="nav-dot"></span>
-        </div>
-      </nav>
-      <div class="roadmap-note">
-        <span class="eyebrow">EN DESARROLLO</span>
-        <p>Provisiones</p>
-        <p>Conciliación</p>
-        <small>Se incorporarán en las siguientes fases.</small>
-      </div>
-      <div class="sidebar-bottom">
-        <div class="live-dot"></div>
-        <span>{{
-          demo() ? "Vista de demostración" : "Espacio corporativo"
-        }}</span>
+      <div class="rail-divider"></div>
+      <a
+        href="#main"
+        class="rail-item active"
+        aria-label="Masters"
+        aria-current="page"
+        title="Masters"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          aria-hidden="true"
+        >
+          <path d="M4 5h16v14H4zM4 10h16M10 10v9" />
+        </svg>
+        <span>Masters</span>
+      </a>
+      <span class="rail-caption">MASTER / LOGISTICA</span>
+      <div class="rail-avatar" [attr.title]="user()?.display_name">
+        {{ user()?.display_name?.slice(0, 1) }}
       </div>
     </aside>
     <div class="main-area">
       <header class="topbar">
-        <div>
-          <span class="breadcrumb">Operaciones</span><span class="slash">/</span
-          ><strong>Masters</strong>
+        <div class="product-name">
+          MasterLogistica<span class="slash">/</span
+          ><span class="workspace-scope">{{
+            consolidated() ? "Espacio compartido" : "Mi espacio"
+          }}</span>
         </div>
         <div class="account">
           <div class="avatar">{{ user()?.display_name?.slice(0, 1) }}</div>
@@ -103,13 +108,15 @@
         }
         <section class="page-title">
           <div>
-            <p class="eyebrow">TU OPERACIÓN, CONECTADA</p>
-            <h1>Masters de logística<span>.</span></h1>
+            <p class="eyebrow">
+              <span class="orange-dash"></span> OPERACIONES / MASTER
+            </p>
+            <h1>Masters de <em>logística</em><span>.</span></h1>
             <p>
               {{
                 consolidated()
-                  ? "Vista consolidada para seguir cada referencia de principio a fin."
-                  : "Tus embarques, documentos y próximos movimientos en un solo lugar."
+                  ? "Cada referencia cuenta una historia. Aquí puedes seguirla."
+                  : "Un espacio para mover, conectar y dar seguimiento."
               }}
             </p>
           </div>
@@ -145,44 +152,58 @@
           class="metrics"
           aria-label="Indicadores de los resultados filtrados"
         >
-          <article class="metric">
-            <div><span>Operaciones</span><i aria-hidden="true">↗</i></div>
+          <div class="metric total-metric">
             <strong>{{ summary()?.total ?? "—" }}</strong
-            ><small>Total con los filtros actuales</small>
-          </article>
-          <article class="metric">
-            <div><span>En tránsito</span><i aria-hidden="true">→</i></div>
-            <strong>{{ count("IN_TRANSIT") }}</strong
-            ><small>Movimientos en camino</small>
-          </article>
-          <article class="metric">
-            <div><span>En aduana</span><i aria-hidden="true">⌑</i></div>
-            <strong>{{ count("CUSTOMS") }}</strong
-            ><small>Seguimiento de despacho</small>
-          </article>
-          <article class="metric">
-            <div><span>Entregados</span><i aria-hidden="true">✓</i></div>
-            <strong>{{ count("DELIVERED") }}</strong
-            ><small>Operaciones completadas</small>
-          </article>
+            ><span>operaciones <small>en esta selección</small></span>
+          </div>
+          <div class="flow-rule" aria-hidden="true"></div>
+          <div class="metric">
+            <i class="flow-dot transit"></i
+            ><strong>{{ count("IN_TRANSIT") }}</strong
+            ><span>en tránsito</span>
+          </div>
+          <div class="metric">
+            <i class="flow-dot customs"></i
+            ><strong>{{ count("CUSTOMS") }}</strong
+            ><span>en aduana</span>
+          </div>
+          <div class="metric">
+            <i class="flow-dot delivered"></i
+            ><strong>{{ count("DELIVERED") }}</strong
+            ><span>entregadas</span>
+          </div>
+          <span class="selection-note">SEGÚN FILTROS</span>
         </section>
         <section class="masters-panel" aria-labelledby="table-title">
           <header class="panel-heading">
             <div>
+              <span class="section-index">01 /</span>
               <h2 id="table-title">
                 {{ consolidated() ? "Todos los embarques" : "Mis embarques" }}
-                <span class="count-badge">{{ total() }}</span>
               </h2>
-              <p>Consulta una referencia para ver su detalle y documentos.</p>
             </div>
             <button
               class="button subtle"
               (click)="refresh()"
               [disabled]="loading()"
             >
-              ↻ Actualizar
+              <span aria-hidden="true">↻</span> Actualizar
             </button>
           </header>
+          <nav class="view-tabs" aria-label="Vistas de embarques">
+            @for (view of views; track view.status) {
+              <button
+                type="button"
+                [class.selected]="activeStatus() === view.status"
+                [attr.aria-pressed]="activeStatus() === view.status"
+                [disabled]="loading()"
+                (click)="selectStatus(view.status)"
+              >
+                {{ view.label }}
+              </button>
+            }
+            <span class="view-caption">REGISTRO DE MOVIMIENTOS</span>
+          </nav>
           <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
             <div class="filter-main">
               <label class="search-label"
@@ -320,30 +341,38 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (row of rows(); track row.id) {
+                  @for (row of rows(); track row.id; let index = $index) {
                     <tr>
-                      <td>
-                        <button
-                          class="reference-link"
-                          (click)="open(row)"
-                          [disabled]="detailLoading()"
-                        >
-                          {{ row.reference_raw || "Sin referencia" }}</button
-                        ><small
-                          >{{
-                            operations[row.operation_code || ""] ||
-                              row.operation_code
-                          }}
-                          @if (consolidated()) {
-                            · {{ ownerName(row.owner_id) }}
-                          }
-                        </small>
+                      <td class="reference-cell">
+                        <span class="row-index" aria-hidden="true">{{
+                          (offset() + index + 1).toString().padStart(2, "0")
+                        }}</span>
+                        <div class="reference-content">
+                          <button
+                            class="reference-link"
+                            (click)="open(row)"
+                            [disabled]="detailLoading()"
+                          >
+                            {{ row.reference_raw || "Sin referencia" }}</button
+                          ><small
+                            >{{
+                              operations[row.operation_code || ""] ||
+                                row.operation_code
+                            }}
+                            @if (consolidated()) {
+                              · {{ ownerName(row.owner_id) }}
+                            }
+                          </small>
+                        </div>
                       </td>
                       <td>
                         <div class="route-cell">
-                          <span>{{ row.origin || "Sin origen" }}</span
-                          ><span class="route-arrow">↳</span
-                          ><span>{{ row.destination || "Sin destino" }}</span>
+                          <span class="route-origin">{{
+                            row.origin || "Sin origen"
+                          }}</span
+                          ><span class="route-destination">{{
+                            row.destination || "Sin destino"
+                          }}</span>
                         </div>
                       </td>
                       <td>
@@ -417,10 +446,10 @@
           </footer>
         </section>
         <footer class="page-footer">
-          <span>MasterLogistica</span
+          <span>ML / Tu operación, en movimiento.</span
           ><span
             >{{ demo() ? "Entorno de demostración" : "Control de embarques" }} ·
-            Fase 3</span
+            Masters</span
           >
         </footer>
       </main>

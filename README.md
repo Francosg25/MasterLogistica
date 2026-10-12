@@ -98,4 +98,6 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 ## Vista de demostración
 
+La interfaz organiza el trabajo como un registro de movimientos: navegación compacta, vistas por estado, indicadores en una franja y ficha lateral de operación. Usa fondo marfil, acento naranja y tipografía editorial.
+
 ![Masters con datos ficticios](frontend/docs/masters-preview.png)
