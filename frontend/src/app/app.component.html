@@ -11,10 +11,10 @@
         <strong>MasterLogistica</strong>
       </div>
       <p class="eyebrow">CONTROL OPERATIVO</p>
-      <h1>La logística<br />tiene un <em>hilo.</em></h1>
+      <h1>Masters de<br /><em>logística.</em></h1>
       <p class="login-description">
-        Un espacio compartido para dar seguimiento a tus embarques y mantener
-        conectada la información de cada operación.
+        Consulta y captura de embarques, documentos y fechas por responsable y
+        tipo de operación.
       </p>
       <div class="route-art" aria-hidden="true">
         <span>ORIGEN</span>
@@ -27,7 +27,7 @@
     </section>
     <section class="login-card">
       <span class="section-number">01 / ACCESO</span>
-      <h2>Tu operación,<br />en un solo lugar.</h2>
+      <h2>Acceso al sistema</h2>
       <p>Inicia sesión con tu cuenta corporativa para acceder a tus Masters.</p>
       @if (error()) {
         <div class="error" role="alert">{{ error() }}</div>
@@ -43,7 +43,7 @@
           completar la configuración de Microsoft Entra ID.
         </div>
       }
-      <div class="login-divider"><span>CONOCE EL ESPACIO</span></div>
+      <div class="login-divider"><span>DEMOSTRACIÓN</span></div>
       <button class="button secondary full" (click)="preview()">
         Ver demostración <span>↗</span>
       </button>
@@ -85,7 +85,7 @@
         <div class="product-name">
           MasterLogistica<span class="slash">/</span
           ><span class="workspace-scope">{{
-            consolidated() ? "Espacio compartido" : "Mi espacio"
+            consolidated() ? "Consulta de masters" : "Mi master"
           }}</span>
         </div>
         <div class="account">
@@ -113,11 +113,8 @@
             </p>
             <h1>Masters de <em>logística</em><span>.</span></h1>
             <p>
-              {{
-                consolidated()
-                  ? "Cada referencia cuenta una historia. Aquí puedes seguirla."
-                  : "Un espacio para mover, conectar y dar seguimiento."
-              }}
+              Selecciona el master individual y el tipo de operación que vas a
+              consultar.
             </p>
           </div>
           @if (canWrite()) {
@@ -130,7 +127,12 @@
             </button>
           }
         </section>
-        @if (canWrite() && !canCreate()) {
+        @if (
+          masterReady() &&
+          canWrite() &&
+          masterOwner() === user()?.id &&
+          !canCreate()
+        ) {
           <div class="notice">
             Para crear embarques, el administrador debe configurar el catálogo
             de BU y asignar un código de analista a tu usuario.
@@ -148,305 +150,356 @@
             </button>
           </div>
         }
-        <section
-          class="metrics"
-          aria-label="Indicadores de los resultados filtrados"
-        >
-          <div class="metric total-metric">
-            <strong>{{ summary()?.total ?? "—" }}</strong
-            ><span>operaciones <small>en esta selección</small></span>
-          </div>
-          <div class="flow-rule" aria-hidden="true"></div>
-          <div class="metric">
-            <i class="flow-dot transit"></i
-            ><strong>{{ count("IN_TRANSIT") }}</strong
-            ><span>en tránsito</span>
-          </div>
-          <div class="metric">
-            <i class="flow-dot customs"></i
-            ><strong>{{ count("CUSTOMS") }}</strong
-            ><span>en aduana</span>
-          </div>
-          <div class="metric">
-            <i class="flow-dot delivered"></i
-            ><strong>{{ count("DELIVERED") }}</strong
-            ><span>entregadas</span>
-          </div>
-          <span class="selection-note">SEGÚN FILTROS</span>
-        </section>
-        <section class="masters-panel" aria-labelledby="table-title">
-          <header class="panel-heading">
-            <div>
-              <span class="section-index">01 /</span>
-              <h2 id="table-title">
-                {{ consolidated() ? "Todos los embarques" : "Mis embarques" }}
-              </h2>
-            </div>
-            <button
-              class="button subtle"
-              (click)="refresh()"
-              [disabled]="loading()"
-            >
-              <span aria-hidden="true">↻</span> Actualizar
-            </button>
-          </header>
-          <nav class="view-tabs" aria-label="Vistas de embarques">
-            @for (view of views; track view.status) {
-              <button
-                type="button"
-                [class.selected]="activeStatus() === view.status"
-                [attr.aria-pressed]="activeStatus() === view.status"
-                [disabled]="loading()"
-                (click)="selectStatus(view.status)"
-              >
-                {{ view.label }}
-              </button>
-            }
-            <span class="view-caption">REGISTRO DE MOVIMIENTOS</span>
-          </nav>
-          <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
-            <div class="filter-main">
-              <label class="search-label"
-                ><span>Buscar</span
-                ><input
-                  formControlName="q"
-                  placeholder="Referencia, documento, remitente o destinatario"
-                  maxlength="200" /></label
-              ><label
-                >Operación<select
-                  aria-label="Operación"
-                  formControlName="operation_code"
+        <section class="master-selector" aria-label="Selección de master">
+          <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
+            @if (consolidated()) {
+              <label
+                >Responsable del master<select
+                  aria-label="Responsable del master"
+                  formControlName="owner_id"
+                  (change)="resetMaster()"
                 >
-                  <option value="">Todas las operaciones</option>
-                  @for (code of catalog()!.operation_codes; track code) {
-                    <option [value]="code">
-                      {{ operations[code] || code }}
-                    </option>
-                  }
-                </select></label
-              ><label
-                >Estado<select aria-label="Estado" formControlName="status">
-                  <option value="">Todos los estados</option>
-                  @for (code of statusCodes; track code) {
-                    <option [value]="code">{{ status[code] }}</option>
-                  }
-                </select></label
-              ><button
-                class="button primary"
-                type="submit"
-                [disabled]="loading()"
-              >
-                Aplicar
-              </button>
-            </div>
-            <details class="more-filters">
-              <summary>Más filtros <span>BU, empresa y fechas</span></summary>
-              <div class="filter-grid">
-                <label
-                  >Business unit<select
-                    aria-label="Business unit"
-                    formControlName="business_unit"
-                  >
-                    <option value="">Todas las BU</option>
-                    @for (code of unitCodes(); track code) {
-                      <option [value]="code">
-                        {{ code }} · {{ catalog()!.business_units[code] }}
-                      </option>
-                    }
-                  </select></label
-                ><label
-                  >Empresa<select
-                    aria-label="Empresa"
-                    formControlName="company_code"
-                  >
-                    <option value="">Todas las empresas</option>
-                    @for (code of catalog()!.company_codes; track code) {
-                      <option [value]="code">{{ code }}</option>
-                    }
-                  </select></label
-                >
-                @if (consolidated()) {
-                  <label
-                    >Owner<select aria-label="Owner" formControlName="owner_id">
-                      <option value="">Todos los responsables</option>
-                      @for (owner of owners(); track owner.id) {
+                  <option value="">Selecciona un integrante</option>
+                  @if (logisticsOwners().length) {
+                    <optgroup label="Logística">
+                      @for (owner of logisticsOwners(); track owner.id) {
                         <option [value]="owner.id">
                           {{ owner.display_name }}
                         </option>
                       }
+                    </optgroup>
+                  }
+                  @if (otherOwners().length) {
+                    <optgroup label="Otros responsables">
+                      @for (owner of otherOwners(); track owner.id) {
+                        <option [value]="owner.id">
+                          {{ owner.display_name }}
+                        </option>
+                      }
+                    </optgroup>
+                  }
+                </select></label
+              >
+            } @else {
+              <div class="master-owner">
+                <small>Responsable del master</small
+                ><strong>{{ user()?.display_name }}</strong
+                ><span>Acceso a tu master individual</span>
+              </div>
+            }
+            <label
+              >Tipo de operación del master<select
+                aria-label="Tipo de operación del master"
+                formControlName="operation_code"
+                (change)="resetMaster()"
+              >
+                <option value="">Selecciona una operación</option>
+                @for (code of catalog()!.operation_codes; track code) {
+                  <option [value]="code">{{ operations[code] || code }}</option>
+                }
+              </select></label
+            >
+            <button class="button primary" type="submit">Abrir master</button>
+          </form>
+        </section>
+        @if (!masterReady()) {
+          @if (error()) {
+            <p class="error" role="alert">{{ error() }}</p>
+          }
+          <div class="master-placeholder">
+            <h2>Selecciona un master</h2>
+            <p>
+              Cada consulta corresponde a un solo responsable y un solo tipo de
+              operación.
+            </p>
+          </div>
+        } @else {
+          <div class="active-master" role="status">
+            <span>MASTER ACTIVO</span
+            ><strong>{{ ownerName(masterOwner()) }}</strong
+            ><span>/</span
+            ><strong>{{
+              operations[masterOperation()] || masterOperation()
+            }}</strong>
+          </div>
+          <section
+            class="metrics"
+            aria-label="Indicadores de los resultados filtrados"
+          >
+            <div class="metric total-metric">
+              <strong>{{ summary()?.total ?? "—" }}</strong
+              ><span>operaciones <small>en esta selección</small></span>
+            </div>
+            <div class="flow-rule" aria-hidden="true"></div>
+            <div class="metric">
+              <i class="flow-dot transit"></i
+              ><strong>{{ count("IN_TRANSIT") }}</strong
+              ><span>en tránsito</span>
+            </div>
+            <div class="metric">
+              <i class="flow-dot customs"></i
+              ><strong>{{ count("CUSTOMS") }}</strong
+              ><span>en aduana</span>
+            </div>
+            <div class="metric">
+              <i class="flow-dot delivered"></i
+              ><strong>{{ count("DELIVERED") }}</strong
+              ><span>entregadas</span>
+            </div>
+            <span class="selection-note">SEGÚN FILTROS</span>
+          </section>
+          <section class="masters-panel" aria-labelledby="table-title">
+            <header class="panel-heading">
+              <div>
+                <span class="section-index">01 /</span>
+                <h2 id="table-title">Embarques del master</h2>
+              </div>
+              <button
+                class="button subtle"
+                (click)="refresh()"
+                [disabled]="loading()"
+              >
+                <span aria-hidden="true">↻</span> Actualizar
+              </button>
+            </header>
+            <nav class="view-tabs" aria-label="Vistas de embarques">
+              @for (view of views; track view.status) {
+                <button
+                  type="button"
+                  [class.selected]="activeStatus() === view.status"
+                  [attr.aria-pressed]="activeStatus() === view.status"
+                  [disabled]="loading()"
+                  (click)="selectStatus(view.status)"
+                >
+                  {{ view.label }}
+                </button>
+              }
+              <span class="view-caption">REGISTRO DE MOVIMIENTOS</span>
+            </nav>
+            <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
+              <div class="filter-main">
+                <label class="search-label"
+                  ><span>Buscar</span
+                  ><input
+                    formControlName="q"
+                    placeholder="Referencia, documento, remitente o destinatario"
+                    maxlength="200" /></label
+                ><label
+                  >Estado<select aria-label="Estado" formControlName="status">
+                    <option value="">Todos los estados</option>
+                    @for (code of statusCodes; track code) {
+                      <option [value]="code">{{ status[code] }}</option>
+                    }
+                  </select></label
+                ><button
+                  class="button primary"
+                  type="submit"
+                  [disabled]="loading()"
+                >
+                  Aplicar
+                </button>
+              </div>
+              <details class="more-filters">
+                <summary>Más filtros <span>BU, empresa y fechas</span></summary>
+                <div class="filter-grid">
+                  <label
+                    >Business unit<select
+                      aria-label="Business unit"
+                      formControlName="business_unit"
+                    >
+                      <option value="">Todas las BU</option>
+                      @for (code of unitCodes(); track code) {
+                        <option [value]="code">
+                          {{ code }} · {{ catalog()!.business_units[code] }}
+                        </option>
+                      }
+                    </select></label
+                  ><label
+                    >Empresa<select
+                      aria-label="Empresa"
+                      formControlName="company_code"
+                    >
+                      <option value="">Todas las empresas</option>
+                      @for (code of catalog()!.company_codes; track code) {
+                        <option [value]="code">{{ code }}</option>
+                      }
                     </select></label
                   >
-                }
-                <label
-                  >Embarque desde<input
-                    type="date"
-                    formControlName="ship_date_from" /></label
-                ><label
-                  >Embarque hasta<input
-                    type="date"
-                    formControlName="ship_date_to"
-                /></label>
-              </div>
-            </details>
-            <button
-              type="button"
-              class="text-button clear-filters"
-              (click)="clear()"
-              [disabled]="loading()"
-            >
-              Limpiar filtros
-            </button>
-          </form>
-          @if (error()) {
-            <div class="error table-error" role="alert">
-              {{ error()
-              }}<button class="button secondary" (click)="refresh()">
-                Reintentar
-              </button>
-            </div>
-          }
-          @if (detailLoading()) {
-            <p class="table-loading" role="status">Cargando detalle…</p>
-          }
-          @if (loading()) {
-            <div class="table-loading" role="status">
-              <span class="spinner"></span> Consultando embarques…
-            </div>
-          } @else if (!error() && rows().length === 0) {
-            <div class="empty-state">
-              <span aria-hidden="true">⌕</span>
-              <h3>No hay embarques para mostrar</h3>
-              <p>Prueba otros filtros o registra tu primera operación.</p>
-              <button class="button secondary" (click)="clear()">
+                  <label
+                    >Embarque desde<input
+                      type="date"
+                      formControlName="ship_date_from" /></label
+                  ><label
+                    >Embarque hasta<input
+                      type="date"
+                      formControlName="ship_date_to"
+                  /></label>
+                </div>
+              </details>
+              <button
+                type="button"
+                class="text-button clear-filters"
+                (click)="clear()"
+                [disabled]="loading()"
+              >
                 Limpiar filtros
               </button>
-            </div>
-          } @else if (rows().length) {
-            <div
-              class="table-scroll"
-              tabindex="0"
-              role="region"
-              aria-label="Tabla de embarques. Desplaza horizontalmente para ver todas las columnas."
-            >
-              <table>
-                <thead>
-                  <tr>
-                    <th>Referencia / Operación</th>
-                    <th>Ruta</th>
-                    <th>Cliente / Destinatario</th>
-                    <th>BU</th>
-                    <th>Embarque / ETA</th>
-                    <th>Estado</th>
-                    <th><span class="sr-only">Detalle</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (row of rows(); track row.id; let index = $index) {
+            </form>
+            @if (error()) {
+              <div class="error table-error" role="alert">
+                {{ error()
+                }}<button class="button secondary" (click)="refresh()">
+                  Reintentar
+                </button>
+              </div>
+            }
+            @if (detailLoading()) {
+              <p class="table-loading" role="status">Cargando detalle…</p>
+            }
+            @if (loading()) {
+              <div class="table-loading" role="status">
+                <span class="spinner"></span> Consultando embarques…
+              </div>
+            } @else if (!error() && rows().length === 0) {
+              <div class="empty-state">
+                <span aria-hidden="true">⌕</span>
+                <h3>No hay embarques para mostrar</h3>
+                <p>Prueba otros filtros o registra tu primera operación.</p>
+                <button class="button secondary" (click)="clear()">
+                  Limpiar filtros
+                </button>
+              </div>
+            } @else if (rows().length) {
+              <div
+                class="table-scroll"
+                tabindex="0"
+                role="region"
+                aria-label="Tabla de embarques. Desplaza horizontalmente para ver todas las columnas."
+              >
+                <table>
+                  <thead>
                     <tr>
-                      <td class="reference-cell">
-                        <span class="row-index" aria-hidden="true">{{
-                          (offset() + index + 1).toString().padStart(2, "0")
-                        }}</span>
-                        <div class="reference-content">
+                      <th>Referencia / Operación</th>
+                      <th>Ruta</th>
+                      <th>Cliente / Destinatario</th>
+                      <th>BU</th>
+                      <th>Embarque / ETA</th>
+                      <th>Estado</th>
+                      <th><span class="sr-only">Detalle</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of rows(); track row.id; let index = $index) {
+                      <tr>
+                        <td class="reference-cell">
+                          <span class="row-index" aria-hidden="true">{{
+                            (offset() + index + 1).toString().padStart(2, "0")
+                          }}</span>
+                          <div class="reference-content">
+                            <button
+                              class="reference-link"
+                              (click)="open(row)"
+                              [disabled]="detailLoading()"
+                            >
+                              {{
+                                row.reference_raw || "Sin referencia"
+                              }}</button
+                            ><small
+                              >{{
+                                operations[row.operation_code || ""] ||
+                                  row.operation_code
+                              }}
+                              @if (consolidated()) {
+                                · {{ ownerName(row.owner_id) }}
+                              }
+                            </small>
+                          </div>
+                        </td>
+                        <td>
+                          <div class="route-cell">
+                            <span class="route-origin">{{
+                              row.origin || "Sin origen"
+                            }}</span
+                            ><span class="route-destination">{{
+                              row.destination || "Sin destino"
+                            }}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span>{{ row.consignee || "Sin destinatario" }}</span
+                          ><small>{{ row.company_code }}</small>
+                        </td>
+                        <td>
+                          <span class="tag">{{
+                            row.business_unit || "—"
+                          }}</span>
+                        </td>
+                        <td>
+                          <span>{{
+                            row.ship_date
+                              ? (row.ship_date + "T00:00:00Z"
+                                | date: "dd MMM yyyy" : "UTC" : "es-MX")
+                              : "Sin fecha"
+                          }}</span
+                          ><small
+                            >ETA
+                            {{
+                              row.eta
+                                ? (row.eta + "T00:00:00Z"
+                                  | date: "dd MMM" : "UTC" : "es-MX")
+                                : "por definir"
+                            }}</small
+                          >
+                        </td>
+                        <td>
+                          <span class="status" [attr.data-status]="row.status"
+                            ><i></i>{{ status[row.status] || row.status }}</span
+                          >
+                        </td>
+                        <td>
                           <button
-                            class="reference-link"
+                            class="icon-button"
                             (click)="open(row)"
                             [disabled]="detailLoading()"
+                            [attr.aria-label]="'Ver ' + row.reference_raw"
                           >
-                            {{ row.reference_raw || "Sin referencia" }}</button
-                          ><small
-                            >{{
-                              operations[row.operation_code || ""] ||
-                                row.operation_code
-                            }}
-                            @if (consolidated()) {
-                              · {{ ownerName(row.owner_id) }}
-                            }
-                          </small>
-                        </div>
-                      </td>
-                      <td>
-                        <div class="route-cell">
-                          <span class="route-origin">{{
-                            row.origin || "Sin origen"
-                          }}</span
-                          ><span class="route-destination">{{
-                            row.destination || "Sin destino"
-                          }}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span>{{ row.consignee || "Sin destinatario" }}</span
-                        ><small>{{ row.company_code }}</small>
-                      </td>
-                      <td>
-                        <span class="tag">{{ row.business_unit || "—" }}</span>
-                      </td>
-                      <td>
-                        <span>{{
-                          row.ship_date
-                            ? (row.ship_date + "T00:00:00Z"
-                              | date: "dd MMM yyyy" : "UTC" : "es-MX")
-                            : "Sin fecha"
-                        }}</span
-                        ><small
-                          >ETA
-                          {{
-                            row.eta
-                              ? (row.eta + "T00:00:00Z"
-                                | date: "dd MMM" : "UTC" : "es-MX")
-                              : "por definir"
-                          }}</small
-                        >
-                      </td>
-                      <td>
-                        <span class="status" [attr.data-status]="row.status"
-                          ><i></i>{{ status[row.status] || row.status }}</span
-                        >
-                      </td>
-                      <td>
-                        <button
-                          class="icon-button"
-                          (click)="open(row)"
-                          [disabled]="detailLoading()"
-                          [attr.aria-label]="'Ver ' + row.reference_raw"
-                        >
-                          ↗
-                        </button>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          }
-          <footer class="table-footer">
-            <span
-              >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
-              {{ total() }} operaciones</span
-            >
-            <div>
-              <button
-                class="button secondary small"
-                aria-label="Página anterior"
-                [disabled]="loading() || offset() === 0"
-                (click)="changePage(-1)"
+                            ↗
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            <footer class="table-footer">
+              <span
+                >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
+                {{ total() }} operaciones</span
               >
-                ←</button
-              ><span>Página {{ offset() / limit + 1 }}</span
-              ><button
-                class="button secondary small"
-                aria-label="Página siguiente"
-                [disabled]="loading() || offset() + limit >= total()"
-                (click)="changePage(1)"
-              >
-                →
-              </button>
-            </div>
-          </footer>
-        </section>
+              <div>
+                <button
+                  class="button secondary small"
+                  aria-label="Página anterior"
+                  [disabled]="loading() || offset() === 0"
+                  (click)="changePage(-1)"
+                >
+                  ←</button
+                ><span>Página {{ offset() / limit + 1 }}</span
+                ><button
+                  class="button secondary small"
+                  aria-label="Página siguiente"
+                  [disabled]="loading() || offset() + limit >= total()"
+                  (click)="changePage(1)"
+                >
+                  →
+                </button>
+              </div>
+            </footer>
+          </section>
+        }
         <footer class="page-footer">
-          <span>ML / Tu operación, en movimiento.</span
+          <span>MasterLogistica</span
           ><span
             >{{ demo() ? "Entorno de demostración" : "Control de embarques" }} ·
             Masters</span
@@ -458,6 +511,8 @@
   @if (modal() && catalog()) {
     <shipment-editor
       [catalogs]="catalog()!"
+      [masterOperation]="masterOperation()"
+      [masterOwnerName]="ownerName(masterOwner())"
       [suppliers]="suppliers()"
       [shipment]="selected()"
       [identifiers]="identifiers()"

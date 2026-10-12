@@ -21,7 +21,7 @@ test("production build uses real access flow and offers an isolated read-only pr
   });
   await page.goto("http://127.0.0.1:4301/");
   await expect(
-    page.getByRole("heading", { name: "Tu operación, en un solo lugar." }),
+    page.getByRole("heading", { name: "Acceso al sistema" }),
   ).toBeVisible();
   await expect(
     page.getByText("El acceso corporativo aún no está disponible.", {
@@ -34,7 +34,15 @@ test("production build uses real access flow and offers an isolated read-only pr
   });
   await page.getByRole("button", { name: "Ver demostración" }).click();
   await expect(page.locator(".demo-banner")).toBeVisible();
-  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await expect(page.locator("tbody tr")).toHaveCount(0);
+  await page
+    .getByLabel("Responsable del master", { exact: true })
+    .selectOption("demo-owner-1");
+  await page
+    .getByLabel("Tipo de operación del master", { exact: true })
+    .selectOption("SI");
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
   await expect(page.locator("tbody tr").first()).toContainText("01 oct 2026");
   await expect(
     page.getByRole("button", { name: "Nuevo embarque" }),

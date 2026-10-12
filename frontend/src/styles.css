@@ -1591,3 +1591,119 @@ select.ng-invalid.ng-touched {
     scroll-behavior: auto !important;
   }
 }
+.master-selector {
+  margin: 0 0 24px;
+  padding: 23px 25px;
+  border: 1px solid #d8decd;
+  background: #ffffff75;
+  backdrop-filter: blur(16px);
+  border-radius: 6px;
+}
+.master-selector form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 24px;
+}
+.master-selector label {
+  font-size: 11px;
+}
+.master-selector select {
+  font-size: 12px;
+  min-height: 41px;
+}
+.master-owner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.master-owner small {
+  font-size: 10px;
+  color: #69715f;
+}
+.master-owner strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.master-owner span {
+  font-size: 10px;
+  color: #737b67;
+}
+.master-placeholder {
+  padding: 45px 24px 60px;
+  border-top: 1px solid #d7ddcb;
+  color: #6a725e;
+  text-align: center;
+}
+.master-placeholder h2 {
+  font-size: 20px;
+  font-weight: 400;
+  margin-bottom: 12px;
+}
+.master-placeholder p {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.active-master {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  font-size: 12px;
+}
+.active-master > span:first-child {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #8a765a;
+  letter-spacing: 1px;
+}
+.active-master strong {
+  font-weight: 500;
+}
+.master-context {
+  font-size: 11px;
+  line-height: 1.7;
+  border-bottom: 1px solid #dce2ce;
+  padding: 16px 0;
+  color: #6b745e;
+}
+.filter-main {
+  grid-template-columns: minmax(250px, 1.8fr) minmax(160px, 1fr) auto;
+}
+@media (max-width: 850px) {
+  .master-selector form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .master-selector .button {
+    grid-column: 1/3;
+  }
+  .filter-main {
+    grid-template-columns: 1fr 1fr;
+  }
+  .filter-main > .button {
+    grid-column: 2;
+  }
+}
+@media (max-width: 600px) {
+  .master-selector {
+    padding: 20px 16px;
+  }
+  .master-selector form {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .master-selector .button {
+    grid-column: auto;
+  }
+  .filter-main > .button {
+    grid-column: 1/3;
+  }
+  .active-master {
+    font-size: 11px;
+    gap: 8px;
+  }
+  .active-master > span:first-child {
+    width: 100%;
+  }
+}

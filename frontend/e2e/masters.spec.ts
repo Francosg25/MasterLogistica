@@ -9,6 +9,8 @@ async function mock(
     failure?: boolean;
     conflict?: boolean;
     count?: number;
+    mixed?: boolean;
+    noMaster?: boolean;
   } = {},
 ) {
   let rows = options.empty
@@ -17,6 +19,20 @@ async function mock(
         ...demoShipments[i % 8],
         id: `shipment-${i}`,
         owner_id: "owner-1",
+      }));
+  rows = options.mixed
+    ? Array.from({ length: 5 }, (_, owner) =>
+        rows.map((row) => ({
+          ...row,
+          id: `${owner}-${row.id}`,
+          owner_id: `owner-${owner + 1}`,
+          reference_raw: row.reference_raw!.replace("RM1-", `RM${owner + 1}-`),
+        })),
+      ).flat()
+    : rows.map((row, i) => ({
+        ...row,
+        operation_code: "SI",
+        reference_raw: `RM1-${String(i + 1).padStart(4, "0")}SI26-T01-MAT`,
       }));
   let identifiers: {
     id: string;
@@ -47,7 +63,22 @@ async function mock(
       });
     if (path === "/references/catalogs") return json(demoCatalogs);
     if (path === "/masters/owners")
-      return json([{ id: "owner-1", display_name: "Analista de prueba" }]);
+      return json(
+        Array.from(
+          {
+            length:
+              options.role === "MANAGER" || options.role === "SUPER_ADMIN"
+                ? 5
+                : 1,
+          },
+          (_, i) => ({
+            id: `owner-${i + 1}`,
+            display_name:
+              i === 0 ? "Analista de prueba" : `Integrante ${i + 1}`,
+            analyst_code: i + 1,
+          }),
+        ),
+      );
     if (path === "/suppliers")
       return json({ items: [], total: 0, limit: 100, offset: 0 });
     if (path.endsWith("/identifiers")) {
@@ -69,7 +100,7 @@ async function mock(
         id: "created-1",
         row_version: 1,
         owner_id: "owner-1",
-        reference_raw: "RM1-0009LI26-T01-MAT",
+        reference_raw: `RM1-0009${body.operation_code}26-T01-MAT`,
       };
       rows = [row, ...rows];
       return json(row, 201);
@@ -85,7 +116,7 @@ async function mock(
       }
       return row ? json(row) : json({ detail: "Not found" }, 404);
     }
-    if (path === "/shipments" || path === "/shipments/summary") {
+    if (path === "/masters/shipments" || path === "/masters/summary") {
       if (options.failure) return json({ detail: "Unavailable" }, 503);
       const filtered = rows.filter((row) =>
         [...url.searchParams].every(([key, value]) => {
@@ -123,32 +154,95 @@ async function mock(
   await expect(
     page.getByRole("heading", { name: "Masters de logística." }),
   ).toBeVisible();
+  if (!options.noMaster) {
+    if (options.role === "MANAGER" || options.role === "SUPER_ADMIN")
+      await page
+        .getByLabel("Responsable del master", { exact: true })
+        .selectOption("owner-1");
+    await page
+      .getByLabel("Tipo de operación del master", { exact: true })
+      .selectOption("SI");
+    await page
+      .getByRole("button", { name: "Abrir master", exact: true })
+      .click();
+  }
   return requests;
 }
 
-test("lists scoped data and applies operation filters to list and totals", async ({
-  page,
-}) => {
+test("filters and reset retain the selected master", async ({ page }) => {
   await mock(page);
   await expect(page.locator("tbody tr")).toHaveCount(8);
-  await page.getByLabel("Operación", { exact: true }).selectOption("R1");
+  await page.getByLabel("Estado", { exact: true }).selectOption("CUSTOMS");
   await page.getByRole("button", { name: "Aplicar", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator(".metric").first().locator("strong")).toHaveText(
-    "1",
-  );
+  await expect(page.locator("tbody tr")).toHaveCount(2);
   await page
     .getByRole("button", { name: "Limpiar filtros", exact: true })
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
+  await expect(page.locator(".active-master")).toContainText(
+    "Marítimo · Importación",
+  );
   const views = page.getByRole("navigation", { name: "Vistas de embarques" });
   await views.getByRole("button", { name: "En tránsito", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(2);
-  await expect(
-    views.getByRole("button", { name: "En tránsito", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
   await views.getByRole("button", { name: "Todas", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
+});
+test("five owner masters and operation types stay separated", async ({
+  page,
+}) => {
+  const requests = await mock(page, {
+    role: "MANAGER",
+    mixed: true,
+    noMaster: true,
+  });
+  expect(requests.some((req) => req.path === "/masters/shipments")).toBeFalsy();
+  await expect(page.locator("tbody tr")).toHaveCount(0);
+  for (let i = 1; i <= 5; i++) {
+    await page
+      .getByLabel("Responsable del master", { exact: true })
+      .selectOption(`owner-${i}`);
+    await expect(page.locator("tbody tr")).toHaveCount(0);
+    await page
+      .getByLabel("Tipo de operación del master", { exact: true })
+      .selectOption("SI");
+    await page
+      .getByRole("button", { name: "Abrir master", exact: true })
+      .click();
+    await expect(page.locator("tbody tr")).toHaveCount(1);
+    await expect(page.locator("tbody tr").first()).toContainText(
+      `RM${i}-0001SI26`,
+    );
+    await page
+      .getByRole("button", { name: "Limpiar filtros", exact: true })
+      .click();
+    await expect(page.locator("tbody tr")).toHaveCount(1);
+  }
+  await page
+    .getByLabel("Tipo de operación del master", { exact: true })
+    .selectOption("AI");
+  await expect(page.locator("tbody tr")).toHaveCount(0);
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr").first()).toContainText("RM5-0002AI26");
+});
+test("operator has no owner selector and no unscoped initial list", async ({
+  page,
+}) => {
+  const requests = await mock(page, { mixed: true, noMaster: true });
+  expect(requests.some((req) => req.path === "/masters/shipments")).toBeFalsy();
+  await expect(
+    page.getByLabel("Responsable del master", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Nuevo embarque" }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("Tipo de operación del master", { exact: true })
+    .selectOption("SI");
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr").first()).toContainText("RM1-0001SI26");
 });
 test("creates on server, never sends owner/reference, then attaches a pedimento", async ({
   page,
@@ -167,7 +261,7 @@ test("creates on server, never sends owner/reference, then attaches a pedimento"
     .getByRole("button", { name: "Crear embarque", exact: true })
     .click();
   await expect(
-    dialog.getByRole("heading", { name: "RM1-0009LI26-T01-MAT" }),
+    dialog.getByRole("heading", { name: "RM1-0009SI26-T01-MAT" }),
   ).toBeVisible();
   const creation = requests.find(
     (r) => r.path === "/shipments" && r.method === "POST",
@@ -189,15 +283,25 @@ test("creates on server, never sends owner/reference, then attaches a pedimento"
     requests.filter((r) => r.method === "POST" && r.path === "/shipments"),
   ).toHaveLength(1);
 });
-test("sea-specific form and compliance operation are available", async ({
+test("creation uses the master operation and its specific fields", async ({
   page,
 }) => {
   await mock(page);
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Tipo de operación *").selectOption("SI");
+  await expect(
+    dialog.getByLabel("Tipo de operación", { exact: true }),
+  ).toHaveValue("Marítimo · Importación");
+  await expect(
+    dialog.getByLabel("Tipo de operación", { exact: true }),
+  ).toHaveAttribute("readonly", "");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeVisible();
-  await dialog.getByLabel("Tipo de operación *").selectOption("R1");
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await page
+    .getByLabel("Tipo de operación del master", { exact: true })
+    .selectOption("R1");
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await page.getByRole("button", { name: "Nuevo embarque" }).click();
   await expect(dialog.getByLabel("Naviera", { exact: true })).toHaveCount(0);
   await expect(
     dialog.getByRole("heading", { name: "Seguimiento de la operación" }),
@@ -227,17 +331,25 @@ test("conflict preserves edits and requires explicit reload before saving", asyn
     page.getByRole("dialog").getByRole("button", { name: "Guardar cambios" }),
   ).toBeEnabled();
 });
-test("manager can inspect but cannot create or edit", async ({ page }) => {
-  await mock(page, { role: "MANAGER" });
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toHaveCount(0);
+for (const role of ["MANAGER", "FINANCE"]) {
+  test(`${role} can inspect but cannot create or edit`, async ({ page }) => {
+    await mock(page, { role });
+    await expect(page.getByRole("button", { name: "Nuevo embarque" })).toHaveCount(0);
+    await page.locator(".reference-link").first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("Comentarios")).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Guardar cambios" })).toHaveCount(0);
+  });
+}
+test("administrator cannot create into another owner's master", async ({ page }) => {
+  await mock(page, { role: "SUPER_ADMIN", mixed: true });
+  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeEnabled();
+  await page.getByLabel("Responsable del master", { exact: true }).selectOption("owner-2");
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeDisabled();
   await page.locator(".reference-link").first().click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByLabel("Comentarios")).toBeDisabled();
-  await expect(
-    dialog.getByRole("button", { name: "Guardar cambios" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("dialog").getByLabel("Comentarios")).toBeEnabled();
 });
 test("pagination retains filters", async ({ page }) => {
   await mock(page, { count: 25 });

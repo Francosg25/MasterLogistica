@@ -128,5 +128,11 @@ def operational_user(user: User = Depends(current_user)) -> User:
     return user
 
 
+def master_writer(user: User = Depends(current_user)) -> User:
+    if user.role not in {"OPERATOR", "SUPER_ADMIN"}:
+        raise HTTPException(403, "This role cannot modify operational masters")
+    return user
+
+
 def consolidated(user: User) -> bool:
     return user.role in {"MANAGER", "SUPER_ADMIN"}

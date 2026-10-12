@@ -28,6 +28,7 @@ export interface Supplier {
   is_active: boolean;
 }
 export interface Owner {
+  analyst_code: number | null;
   id: string;
   display_name: string;
 }

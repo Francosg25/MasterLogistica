@@ -9,7 +9,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.auth import admin_user, consolidated, current_user, operational_user
+from app.auth import admin_user, consolidated, current_user, master_writer, operational_user
 from app.db import get_session
 from app.models import (
     AccountingPeriod,
@@ -34,6 +34,7 @@ from app.schemas import (
     AuditRead,
     IdentifierCreate,
     IdentifierRead,
+    Operation,
     Page,
     PeriodCreate,
     PeriodRead,
@@ -57,6 +58,7 @@ router = APIRouter(prefix="/api/v1")
 DB = Annotated[Session, Depends(get_session)]
 Actor = Annotated[User, Depends(current_user)]
 Writer = Annotated[User, Depends(operational_user)]
+MasterWriter = Annotated[User, Depends(master_writer)]
 Admin = Annotated[User, Depends(admin_user)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0, le=1000000)]
@@ -327,10 +329,17 @@ def filtered_shipments(
 
 @router.get("/masters/owners", tags=["Masters"])
 def master_owners(session: DB, user: Actor):
-    statement = select(User).order_by(User.display_name, User.id)
+    statement = select(User).order_by(User.analyst_code, User.display_name, User.id)
     if not consolidated(user):
         statement = statement.where(User.id == user.id)
-    return [{"id": row.id, "display_name": row.display_name} for row in session.scalars(statement)]
+    else:
+        statement = statement.where(
+            or_(User.analyst_code.is_not(None), User.id.in_(select(Shipment.owner_id)))
+        )
+    return [
+        {"id": row.id, "display_name": row.display_name, "analyst_code": row.analyst_code}
+        for row in session.scalars(statement)
+    ]
 
 
 @router.get("/shipments/summary", tags=["Masters"])
@@ -358,13 +367,37 @@ def shipments(
     )
 
 
+def master_statement(
+    user: Actor,
+    owner_id: UUID,
+    operation_code: Operation,
+    statement=Depends(filtered_shipments),
+):
+    # Both context fields are mandatory. Existing owner authorization remains in the query.
+    if not consolidated(user) and owner_id != user.id:
+        raise HTTPException(403, "Cannot access another owner's master")
+    return statement.where(Shipment.owner_id == owner_id, Shipment.operation_code == operation_code)
+
+
+@router.get("/masters/shipments", response_model=Page[ShipmentRead], tags=["Masters"])
+def master_shipments(
+    session: DB, limit: Limit = 50, offset: Offset = 0, statement=Depends(master_statement)
+):
+    return shipments(session, limit, offset, statement)
+
+
+@router.get("/masters/summary", tags=["Masters"])
+def master_summary(session: DB, statement=Depends(master_statement)):
+    return shipment_summary(session, statement)
+
+
 @router.get("/shipments/{shipment_id}", response_model=ShipmentRead, tags=["Masters"])
 def shipment_detail(shipment_id: UUID, session: DB, user: Actor):
     return shipment_for(session, user, shipment_id)
 
 
 @router.post("/shipments", response_model=ShipmentRead, status_code=201, tags=["Masters"])
-def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: Writer):
+def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: MasterWriter):
     if data.company_code not in request.app.state.settings.company_codes:
         raise HTTPException(422, "Company code is not configured")
     catalog = request.app.state.settings.business_units
@@ -444,7 +477,7 @@ def add_reference_alias(session, row, suffix):
 
 @router.patch("/shipments/{shipment_id}", response_model=ShipmentRead, tags=["Masters"])
 def patch_shipment(
-    shipment_id: UUID, data: ShipmentPatch, request: Request, session: DB, user: Writer
+    shipment_id: UUID, data: ShipmentPatch, request: Request, session: DB, user: MasterWriter
 ):
     row = shipment_for(session, user, shipment_id)
     version_matches(row, data.expected_version)
@@ -500,7 +533,7 @@ def identifiers(shipment_id: UUID, session: DB, user: Actor):
     tags=["Masters"],
 )
 def add_identifier(
-    shipment_id: UUID, data: IdentifierCreate, request: Request, session: DB, user: Writer
+    shipment_id: UUID, data: IdentifierCreate, request: Request, session: DB, user: MasterWriter
 ):
     shipment_for(session, user, shipment_id)
     try:

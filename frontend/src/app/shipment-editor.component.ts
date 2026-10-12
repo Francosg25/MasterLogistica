@@ -29,6 +29,8 @@ import {
 export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   @ViewChild("dialog") dialog!: ElementRef<HTMLDialogElement>;
   catalogs = input.required<Catalogs>();
+  masterOperation = input.required<string>();
+  masterOwnerName = input.required<string>();
   suppliers = input<Supplier[]>([]);
   shipment = input<Shipment | null>(null);
   identifiers = input<Identifier[]>([]);
@@ -99,6 +101,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
     } else
       this.form.patchValue({
         company_code: this.catalogs().company_codes[0] ?? "",
+        operation_code: this.masterOperation(),
       });
     if (this.readOnly()) this.form.disable();
   }

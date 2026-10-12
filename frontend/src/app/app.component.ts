@@ -74,11 +74,72 @@ export class AppComponent implements OnInit {
   canWrite = computed(
     () =>
       !this.demo() &&
-      ["OPERATOR", "FINANCE", "SUPER_ADMIN"].includes(this.user()?.role ?? ""),
+      ["OPERATOR", "SUPER_ADMIN"].includes(this.user()?.role ?? ""),
   );
+  masterOwner = signal("");
+  masterOperation = signal("");
+  masterReady = computed(
+    () => !!this.masterOwner() && !!this.masterOperation(),
+  );
+  masterSelection = new FormBuilder().nonNullable.group({
+    owner_id: [""],
+    operation_code: [""],
+  });
+  logisticsOwners = computed(() =>
+    this.owners().filter(
+      (owner) =>
+        owner.analyst_code != null &&
+        owner.analyst_code >= 1 &&
+        owner.analyst_code <= 5,
+    ),
+  );
+  otherOwners = computed(() =>
+    this.owners().filter(
+      (owner) => !this.logisticsOwners().some((item) => item.id === owner.id),
+    ),
+  );
+  resetMaster(): void {
+    this.abort?.abort();
+    this.listRequest++;
+    this.detailRequest++;
+    this.masterOwner.set("");
+    this.masterOperation.set("");
+    this.rows.set([]);
+    this.summary.set(null);
+    this.total.set(0);
+    this.offset.set(0);
+    this.loading.set(false);
+    this.detailLoading.set(false);
+    this.modal.set(false);
+    this.selected.set(null);
+    this.notice.set("");
+    this.error.set("");
+    this.filters.reset();
+    this.applied = {};
+    this.activeStatus.set("");
+  }
+  async chooseMaster(): Promise<void> {
+    const selection = this.masterSelection.getRawValue();
+    const owner = this.consolidated() ? selection.owner_id : this.user()?.id;
+    this.resetMaster();
+    if (!owner || !selection.operation_code) {
+      this.error.set("Selecciona un responsable y un tipo de operación.");
+      return;
+    }
+    if (
+      !this.owners().some((item) => item.id === owner) ||
+      !this.catalog()?.operation_codes.includes(selection.operation_code)
+    )
+      return;
+    this.masterOwner.set(owner);
+    this.masterOperation.set(selection.operation_code);
+    await this.apply();
+  }
   canCreate = computed(
     () =>
       this.canWrite() &&
+      this.masterReady() &&
+      this.masterOwner() === this.user()?.id &&
       this.user()?.analyst_code != null &&
       !!this.catalog()?.business_units_configured,
   );
@@ -98,11 +159,9 @@ export class AppComponent implements OnInit {
   );
   filters = new FormBuilder().nonNullable.group({
     q: [""],
-    operation_code: [""],
     status: [""],
     business_unit: [""],
     company_code: [""],
-    owner_id: [""],
     ship_date_from: [""],
     ship_date_to: [""],
   });
@@ -168,27 +227,33 @@ export class AppComponent implements OnInit {
     this.catalog.set(catalog);
     this.owners.set(owners);
     this.suppliers.set(suppliers);
+    this.resetMaster();
+    this.masterSelection.reset({
+      owner_id: this.consolidated() ? "" : this.user()!.id,
+      operation_code: "",
+    });
     this.phase.set("workspace");
-    await this.refresh();
   }
   async preview(): Promise<void> {
     const data = await import("./demo");
     this.demo.set(true);
     this.user.set(data.demoUser);
     this.catalog.set(data.demoCatalogs);
-    this.owners.set([{ id: "demo", display_name: "Usuario de demostración" }]);
+    this.owners.set(data.demoOwners);
     this.suppliers.set([]);
-    this.demoRows = data.demoShipments;
+    this.demoRows = data.masterDemoShipments;
     this.filters.reset();
     this.applied = {};
     this.activeStatus.set("");
     this.offset.set(0);
     this.error.set("");
     this.notice.set("");
+    this.resetMaster();
+    this.masterSelection.reset();
     this.phase.set("workspace");
-    await this.refresh();
   }
   async apply(): Promise<void> {
+    if (!this.masterReady()) return;
     const values = this.filters.getRawValue();
     if (
       values.ship_date_from &&
@@ -204,6 +269,8 @@ export class AppComponent implements OnInit {
         .map(([key, value]) => [key, value.trim()])
         .filter(([, value]) => value !== ""),
     );
+    this.applied["owner_id"] = this.masterOwner();
+    this.applied["operation_code"] = this.masterOperation();
     this.offset.set(0);
     await this.refresh();
   }
@@ -216,6 +283,7 @@ export class AppComponent implements OnInit {
     await this.refresh();
   }
   async refresh(): Promise<void> {
+    if (!this.masterReady()) return;
     this.abort?.abort();
     const controller = new AbortController();
     this.abort = controller;
@@ -249,13 +317,13 @@ export class AppComponent implements OnInit {
         const query = new URLSearchParams(this.applied);
         const [page, summary] = await Promise.all([
           this.api.request<Page<Shipment>>(
-            `/shipments?${query}&limit=${this.limit}&offset=${this.offset()}`,
+            `/masters/shipments?${query}&limit=${this.limit}&offset=${this.offset()}`,
             "GET",
             undefined,
             controller.signal,
           ),
           this.api.request<Summary>(
-            `/shipments/summary?${query}`,
+            `/masters/summary?${query}`,
             "GET",
             undefined,
             controller.signal,
@@ -312,6 +380,11 @@ export class AppComponent implements OnInit {
         ? row
         : await this.api.request<Shipment>(`/shipments/${row.id}`);
       if (request !== this.detailRequest) return;
+      if (
+        fresh.owner_id !== this.masterOwner() ||
+        fresh.operation_code !== this.masterOperation()
+      )
+        throw new Error("El registro no pertenece al master seleccionado.");
       this.selected.set(fresh);
       this.resetEditor();
       this.modal.set(true);
@@ -355,6 +428,16 @@ export class AppComponent implements OnInit {
     this.saving.set(true);
     this.editorError.set("");
     const previous = this.selected();
+    if (
+      !previous &&
+      (!this.canCreate() || data["operation_code"] !== this.masterOperation())
+    ) {
+      this.editorError.set(
+        "La operación debe coincidir con el master seleccionado.",
+      );
+      this.saving.set(false);
+      return;
+    }
     try {
       const row = await this.api.request<Shipment>(
         previous ? `/shipments/${previous.id}` : "/shipments",

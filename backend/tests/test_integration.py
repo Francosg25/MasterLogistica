@@ -597,4 +597,30 @@ def test_document_search_does_not_duplicate_shipments_or_expose_other_owners(env
         assert response.status_code == 200
         assert response.json()["total"] == expected
     owners = e["client"].get("/api/v1/masters/owners", headers=e["headers"]("one")).json()
-    assert owners == [{"id": str(e["users"]["one"]["id"]), "display_name": "one"}]
+    assert owners == [
+        {"id": str(e["users"]["one"]["id"]), "display_name": "one", "analyst_code": 1}
+    ]
+
+
+def test_individual_master_endpoints_never_mix_owners_or_operations(environment):
+    e = environment
+    expected = create_shipment(e, "one", operation_code="SI")
+    create_shipment(e, "one", operation_code="AI")
+    create_shipment(e, "two", operation_code="SI")
+    query = {"owner_id": str(e["users"]["one"]["id"]), "operation_code": "SI"}
+    for name in ["one", "manager", "admin"]:
+        response = e["client"].get(
+            "/api/v1/masters/shipments", headers=e["headers"](name), params=query
+        )
+        assert response.status_code == 200
+        assert [row["id"] for row in response.json()["items"]] == [expected["id"]]
+        summary = e["client"].get(
+            "/api/v1/masters/summary", headers=e["headers"](name), params=query
+        )
+        assert summary.json()["total"] == 1
+    assert (
+        e["client"]
+        .get("/api/v1/masters/shipments", headers=e["headers"]("two"), params=query)
+        .status_code
+        == 403
+    )

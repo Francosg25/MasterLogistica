@@ -1,4 +1,4 @@
-import { Catalogs, Shipment, User } from "./types";
+import { Catalogs, Owner, Shipment, User } from "./types";
 export const demoUser: User = {
   id: "demo",
   display_name: "Usuario de demostración",
@@ -115,3 +115,17 @@ export const demoShipments: Shipment[] = [
   expedited_status: "NONE",
   pfa_approval_code: null,
 }));
+
+export const demoOwners: Owner[] = Array.from({ length: 5 }, (_, i) => ({
+  id: `demo-owner-${i + 1}`,
+  display_name: `Integrante ${i + 1} · Demostración`,
+  analyst_code: i + 1,
+}));
+export const masterDemoShipments: Shipment[] = demoOwners.flatMap((owner, i) =>
+  demoShipments.map((row) => ({
+    ...row,
+    id: `${owner.id}-${row.id}`,
+    owner_id: owner.id,
+    reference_raw: row.reference_raw!.replace("RM1-", `RM${i + 1}-`),
+  })),
+);
