@@ -43,7 +43,7 @@ test("production build uses real access flow and offers an isolated read-only pr
     .selectOption("SI");
   await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator("tbody tr").first()).toContainText("01 oct 2026");
+  await expect(page.locator("tbody tr").first()).toContainText("01/10/2026");
   await expect(
     page.getByRole("button", { name: "Nuevo embarque" }),
   ).toHaveCount(0);

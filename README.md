@@ -95,7 +95,7 @@ npx.cmd playwright install chromium
 npm.cmd test
 ```
 
-Verificación local de este bloque: **165 pruebas de backend aprobadas, 18 de integración pendientes por falta de PostgreSQL, y 14 pruebas de navegador aprobadas**. El build de producción compila correctamente.
+Verificación de la interfaz de hoja de cálculo: **24 pruebas de navegador aprobadas** y build de producción correcto. La última validación del backend registró **165 pruebas aprobadas y 18 de integración pendientes por falta de PostgreSQL**.
 
 Las pruebas de Masters usan un punto de entrada exclusivo de pruebas y respuestas simuladas. La prueba de acceso comprueba el bundle de producción y la demostración con el proveedor de autenticación real, sin iniciar sesión contra Microsoft. El build normal y el Dockerfile no incluyen el proveedor de pruebas.
 
@@ -113,6 +113,18 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 ## Vista de demostración
 
-La interfaz organiza el trabajo como un registro de movimientos: navegación compacta, vistas por estado, indicadores en una franja y ficha lateral de operación. Usa fondo marfil, acento naranja y tipografía editorial.
+La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. No carga registros hasta abrir un master con un responsable y una operación. La demostración sigue siendo de solo lectura.
+
+## Edición del master
+
+- Doble clic, Enter, F2 o **Editar celda** abre la celda seleccionada. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
+- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa` o `aaaa-mm-dd`. Los estados y proveedores se validan contra sus catálogos. Un rango inválido se rechaza completo.
+- **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
+- Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
+- Referencia y BU están protegidas porque forman parte de la identidad de la operación. El responsable y el tipo de operación permanecen fijados por el master. La edición respeta los roles del servidor.
+- **Nuevo embarque** genera la referencia mediante el servidor. Abrir una referencia permite consultar o editar su detalle, incidencias y documentos.
+- **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros completos.
+
+Los registros modificados permanecen visibles hasta actualizar o volver a aplicar los filtros.
 
 ![Masters con datos ficticios](frontend/docs/masters-preview.png)

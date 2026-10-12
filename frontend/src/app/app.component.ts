@@ -6,11 +6,11 @@ import {
   inject,
   signal,
 } from "@angular/core";
-import { DatePipe } from "@angular/common";
 import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
 import { ApiError, ApiService } from "./api.service";
 import { AuthService } from "./auth.service";
 import { ShipmentEditorComponent } from "./shipment-editor.component";
+import { MasterSheetComponent } from "./master-sheet.component";
 import {
   Catalogs,
   Identifier,
@@ -27,11 +27,12 @@ import {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [DatePipe, ReactiveFormsModule, ShipmentEditorComponent],
+  imports: [ReactiveFormsModule, ShipmentEditorComponent, MasterSheetComponent],
   templateUrl: "./app.component.html",
 })
 export class AppComponent implements OnInit {
   @ViewChild(ShipmentEditorComponent) editor?: ShipmentEditorComponent;
+  @ViewChild(MasterSheetComponent) sheet?: MasterSheetComponent;
   readonly auth = inject(AuthService);
   private api = inject(ApiService);
   phase = signal<"loading" | "login" | "workspace">("loading");
@@ -98,7 +99,14 @@ export class AppComponent implements OnInit {
       (owner) => !this.logisticsOwners().some((item) => item.id === owner.id),
     ),
   );
-  resetMaster(): void {
+  resetMaster(): boolean {
+    if (this.sheet && !this.sheet.canLeave()) {
+      this.masterSelection.patchValue({
+        owner_id: this.masterOwner(),
+        operation_code: this.masterOperation(),
+      });
+      return false;
+    }
     this.abort?.abort();
     this.listRequest++;
     this.detailRequest++;
@@ -117,11 +125,12 @@ export class AppComponent implements OnInit {
     this.filters.reset();
     this.applied = {};
     this.activeStatus.set("");
+    return true;
   }
   async chooseMaster(): Promise<void> {
     const selection = this.masterSelection.getRawValue();
     const owner = this.consolidated() ? selection.owner_id : this.user()?.id;
-    this.resetMaster();
+    if (!this.resetMaster()) return;
     if (!owner || !selection.operation_code) {
       this.error.set("Selecciona un responsable y un tipo de operación.");
       return;
@@ -193,6 +202,7 @@ export class AppComponent implements OnInit {
     }
   }
   async logout(): Promise<void> {
+    if (this.sheet && !this.sheet.canLeave()) return;
     if (this.demo()) {
       this.demo.set(false);
       this.user.set(null);
@@ -263,6 +273,7 @@ export class AppComponent implements OnInit {
       this.error.set("La fecha inicial no puede ser posterior a la final.");
       return;
     }
+    if (this.sheet && !this.sheet.canLeave()) return;
     this.activeStatus.set(values.status);
     this.applied = Object.fromEntries(
       Object.entries(values)
@@ -279,11 +290,13 @@ export class AppComponent implements OnInit {
     await this.apply();
   }
   async changePage(direction: number): Promise<void> {
+    if (this.sheet && !this.sheet.canLeave()) return;
     this.offset.update((value) => Math.max(0, value + direction * this.limit));
     await this.refresh();
   }
   async refresh(): Promise<void> {
     if (!this.masterReady()) return;
+    if (this.sheet && !this.sheet.canLeave()) return;
     this.abort?.abort();
     const controller = new AbortController();
     this.abort = controller;
@@ -361,6 +374,7 @@ export class AppComponent implements OnInit {
   }
   openCreate(): void {
     if (!this.canCreate()) return;
+    if (this.sheet && !this.sheet.canLeave()) return;
     this.selected.set(null);
     this.resetEditor();
     this.modal.set(true);
@@ -372,6 +386,7 @@ export class AppComponent implements OnInit {
     this.identifiers.set([]);
   }
   async open(row: Shipment): Promise<void> {
+    if (this.sheet && !this.sheet.canLeave()) return;
     const request = ++this.detailRequest;
     this.detailLoading.set(true);
     this.error.set("");
@@ -398,6 +413,29 @@ export class AppComponent implements OnInit {
   closeEditor(): void {
     this.modal.set(false);
     this.detailRequest++;
+  }
+  updateSheetRow(row: Shipment): void {
+    const previous = this.rows().find((item) => item.id === row.id);
+    if (
+      !previous ||
+      row.owner_id !== this.masterOwner() ||
+      row.operation_code !== this.masterOperation()
+    )
+      return;
+    this.rows.update((items) =>
+      items.map((item) => (item.id === row.id ? row : item)),
+    );
+    if (previous.status !== row.status)
+      this.summary.update((summary) => {
+        if (!summary) return summary;
+        const by_status = { ...summary.by_status };
+        by_status[previous.status] = Math.max(
+          0,
+          (by_status[previous.status] ?? 0) - 1,
+        );
+        by_status[row.status] = (by_status[row.status] ?? 0) + 1;
+        return { ...summary, by_status };
+      });
   }
   async reloadDetail(): Promise<void> {
     const row = this.selected();

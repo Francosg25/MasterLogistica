@@ -1,0 +1,213 @@
+<div class="sheet-actions">
+  <div class="save-actions">
+    @if (!readOnly()) {
+      <button
+        class="button primary"
+        (click)="save()"
+        [disabled]="saving() || (!dirtyCount() && !editing())"
+      >
+        {{ saving() ? "Guardando…" : "Guardar cambios" }}
+        @if (dirtyCount()) {
+          <span class="button-count">{{ dirtyCount() }}</span>
+        }
+      </button>
+      <button
+        class="button subtle"
+        (click)="undo()"
+        [disabled]="saving() || !canUndo"
+      >
+        Deshacer
+      </button>
+      <button
+        class="button subtle"
+        (click)="discard()"
+        [disabled]="saving() || (!dirtyCount() && !editing())"
+      >
+        Descartar
+      </button>
+    }
+    <span class="save-state" role="status" [class.pending]="dirtyCount()">{{
+      readOnly()
+        ? "Solo lectura"
+        : dirtyCount()
+          ? cellCount() + " celdas sin guardar"
+          : "Sin cambios pendientes"
+    }}</span>
+  </div>
+  <button class="button subtle" (click)="exportPage()" [disabled]="saving()">
+    Exportar página CSV
+  </button>
+</div>
+@if (error()) {
+  <p class="error sheet-message" role="alert">{{ error() }}</p>
+}
+@if (notice()) {
+  <p class="success sheet-message" role="status">{{ notice() }}</p>
+}
+@for (row of rows(); track row.id) {
+  @if (issues()[row.id]) {
+    <div class="row-issue">
+      <span>{{ row.reference_raw }} · {{ issues()[row.id] }}</span
+      ><button
+        class="button secondary"
+        [disabled]="saving()"
+        (click)="reloadRow(row)"
+      >
+        Recargar fila
+      </button>
+    </div>
+  }
+}
+<div class="formula-bar">
+  <span class="cell-address">{{ address() }}</span
+  ><span class="formula-label">{{ activeColumn().label }}</span>
+  <input aria-label="Contenido de celda" readonly [value]="activeValue()" />
+  @if (readOnly() || activeColumn().kind === "locked") {
+    <span class="locked-label">{{
+      readOnly() ? "Solo lectura" : "Columna protegida"
+    }}</span>
+  } @else {
+    <button
+      class="button subtle"
+      (click)="begin(active().row, active().col)"
+      [disabled]="!editable(active().row, active().col)"
+    >
+      Editar celda
+    </button>
+  }
+</div>
+<div
+  class="sheet-scroll"
+  role="region"
+  aria-label="Hoja del master"
+  (copy)="copy($event)"
+  (paste)="paste($event)"
+>
+  <table
+    class="spreadsheet"
+    role="grid"
+    aria-label="Embarques del master"
+    [attr.aria-readonly]="readOnly()"
+    [attr.aria-busy]="saving()"
+  >
+    <colgroup>
+      <col style="width: 44px" />
+      @for (column of columns(); track column.key) {
+        <col [style.width.px]="column.width" />
+      }
+    </colgroup>
+    <thead>
+      <tr class="column-letters" aria-hidden="true">
+        <th class="row-number"></th>
+        @for (column of columns(); track column.key; let c = $index) {
+          <th
+            [class.frozen]="c === 0"
+            [class.active-column]="active().col === c"
+          >
+            {{ letter(c) }}
+          </th>
+        }
+      </tr>
+      <tr>
+        <th class="row-number" scope="col">#</th>
+        @for (column of columns(); track column.key; let c = $index) {
+          <th scope="col" [class.frozen]="c === 0">{{ column.label }}</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of rows(); track row.id; let r = $index) {
+        <tr
+          [class.row-pending]="drafts()[row.id]"
+          [class.row-failed]="issues()[row.id]"
+        >
+          <th
+            class="row-number"
+            scope="row"
+            [class.active-column]="active().row === r"
+          >
+            {{ offset() + r + 1 }}
+          </th>
+          @for (column of columns(); track column.key; let c = $index) {
+            <td
+              role="gridcell"
+              [attr.data-row]="r"
+              [attr.data-col]="c"
+              [attr.data-field]="column.key"
+              [attr.tabindex]="isActive(r, c) ? 0 : -1"
+              [attr.aria-label]="column.label + ', fila ' + (offset() + r + 1)"
+              [attr.aria-selected]="isSelected(r, c)"
+              [attr.aria-readonly]="!editable(r, c)"
+              [class.frozen]="c === 0"
+              [class.selected-cell]="isSelected(r, c)"
+              [class.active-cell]="isActive(r, c)"
+              [class.dirty-cell]="isDirty(row, column)"
+              [class.date-cell]="column.kind === 'date'"
+              (click)="pick(r, c, $event.shiftKey)"
+              (dblclick)="begin(r, c)"
+              (keydown)="key($event)"
+              [title]="display(row, column)"
+            >
+              @if (isEditing(r, c)) {
+                @if (column.kind === "status" || column.kind === "supplier") {
+                  <select
+                    class="cell-input"
+                    [attr.aria-label]="'Editar ' + column.label"
+                    [value]="editValue"
+                    (click)="$event.stopPropagation()"
+                    (change)="editValue = $any($event.target).value"
+                    (keydown)="editorKey($event)"
+                    (blur)="commit()"
+                  >
+                    @if (column.kind === "status") {
+                      @for (code of statusCodes; track code) {
+                        <option [value]="code">{{ status[code] }}</option>
+                      }
+                    } @else {
+                      <option value="">Sin asignar</option>
+                      @for (supplier of suppliers(); track supplier.id) {
+                        <option
+                          [value]="supplier.id"
+                          [disabled]="!supplier.is_active"
+                        >
+                          {{ supplier.legal_name }}
+                        </option>
+                      }
+                    }
+                  </select>
+                } @else {
+                  <input
+                    class="cell-input"
+                    [type]="column.kind === 'date' ? 'date' : 'text'"
+                    [attr.aria-label]="'Editar ' + column.label"
+                    [value]="editValue"
+                    [attr.maxlength]="column.max ?? null"
+                    (click)="$event.stopPropagation()"
+                    (input)="editValue = $any($event.target).value"
+                    (keydown)="editorKey($event)"
+                    (blur)="commit()"
+                  />
+                }
+              } @else if (c === 0) {
+                <button
+                  class="reference-link"
+                  (click)="$event.stopPropagation(); opened.emit(row)"
+                  [disabled]="saving()"
+                  [title]="'Abrir detalle y documentos de ' + row.reference_raw"
+                >
+                  {{ row.reference_raw || "Sin referencia" }}
+                </button>
+              } @else if (column.kind === "status") {
+                <span class="status" [attr.data-status]="value(row, column)"
+                  ><i></i>{{ display(row, column) }}</span
+                >
+              } @else {
+                <span class="cell-text">{{ display(row, column) }}</span>
+              }
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

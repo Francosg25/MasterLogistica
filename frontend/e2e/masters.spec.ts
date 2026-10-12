@@ -1,6 +1,29 @@
 import { expect, test, Page } from "@playwright/test";
 import { demoCatalogs, demoShipments } from "../src/app/demo";
 
+const cell = (page: Page, row: number, field: string) =>
+  page.locator(`td[data-row="${row}"][data-field="${field}"]`);
+async function pasteCells(
+  page: Page,
+  row: number,
+  field: string,
+  text: string,
+) {
+  const target = cell(page, row, field);
+  await target.click();
+  await target.evaluate((element, value) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", value);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, text);
+}
+
 async function mock(
   page: Page,
   options: {
@@ -8,6 +31,8 @@ async function mock(
     empty?: boolean;
     failure?: boolean;
     conflict?: boolean;
+    conflictId?: string;
+    networkFailure?: boolean;
     count?: number;
     mixed?: boolean;
     noMaster?: boolean;
@@ -109,7 +134,9 @@ async function mock(
       const id = path.split("/").pop(),
         row = rows.find((row) => row.id === id);
       if (req.method() === "PATCH") {
-        if (options.conflict) return json({ detail: "Record changed" }, 409);
+        if (options.networkFailure) return route.abort("failed");
+        if (options.conflict || options.conflictId === id)
+          return json({ detail: "Record changed" }, 409);
         const updated = { ...row, ...body, row_version: 2 };
         rows = rows.map((r) => (r.id === id ? updated : r));
         return json(updated);
@@ -182,10 +209,12 @@ test("filters and reset retain the selected master", async ({ page }) => {
   await expect(page.locator(".active-master")).toContainText(
     "Marítimo · Importación",
   );
-  const views = page.getByRole("navigation", { name: "Vistas de embarques" });
-  await views.getByRole("button", { name: "En tránsito", exact: true }).click();
+  await page.getByLabel("Estado", { exact: true }).selectOption("IN_TRANSIT");
+  await page.getByRole("button", { name: "Aplicar", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(2);
-  await views.getByRole("button", { name: "Todas", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Limpiar filtros", exact: true })
+    .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
 });
 test("five owner masters and operation types stay separated", async ({
@@ -334,22 +363,36 @@ test("conflict preserves edits and requires explicit reload before saving", asyn
 for (const role of ["MANAGER", "FINANCE"]) {
   test(`${role} can inspect but cannot create or edit`, async ({ page }) => {
     await mock(page, { role });
-    await expect(page.getByRole("button", { name: "Nuevo embarque" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Nuevo embarque" }),
+    ).toHaveCount(0);
     await page.locator(".reference-link").first().click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByLabel("Comentarios")).toBeDisabled();
-    await expect(dialog.getByRole("button", { name: "Guardar cambios" })).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Guardar cambios" }),
+    ).toHaveCount(0);
   });
 }
-test("administrator cannot create into another owner's master", async ({ page }) => {
+test("administrator cannot create into another owner's master", async ({
+  page,
+}) => {
   await mock(page, { role: "SUPER_ADMIN", mixed: true });
-  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeEnabled();
-  await page.getByLabel("Responsable del master", { exact: true }).selectOption("owner-2");
+  await expect(
+    page.getByRole("button", { name: "Nuevo embarque" }),
+  ).toBeEnabled();
+  await page
+    .getByLabel("Responsable del master", { exact: true })
+    .selectOption("owner-2");
   await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Nuevo embarque" }),
+  ).toBeDisabled();
   await page.locator(".reference-link").first().click();
-  await expect(page.getByRole("dialog").getByLabel("Comentarios")).toBeEnabled();
+  await expect(
+    page.getByRole("dialog").getByLabel("Comentarios"),
+  ).toBeEnabled();
 });
 test("pagination retains filters", async ({ page }) => {
   await mock(page, { count: 25 });
@@ -366,9 +409,7 @@ test("database errors do not masquerade as empty success", async ({ page }) => {
     "servicio no está disponible",
   );
   await expect(page.getByText("No hay embarques para mostrar")).toHaveCount(0);
-  await expect(page.locator(".metric").first().locator("strong")).toHaveText(
-    "—",
-  );
+  await expect(page.getByRole("grid")).toHaveCount(0);
 });
 test("empty state and date range validation", async ({ page }) => {
   await mock(page, { empty: true });
@@ -386,12 +427,37 @@ test("desktop and mobile render without script errors or page overflow", async (
   page.on("pageerror", (error) => errors.push(error.message));
   await mock(page);
   await expect(page.locator("tbody tr")).toHaveCount(8);
-  await expect(page.locator("tbody tr").first()).toContainText("01 oct 2026");
+  await expect(page.locator("tbody tr").first()).toContainText("01/10/2026");
   await page.screenshot({
     path: "test-results/masters-desktop.png",
     fullPage: true,
   });
+  await page.screenshot({ path: "docs/masters-preview.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
+  const controls = await page
+    .locator(".filter-main > label, .filter-main > button")
+    .evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          left: box.left,
+          right: box.right,
+          top: box.top,
+          bottom: box.bottom,
+        };
+      }),
+    );
+  for (let i = 0; i < controls.length; i++)
+    for (let j = i + 1; j < controls.length; j++) {
+      const a = controls[i],
+        b = controls[j];
+      expect(
+        a.right <= b.left ||
+          b.right <= a.left ||
+          a.bottom <= b.top ||
+          b.bottom <= a.top,
+      ).toBeTruthy();
+    }
   await page.screenshot({
     path: "test-results/masters-mobile.png",
     fullPage: true,
@@ -405,4 +471,228 @@ test("desktop and mobile render without script errors or page overflow", async (
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.screenshot({ path: "test-results/masters-detail.png" });
   expect(errors).toEqual([]);
+});
+
+test("sheet stages keyboard edits and saves only changed fields with row versions", async ({
+  page,
+}) => {
+  const requests = await mock(page);
+  await cell(page, 0, "sender").dblclick();
+  await page
+    .getByLabel("Editar Remitente / Proveedor", { exact: true })
+    .fill("Proveedor actualizado");
+  await page
+    .getByLabel("Editar Remitente / Proveedor", { exact: true })
+    .press("Tab");
+  await expect(cell(page, 0, "origin")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.getByLabel("Editar Origen", { exact: true }).fill("Monterrey, MX");
+  await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  await expect(cell(page, 1, "origin")).toBeFocused();
+  await expect(page.locator(".save-state")).toContainText(
+    "2 celdas sin guardar",
+  );
+  expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toContainText(
+    "Sin cambios pendientes",
+  );
+  expect(requests.find((r) => r.method === "PATCH")?.body).toEqual({
+    sender: "Proveedor actualizado",
+    origin: "Monterrey, MX",
+    expected_version: 1,
+  });
+  await pasteCells(page, 0, "origin", "Saltillo, MX");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toContainText(
+    "Sin cambios pendientes",
+  );
+  expect(
+    requests.filter((r) => r.method === "PATCH")[1].body?.["expected_version"],
+  ).toBe(2);
+});
+
+test("paste from Excel stages a rectangular range and undo restores it", async ({
+  page,
+}) => {
+  const requests = await mock(page);
+  await pasteCells(
+    page,
+    0,
+    "ship_date",
+    "12/10/2026\t2026-10-20\r\n13/10/2026\t2026-10-21\r\n",
+  );
+  await expect(cell(page, 0, "ship_date")).toHaveText("12/10/2026");
+  await expect(cell(page, 1, "eta")).toHaveText("21/10/2026");
+  await expect(page.locator(".save-state")).toContainText(
+    "4 celdas sin guardar",
+  );
+  await page.keyboard.press("Control+z");
+  await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
+  await expect(page.locator(".save-state")).toContainText(
+    "Sin cambios pendientes",
+  );
+  expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
+});
+
+test("invalid dates, protected columns and oversized pastes do not partially stage changes", async ({
+  page,
+}) => {
+  await mock(page);
+  await pasteCells(page, 0, "ship_date", "12/10/2026\t31/02/2026");
+  await expect(page.getByRole("alert")).toContainText("ETA");
+  await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
+  await pasteCells(page, 0, "status", "Entregado\tT02");
+  await expect(page.getByRole("alert")).toContainText("solo lectura");
+  await expect(cell(page, 0, "status")).toContainText("En tránsito");
+  await pasteCells(page, 7, "sender", "A\nB");
+  await expect(page.getByRole("alert")).toContainText("excede");
+  await expect(page.locator(".save-state")).toContainText(
+    "Sin cambios pendientes",
+  );
+});
+
+test("quoted multiline Excel cells and range copy preserve values", async ({
+  page,
+}) => {
+  await mock(page);
+  await pasteCells(page, 0, "sender", '"Proveedor\nNorte"\t"Ciudad\tCentro"');
+  await cell(page, 0, "sender").click();
+  await page.keyboard.press("Shift+ArrowRight");
+  const copied = await cell(page, 0, "origin").evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    element.dispatchEvent(
+      new ClipboardEvent("copy", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    return clipboardData.getData("text/plain");
+  });
+  expect(copied).toBe('"Proveedor\nNorte"\t"Ciudad\tCentro"');
+});
+
+test("partial save preserves failed rows and prevents retrying a stale version", async ({
+  page,
+}) => {
+  const requests = await mock(page, { conflictId: "shipment-1" });
+  await pasteCells(page, 0, "sender", "Proveedor A\nProveedor B\nProveedor C");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByRole("alert")).toContainText("conflicto");
+  await expect(page.locator(".save-state")).toContainText(
+    "2 celdas sin guardar",
+  );
+  await expect(cell(page, 0, "sender")).not.toHaveClass(/dirty-cell/);
+  await expect(cell(page, 1, "sender")).toHaveText("Proveedor B");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toContainText(
+    "1 celdas sin guardar",
+  );
+  expect(
+    requests.filter(
+      (r) => r.method === "PATCH" && r.path.endsWith("shipment-1"),
+    ),
+  ).toHaveLength(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Recargar fila" }).click();
+  await expect(cell(page, 1, "sender")).toHaveText("Suministros Norte");
+  await expect(page.locator(".save-state")).toContainText(
+    "Sin cambios pendientes",
+  );
+});
+
+test("unconfirmed network writes are retained and not submitted twice", async ({
+  page,
+}) => {
+  const requests = await mock(page, { networkFailure: true });
+  await pasteCells(page, 0, "origin", "Saltillo");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByRole("alert")).toContainText("sin confirmar");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(1);
+  await expect(cell(page, 0, "origin")).toHaveText("Saltillo");
+  await expect(
+    page.getByRole("button", { name: "Recargar fila" }),
+  ).toBeVisible();
+});
+
+test("pending edits survive a canceled master switch, refresh and page change", async ({
+  page,
+}) => {
+  await mock(page, { count: 25 });
+  await pasteCells(page, 0, "origin", "Cambio pendiente");
+  page.on("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Página siguiente" }).click();
+  await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
+  await page
+    .getByLabel("Tipo de operación del master", { exact: true })
+    .selectOption("AI");
+  await expect(
+    page.getByLabel("Tipo de operación del master", { exact: true }),
+  ).toHaveValue("SI");
+  await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
+});
+
+test("read-only roles cannot stage or submit spreadsheet changes", async ({
+  page,
+}) => {
+  const requests = await mock(page, { role: "MANAGER" });
+  await cell(page, 0, "origin").dblclick();
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await pasteCells(page, 0, "origin", "Cambio no permitido");
+  await page.keyboard.press("Delete");
+  await expect(cell(page, 0, "origin")).toHaveText("Shanghái, CN");
+  await expect(
+    page.getByRole("button", { name: "Guardar cambios" }),
+  ).toHaveCount(0);
+  expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
+});
+
+test("CSV exports the displayed page and neutralizes spreadsheet formulas", async ({
+  page,
+}) => {
+  await mock(page);
+  await pasteCells(page, 0, "sender", '=HYPERLINK("https://example.com")');
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar página CSV" }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  let csv = "";
+  for await (const chunk of stream!) csv += chunk.toString();
+  expect(download.suggestedFilename()).toBe("master-SI-pagina-1.csv");
+  expect(csv).toContain("'" + '=HYPERLINK(""https://example.com"")');
+  expect(csv).toContain("Referencia,Estado,BU,Fecha de embarque");
+  expect(csv.split("\r\n")).toHaveLength(9);
+});
+
+test("cell actions support touch editing, Escape and save without leaving the editor", async ({
+  page,
+}) => {
+  const requests = await mock(page);
+  await cell(page, 0, "status").click();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(cell(page, 0, "reference_raw")).toBeFocused();
+  await cell(page, 0, "sender").click();
+  await page.getByRole("button", { name: "Editar celda" }).click();
+  await page
+    .getByLabel("Editar Remitente / Proveedor", { exact: true })
+    .fill("Descartar esta edición");
+  await page.keyboard.press("Escape");
+  await expect(cell(page, 0, "sender")).toHaveText("Componentes Delta");
+  await page.getByRole("button", { name: "Editar celda" }).click();
+  await page
+    .getByLabel("Editar Remitente / Proveedor", { exact: true })
+    .fill("Proveedor final");
+  await page.keyboard.press("Control+s");
+  await expect(page.locator(".save-state")).toContainText(
+    "Sin cambios pendientes",
+  );
+  await expect
+    .poll(() => requests.filter((r) => r.method === "PATCH").length)
+    .toBe(1);
+  await expect(cell(page, 0, "sender")).toHaveText("Proveedor final");
 });
