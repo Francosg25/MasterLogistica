@@ -1,7 +1,8 @@
-"""Reference format v1, derived from the nomenclature document dated 2026-10-08."""
+"""Reference generation v2; historical keys remain readable without rewriting them."""
 
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from sqlalchemy.dialects.postgresql import insert
@@ -9,8 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.models import ReferenceCounter, User
 
-VERSION = "JE_REF_2026_10_V1"
-PROCESSES = {"RM", "AF", "FG", "DR", "FA"}
+LEGACY_VERSION = "JE_REF_2026_10_V1"
+VERSION = "JE_REF_2026_10_V2"
+PROCESSES = {"RM", "AF", "FG", "CR", "FA"}
+LEGACY_PROCESSES = {"DR"}
 DEPARTMENTS = {"PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"}
 # (transport mode, service category, direction). N means no inbound/outbound classification.
 OPERATIONS = {
@@ -27,10 +30,11 @@ OPERATIONS = {
     "A3": (None, "COMPLIANCE", "N"),
     "F4": (None, "COMPLIANCE", "N"),
     "F5": (None, "COMPLIANCE", "N"),
+    "R1": (None, "COMPLIANCE", "N"),
 }
 PATTERN = re.compile(
-    r"(?P<process>RM|AF|FG|DR|FA)(?P<analyst>[1-9])-"
-    r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5)"
+    r"(?P<process>RM|AF|FG|CR|DR|FA)(?P<analyst>[1-9])-"
+    r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5|R1)"
     r"(?P<year>\d{2})-(?P<bu>[A-Z0-9]{1,32})-"
     r"(?P<department>PRJ|MAT|QUA|MAI|HUM|FIX|RAW|CTM|SCR)"
     r"(?:\.(?P<suffix>DMR|PFA|CS\d{1,32}))?",
@@ -40,6 +44,7 @@ PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class ParsedReference:
+    raw_value: str
     base: str
     normalized: str
     process_code: str
@@ -50,6 +55,8 @@ class ParsedReference:
     business_unit: str
     department_code: str
     suffix: str | None
+    warnings: tuple[str, ...]
+    is_current_format: bool
 
 
 def parse_reference(raw: str) -> ParsedReference:
@@ -61,12 +68,20 @@ def parse_reference(raw: str) -> ParsedReference:
         raise ValueError("Reference does not follow the supported nomenclature")
     # Canonical padding is a technical convention; preserve the source raw value separately.
     sequence = int(match["sequence"])
+    warnings = []
+    if match["process"] in LEGACY_PROCESSES:
+        warnings.append("LEGACY_PROCESS_CODE")
+    if len(match["sequence"]) != 4:
+        warnings.append("SEQUENCE_WIDTH_NOT_FOUR")
+    if len(match["bu"]) != 3:
+        warnings.append("BUSINESS_UNIT_WIDTH_NOT_THREE")
     base = (
         f"{match['process']}{match['analyst']}-{sequence:04d}"
         f"{match['operation']}{match['year']}-{match['bu']}-{match['department']}"
     )
     suffix = match["suffix"]
     return ParsedReference(
+        raw_value=raw,
         base=base,
         normalized=base + (f".{suffix}" if suffix else ""),
         process_code=match["process"],
@@ -77,6 +92,8 @@ def parse_reference(raw: str) -> ParsedReference:
         business_unit=match["bu"],
         department_code=match["department"],
         suffix=suffix,
+        warnings=tuple(warnings),
+        is_current_format=not warnings,
     )
 
 
@@ -89,23 +106,26 @@ def generate_reference(
     year: int,
     business_unit: str,
     department: str,
+    business_units: Mapping[str, str],
 ) -> tuple[str, int]:
     if user.analyst_code is None:
         raise ValueError("Assign an analyst code before creating operations")
     if process not in PROCESSES or operation not in OPERATIONS or department not in DEPARTMENTS:
         raise ValueError("Unsupported reference catalog code")
-    if not 2000 <= year <= 2099 or not re.fullmatch(r"[A-Z0-9]{1,32}", business_unit, re.ASCII):
+    if not 2000 <= year <= 2099 or not re.fullmatch(r"[A-Z0-9]{3}", business_unit, re.ASCII):
         raise ValueError("Invalid reference year or business unit")
+    if not business_units or business_unit not in business_units:
+        raise ValueError("Business unit must belong to the configured approved catalog")
     # UPSERT locks the owner's counter until the transaction commits; rollback consumes no number.
     statement = insert(ReferenceCounter).values(owner_id=user.id, last_value=1)
     statement = statement.on_conflict_do_update(
         index_elements=[ReferenceCounter.owner_id],
         set_={"last_value": ReferenceCounter.last_value + 1},
-        where=ReferenceCounter.last_value < 2147483647,
+        where=ReferenceCounter.last_value < 9999,
     ).returning(ReferenceCounter.last_value)
     sequence = session.scalar(statement)
     if sequence is None:
-        raise ValueError("Reference counter exhausted")
+        raise ValueError("Four-digit reference counter exhausted; a reset policy must be approved")
     return (
         f"{process}{user.analyst_code}-{sequence:04d}{operation}{year % 100:02d}"
         f"-{business_unit}-{department}"

@@ -16,6 +16,7 @@ build/
 *.xls
 *.pdf
 *.docx
+*.business-units.json
 upload/
 data/
 .idea/

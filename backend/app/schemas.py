@@ -6,8 +6,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 Role = Literal["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"]
-Process = Literal["RM", "AF", "FG", "DR", "FA"]
-Operation = Literal["AE", "AI", "SE", "SI", "LI", "LE", "PI", "PE", "VI", "VE", "A3", "F4", "F5"]
+Process = Literal["RM", "AF", "FG", "CR", "FA"]
+Operation = Literal[
+    "AE", "AI", "SE", "SI", "LI", "LE", "PI", "PE", "VI", "VE", "A3", "F4", "F5", "R1"
+]
 Department = Literal["PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"]
 ShipmentStatus = Literal[
     "DRAFT", "PLANNED", "IN_TRANSIT", "AT_PORT", "CUSTOMS", "DELIVERED", "CANCELLED"
@@ -118,7 +120,7 @@ class ShipmentCreate(Schema):
     process_code: Process
     operation_code: Operation
     reference_year: Annotated[int, Field(ge=2000, le=2099)]
-    business_unit: Annotated[str, Field(min_length=1, max_length=32, pattern=r"^[A-Z0-9]+$")]
+    business_unit: Annotated[str, Field(min_length=3, max_length=3, pattern=r"^[A-Z0-9]{3}$")]
     department_code: Department
     status: ShipmentStatus = "DRAFT"
     ship_date: date | None = None

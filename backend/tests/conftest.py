@@ -33,6 +33,7 @@ def settings():
         entra_allowed_client_ids=[CLIENT_ID],
         allowed_hosts=["testserver", "localhost", "127.0.0.1"],
         jwt_leeway_seconds=0,
+        business_units={"M23": "Synthetic test unit", "T01": "Example unit", "T02": "Example unit"},
     )
 
 

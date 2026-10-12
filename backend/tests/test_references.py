@@ -50,7 +50,26 @@ def test_unconfirmed_or_invalid_formats_rejected(raw):
 
 
 def test_sequence_width_is_not_a_business_restriction():
-    assert parse_reference("RM1-1LI26-M23-MAT").normalized == "RM1-0001LI26-M23-MAT"
+    row = parse_reference("RM1-1LI26-M23-MAT")
+    assert row.normalized == "RM1-0001LI26-M23-MAT"
+    assert row.raw_value == "RM1-1LI26-M23-MAT"
+    assert row.warnings == ("SEQUENCE_WIDTH_NOT_FOUR",)
+    assert not row.is_current_format
+
+
+def test_legacy_process_stays_readable_but_cannot_be_generated():
+    row = parse_reference("DR6-0123F426-T01-CTM")
+    assert row.base == "DR6-0123F426-T01-CTM"
+    assert row.warnings == ("LEGACY_PROCESS_CODE",)
+    assert "DR" not in PROCESSES
+    assert "CR" in PROCESSES
+
+
+def test_rectification_is_compliance_without_transport_direction():
+    row = parse_reference("AF6-0001R126-T01-FIX")
+    assert row.is_current_format
+    assert row.operation_code == "R1"
+    assert OPERATIONS[row.operation_code] == (None, "COMPLIANCE", "N")
 
 
 def test_identifier_normalization_preserves_leading_zeroes():

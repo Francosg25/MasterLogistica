@@ -50,6 +50,24 @@ def test_configuration_error_redacts_password():
     assert password not in str(error.value)
 
 
+@pytest.mark.parametrize("catalog", [{"TOOLONG": "Example"}, {"T01": " "}, {"t01": "Example"}])
+def test_business_unit_catalog_requires_valid_codes_and_names(settings, catalog):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{**settings.model_dump(), "business_units": catalog})
+
+
+def test_new_shipment_rejects_legacy_process():
+    with pytest.raises(ValidationError):
+        ShipmentCreate(
+            company_code="EXAMPLE",
+            process_code="DR",
+            operation_code="F4",
+            reference_year=2026,
+            business_unit="T01",
+            department_code="CTM",
+        )
+
+
 def test_sensitive_input_not_echoed_in_validation_errors(settings, rsa_key):
     app = create_app(settings, lambda token: rsa_key.public_key())
     with TestClient(app) as client:

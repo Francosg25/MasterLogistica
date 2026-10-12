@@ -212,11 +212,11 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
         CheckConstraint("row_version > 0", name="ck_shipment_version"),
         UniqueConstraint("reference_normalized", name="uq_shipments_reference_normalized"),
         CheckConstraint(
-            "process_code IS NULL OR process_code IN ('RM','AF','FG','DR','FA')",
+            "process_code IS NULL OR process_code IN ('RM','AF','FG','DR','CR','FA')",
             name="ck_shipment_process",
         ),
         CheckConstraint(
-            "operation_code IS NULL OR operation_code IN ('AE','AI','SE','SI','LI','LE','PI','PE','VI','VE','A3','F4','F5')",
+            "operation_code IS NULL OR operation_code IN ('AE','AI','SE','SI','LI','LE','PI','PE','VI','VE','A3','F4','F5','R1')",
             name="ck_shipment_operation",
         ),
         CheckConstraint(

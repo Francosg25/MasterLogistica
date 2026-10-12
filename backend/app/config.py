@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 from uuid import UUID
 
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:4200"])
     allowed_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
     company_codes: list[str] = Field(default_factory=lambda: ["JE_MX"])
+    business_units: dict[str, str] = Field(default_factory=dict)
     enforce_https: bool = False
     jwt_leeway_seconds: int = Field(default=30, ge=0, le=120)
 
@@ -53,11 +55,29 @@ class Settings(BaseSettings):
             raise ValueError("Configure at least one company code, up to 32 characters")
         return values
 
+    @field_validator("business_units", mode="before")
+    @classmethod
+    def empty_business_units(cls, value):
+        return {} if value is None else value
+
+    @field_validator("business_units")
+    @classmethod
+    def approved_business_units(cls, values):
+        if any(not re.fullmatch(r"[A-Z0-9]{3}", code, re.ASCII) for code in values):
+            raise ValueError("Business unit codes must contain three uppercase letters or digits")
+        if any(
+            not description.strip() or len(description) > 250 for description in values.values()
+        ):
+            raise ValueError("Business unit descriptions must contain 1 to 250 characters")
+        return {code: description.strip() for code, description in values.items()}
+
     @model_validator(mode="after")
     def production_controls(self):
         if self.app_env == "production":
             if not self.entra_configured or not self.entra_allowed_client_ids:
                 raise ValueError("Production requires Entra tenant, API and allowed client IDs")
+            if not self.business_units:
+                raise ValueError("Production requires an approved business unit catalog")
             if not self.enforce_https:
                 raise ValueError("Production requires HTTPS enforcement")
             if not self.allowed_hosts or "*" in self.allowed_hosts:

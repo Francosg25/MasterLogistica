@@ -461,6 +461,7 @@ def test_reference_counter_concurrency_and_rollback(environment):
                 year=2026,
                 business_unit="M23",
                 department="MAT",
+                business_units=e["app"].state.settings.business_units,
             )
             if commit:
                 session.commit()

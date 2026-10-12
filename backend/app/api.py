@@ -162,19 +162,29 @@ def me(user: Actor):
 
 
 @router.get("/references/catalogs", tags=["References"])
-def reference_catalogs(user: Actor):
+def reference_catalogs(request: Request, user: Actor):
     return {
         "version": VERSION,
         "process_codes": sorted(PROCESSES),
         "operation_codes": sorted(OPERATIONS),
         "department_codes": sorted(DEPARTMENTS),
+        "business_units": request.app.state.settings.business_units,
+        "business_units_configured": bool(request.app.state.settings.business_units),
+        "sequence_digits": 4,
     }
 
 
 @router.post("/references/normalize", tags=["References"])
-def reference_normalize(data: ReferenceInput, user: Actor):
+def reference_normalize(data: ReferenceInput, request: Request, user: Actor):
     try:
-        return {**asdict(parse_reference(data.raw_value)), "normalization_version": VERSION}
+        parsed = parse_reference(data.raw_value)
+        catalog = request.app.state.settings.business_units
+        return {
+            **asdict(parsed),
+            "normalization_version": VERSION,
+            "business_units_configured": bool(catalog),
+            "business_unit_registered": parsed.business_unit in catalog if catalog else None,
+        }
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
 
@@ -302,6 +312,11 @@ def shipment_detail(shipment_id: UUID, session: DB, user: Actor):
 def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: Writer):
     if data.company_code not in request.app.state.settings.company_codes:
         raise HTTPException(422, "Company code is not configured")
+    catalog = request.app.state.settings.business_units
+    if not catalog:
+        raise HTTPException(503, "An approved business unit catalog must be configured")
+    if data.business_unit not in catalog:
+        raise HTTPException(422, "Business unit is not in the approved catalog")
     supplier_valid(session, data.carrier_broker_id)
     supplier_valid(session, data.shipping_line_id)
     try:
@@ -313,6 +328,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: W
             year=data.reference_year,
             business_unit=data.business_unit,
             department=data.department_code,
+            business_units=catalog,
         )
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
@@ -347,6 +363,10 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: W
 
 
 def add_reference_alias(session, row, suffix):
+    if row.reference_normalized is None:
+        raise HTTPException(
+            409, "Shipment requires a normalized base reference before adding aliases"
+        )
     value = f"{row.reference_normalized}.{suffix}"
     existing = session.scalar(
         select(ShipmentIdentifier.id).where(
@@ -362,7 +382,7 @@ def add_reference_alias(session, row, suffix):
                 kind="REFERENCE",
                 raw_value=value,
                 normalized_value=value,
-                normalization_version=VERSION,
+                normalization_version=row.normalization_version or VERSION,
             )
         )
 
