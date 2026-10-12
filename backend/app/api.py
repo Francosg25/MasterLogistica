@@ -106,6 +106,7 @@ def record_change(
                 rule_version="PHASE2_V1",
                 shipment_id=shipment_id,
                 provision_id=provision_id,
+                evidence={"actor_name": user.display_name, "actor_email": user.email},
                 before_values=before or {},
                 after_values=schema.model_validate(obj).model_dump(mode="json"),
                 request_id=UUID(request.state.request_id),

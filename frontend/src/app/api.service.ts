@@ -18,6 +18,7 @@ export class ApiService {
     method = "GET",
     body?: unknown,
     signal?: AbortSignal,
+    responseType: "json" | "blob" = "json",
   ): Promise<T> {
     if (!path.startsWith("/") || path.startsWith("//"))
       throw new Error("Ruta no válida.");
@@ -62,12 +63,20 @@ export class ApiService {
               .map((item) => item.loc.filter((p) => p !== "body").join("."))
               .join(", ")
           : "Los datos no cumplen las reglas de captura. Revisa los campos y los catálogos.";
+      if (
+        path.startsWith("/finance/") &&
+        [409, 422].includes(response.status) &&
+        typeof data.detail === "string"
+      )
+        message = data.detail;
       throw new ApiError(
         response.status,
         message,
         response.headers.get("X-Request-ID"),
       );
     }
-    return response.json() as Promise<T>;
+    return (
+      responseType === "blob" ? response.blob() : response.json()
+    ) as Promise<T>;
   }
 }

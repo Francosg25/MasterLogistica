@@ -1,0 +1,802 @@
+<section class="finance-workspace">
+  <div class="workspace-heading">
+    <div>
+      <h1>{{ title }}</h1>
+      <p class="hint">
+        {{
+          section === "history"
+            ? "Quién hizo cada cambio, cuándo y qué valores modificó."
+            : section === "provisions"
+              ? "Cada saldo conserva su referencia y mes de origen hasta quedar liquidado."
+              : "Registra facturas, aplica provisiones y consulta diferencias por referencia."
+        }}
+      </p>
+    </div>
+    @if (canWrite && section !== "history") {
+      <button
+        class="button primary"
+        (click)="openForm()"
+        [disabled]="busy() || formOpen()"
+      >
+        {{
+          section === "provisions" ? "+ Nueva provisión" : "+ Registrar factura"
+        }}
+      </button>
+    }
+  </div>
+  @if (demo) {
+    <p class="notice">
+      Ejemplo de octubre de 2026 · Importes y usuarios ficticios · Solo lectura.
+    </p>
+  }
+  @if (error()) {
+    <div class="error" role="alert">{{ error() }}</div>
+  }
+  @if (notice()) {
+    <div class="success" role="status">{{ notice() }}</div>
+  }
+  <form class="finance-filters" [formGroup]="filters" (ngSubmit)="apply()">
+    @if (section !== "history") {
+      <label
+        >Mes contable<input
+          type="month"
+          formControlName="month"
+          [readOnly]="demo"
+          required
+      /></label>
+    }
+    <label class="finance-search"
+      >{{ section === "invoices" ? "Factura o referencia" : "Referencia"
+      }}<input formControlName="q" placeholder="Buscar…" maxlength="160"
+    /></label>
+    @if (section !== "invoices" && !demo) {
+      <label
+        >Responsable<select formControlName="owner_id">
+          <option value="">Todos los autorizados</option>
+          @for (owner of owners(); track owner.id) {
+            <option [value]="owner.id">{{ owner.display_name }}</option>
+          }
+        </select></label
+      >
+      <label
+        >Operación<select formControlName="operation_code">
+          <option value="">Todas</option>
+          @for (code of catalogs.operation_codes; track code) {
+            <option [value]="code">{{ code }} · {{ operations[code] }}</option>
+          }
+        </select></label
+      >
+    }
+    @if (section === "history") {
+      <label
+        >Usuario<input
+          formControlName="actor"
+          placeholder="Nombre de quien realizó el cambio"
+      /></label>
+      <label
+        >Acción<select formControlName="action">
+          <option value="">Todas</option>
+          @for (code of eventCodes; track code) {
+            <option [value]="code">{{ events[code] }}</option>
+          }
+        </select></label
+      >
+      <label>Desde (UTC)<input type="date" formControlName="date_from" /></label
+      ><label>Hasta (UTC)<input type="date" formControlName="date_to" /></label>
+    } @else {
+      <label
+        >Estado<select formControlName="status">
+          <option value="">Todos</option>
+          @for (
+            code of section === "provisions"
+              ? ["OPEN", "PARTIALLY_MATCHED", "CLOSED", "DRAFT"]
+              : ["UNDER_REVIEW", "APPROVED", "CANCELLED"];
+            track code
+          ) {
+            <option [value]="code">{{ labels[code] }}</option>
+          }
+        </select></label
+      >
+    }
+    <button
+      class="button secondary"
+      type="submit"
+      [disabled]="loading() || busy()"
+    >
+      Consultar
+    </button>
+    @if (canWrite && section !== "history") {
+      <button
+        type="button"
+        class="button subtle"
+        (click)="openPeriod()"
+        [disabled]="busy()"
+      >
+        Abrir periodo
+      </button>
+    }
+  </form>
+  @if (section !== "history") {
+    <div class="finance-rule">
+      <span
+        >Base de conciliación: <strong>importe neto, sin impuestos</strong>.
+        Coincidencia por referencia, empresa, proveedor, concepto y moneda. USD
+        y MXN se muestran separados.</span
+      ><button
+        class="button secondary"
+        (click)="showReport()"
+        [disabled]="loading() || busy()"
+      >
+        Reporte mensual
+      </button>
+    </div>
+  }
+  @if (section === "provisions" && totals().length) {
+    <div class="finance-summary">
+      @for (total of totals(); track total.currency) {
+        <div>
+          <span class="currency-label">{{ total.currency }}</span
+          ><span
+            >Saldo inicial
+            <strong>{{ money(total.opening_amount) }}</strong></span
+          ><span
+            >Altas <strong>{{ money(total.new_amount) }}</strong></span
+          ><span
+            >Liberado neto
+            <strong>{{ money(total.released_amount) }}</strong></span
+          ><span class="live-balance"
+            >Saldo vivo <strong>{{ money(total.closing_amount) }}</strong></span
+          >
+        </div>
+      }
+    </div>
+    <p class="hint">
+      Saldos al mes consultado. Incluye arrastres de meses anteriores; los
+      borradores no afectan los totales. Liquidada = saldo cero por facturación.
+    </p>
+  }
+  <datalist id="finance-references">
+    @for (ref of references(); track ref.id) {
+      <option [value]="ref.reference">{{ ref.company_code }}</option>
+    }
+  </datalist>
+  @if (formOpen() && canWrite) {
+    <section class="finance-entry" aria-label="Captura financiera">
+      <div class="workspace-heading">
+        <h2>
+          {{
+            section === "provisions"
+              ? "Nueva provisión"
+              : "Registrar factura y conciliar"
+          }}
+        </h2>
+        <button class="button subtle" [disabled]="busy()" (click)="closeForm()">
+          Cerrar captura
+        </button>
+      </div>
+      @if (section === "provisions") {
+        <form [formGroup]="provisionForm" (ngSubmit)="saveProvision()">
+          <fieldset [disabled]="busy()">
+            <div class="finance-form-grid">
+              <label class="wide"
+                >Referencia del master<input
+                  formControlName="reference"
+                  list="finance-references"
+                  (input)="lookup(provisionForm.controls.reference.value)"
+                  required
+                  maxlength="160"
+                  placeholder="Escribe la referencia existente"
+              /></label>
+              <label
+                >Proveedor<select
+                  aria-label="Proveedor"
+                  formControlName="supplier_id"
+                  required
+                >
+                  <option value="">Selecciona</option>
+                  @for (s of suppliers; track s.id) {
+                    @if (s.is_active) {
+                      <option [value]="s.id">{{ s.legal_name }}</option>
+                    }
+                  }
+                </select></label
+              >
+              <label
+                >Concepto<input
+                  formControlName="charge_code"
+                  maxlength="40"
+                  placeholder="FREIGHT"
+                  required
+              /></label>
+              <label
+                >Línea de costo<input
+                  formControlName="line_no"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+              /></label>
+              <label
+                >Mes de origen<input
+                  formControlName="month_accrued"
+                  type="month"
+                  required
+              /></label>
+              <label
+                >Moneda<select formControlName="currency">
+                  <option>USD</option>
+                  <option>MXN</option>
+                </select></label
+              >
+              <label
+                >Importe neto<input
+                  formControlName="amount"
+                  type="text"
+                  inputmode="decimal"
+                  pattern="[0-9]{1,14}([.][0-9]{1,4})?"
+                  maxlength="19"
+                  title="Usa punto decimal y hasta cuatro decimales"
+                  required
+              /></label>
+              <label
+                >Cargos extra netos<input
+                  formControlName="extra_charges"
+                  type="text"
+                  inputmode="decimal"
+                  pattern="[0-9]{1,14}([.][0-9]{1,4})?"
+                  maxlength="19"
+                  title="Usa punto decimal y hasta cuatro decimales"
+                  required
+              /></label>
+            </div>
+            <p class="hint">
+              El periodo debe estar abierto. Usa una línea distinta para cada
+              costo adicional de la misma referencia, proveedor y concepto.
+              Primero se guarda un borrador; después se aprueba.
+            </p>
+            <button
+              class="button primary"
+              type="submit"
+              [disabled]="provisionForm.invalid || busy()"
+            >
+              Guardar borrador
+            </button>
+          </fieldset>
+        </form>
+      } @else {
+        <form [formGroup]="invoiceForm" (ngSubmit)="saveInvoice()">
+          <fieldset [disabled]="busy()">
+            <div class="finance-form-grid">
+              <label
+                >Folio de factura<input
+                  formControlName="invoice_number"
+                  required
+                  maxlength="120"
+              /></label>
+              <label
+                >Proveedor de factura<select
+                  aria-label="Proveedor de factura"
+                  formControlName="supplier_id"
+                  required
+                >
+                  <option value="">Selecciona</option>
+                  @for (s of suppliers; track s.id) {
+                    @if (s.is_active) {
+                      <option [value]="s.id">{{ s.legal_name }}</option>
+                    }
+                  }
+                </select></label
+              >
+              <label
+                >Empresa de factura<select
+                  formControlName="company_code"
+                  required
+                >
+                  @for (code of catalogs.company_codes; track code) {
+                    <option [value]="code">{{ code }}</option>
+                  }
+                </select></label
+              >
+              <label
+                >Fecha de factura<input
+                  formControlName="issue_date"
+                  type="date"
+                  required
+              /></label>
+              <label
+                >Periodo de registro<input
+                  formControlName="accounting_period"
+                  type="month"
+                  required
+              /></label>
+              <label
+                >Moneda de factura<select formControlName="currency">
+                  <option>USD</option>
+                  <option>MXN</option>
+                </select></label
+              >
+            </div>
+            <h3 class="section-title">Referencias incluidas en la factura</h3>
+            <div formArrayName="lines">
+              @for (line of lines.controls; track line; let i = $index) {
+                <div class="invoice-line-form" [formGroupName]="i">
+                  <label
+                    >Referencia {{ i + 1
+                    }}<input
+                      formControlName="reference"
+                      list="finance-references"
+                      (input)="lookup(line.controls.reference.value)"
+                      required
+                      maxlength="160"
+                  /></label>
+                  <label
+                    >Concepto {{ i + 1
+                    }}<input
+                      formControlName="charge_code"
+                      maxlength="40"
+                      required
+                  /></label>
+                  <label
+                    >Neto {{ i + 1
+                    }}<input
+                      formControlName="net_amount"
+                      type="text"
+                      inputmode="decimal"
+                      pattern="[0-9]{1,14}([.][0-9]{1,4})?"
+                      maxlength="19"
+                      title="Usa punto decimal y hasta cuatro decimales"
+                      required
+                  /></label>
+                  <label
+                    >Impuestos {{ i + 1
+                    }}<input
+                      formControlName="tax_amount"
+                      type="text"
+                      inputmode="decimal"
+                      pattern="[0-9]{1,14}([.][0-9]{1,4})?"
+                      maxlength="19"
+                      title="Usa punto decimal y hasta cuatro decimales"
+                      required
+                  /></label>
+                  <button
+                    class="button subtle"
+                    type="button"
+                    [disabled]="lines.length === 1"
+                    (click)="lines.removeAt(i); invoiceForm.markAsDirty()"
+                    [attr.aria-label]="'Quitar línea ' + (i + 1)"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              }
+            </div>
+            <div class="finance-buttons">
+              <button
+                class="button secondary"
+                type="button"
+                (click)="lines.push(newLine()); invoiceForm.markAsDirty()"
+                [disabled]="lines.length >= 100"
+              >
+                + Otra referencia</button
+              ><button
+                class="button primary"
+                type="submit"
+                [disabled]="invoiceForm.invalid || busy()"
+              >
+                Registrar y conciliar
+              </button>
+            </div>
+            <p class="hint">
+              Aplica el neto a las provisiones aprobadas más antiguas. Si no hay
+              saldo compatible, el importe queda por conciliar. Los impuestos se
+              conservan por separado. El folio no puede repetirse para la misma
+              empresa y proveedor.
+            </p>
+          </fieldset>
+        </form>
+      }
+    </section>
+  }
+  @if (cancelTarget(); as invoice) {
+    <section class="finance-entry" aria-label="Cancelar factura">
+      <h2>Cancelar {{ invoice.invoice_number }}</h2>
+      <p class="hint">
+        Los importes aplicados se restituyen en el periodo indicado. El
+        historial original se conserva.
+      </p>
+      <form [formGroup]="cancelForm" (ngSubmit)="cancelInvoice()">
+        <fieldset [disabled]="busy()">
+          <div class="finance-form-grid">
+            <label
+              >Mes de reversión<input
+                type="month"
+                formControlName="period_month"
+                required /></label
+            ><label class="wide"
+              >Motivo de cancelación<input
+                formControlName="reason"
+                minlength="3"
+                maxlength="1000"
+                required
+            /></label>
+          </div>
+          <div class="finance-buttons">
+            <button
+              class="button secondary"
+              type="button"
+              (click)="cancelTarget.set(null)"
+            >
+              Volver</button
+            ><button
+              class="button primary"
+              type="submit"
+              [disabled]="cancelForm.invalid"
+            >
+              Confirmar cancelación
+            </button>
+          </div>
+        </fieldset>
+      </form>
+    </section>
+  }
+  @if (loading()) {
+    <p class="table-loading" role="status">Cargando información…</p>
+  } @else if (section === "invoices" && !canReadInvoices) {
+    <p class="notice">
+      Las facturas se administran con el rol de Finanzas. Puedes consultar los
+      saldos de tus referencias en Provisiones.
+    </p>
+  } @else if (!error() && !total()) {
+    <div class="empty-state">
+      <h2>No hay movimientos para esta consulta</h2>
+      <p>Cambia los filtros o registra el primer movimiento.</p>
+    </div>
+  } @else if (total()) {
+    <div class="finance-table-scroll">
+      @if (section === "provisions") {
+        <table class="finance-table">
+          <thead>
+            <tr>
+              <th>Referencia / responsable</th>
+              <th>Proveedor / concepto</th>
+              <th>Origen</th>
+              <th>Moneda</th>
+              <th class="number">Provisión</th>
+              <th class="number">Inicial</th>
+              <th class="number">Alta del mes</th>
+              <th class="number">Liberado neto</th>
+              <th class="number">Saldo final</th>
+              <th>Estado</th>
+              @if (canWrite) {
+                <th>Acción</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of balances(); track row.id) {
+              <tr>
+                <td>
+                  <strong>{{ row.reference }}</strong
+                  ><small
+                    >{{ row.owner_name }} · {{ row.operation_code }}</small
+                  >
+                </td>
+                <td>
+                  {{ row.supplier_name
+                  }}<small
+                    >{{ row.charge_code }} · Línea {{ row.line_no }}</small
+                  >
+                </td>
+                <td>{{ row.month_accrued.slice(0, 7) }}</td>
+                <td>{{ row.currency || "—" }}</td>
+                <td class="number">{{ money(row.total_amount) }}</td>
+                <td class="number">{{ money(row.opening_amount) }}</td>
+                <td class="number">{{ money(row.new_amount) }}</td>
+                <td class="number">{{ money(row.released_amount) }}</td>
+                <td class="number">
+                  <strong>{{ money(row.closing_amount) }}</strong>
+                </td>
+                <td>
+                  <span
+                    class="finance-status"
+                    [class.settled]="row.status === 'CLOSED'"
+                    >{{ labels[row.status] }}</span
+                  >
+                </td>
+                @if (canWrite) {
+                  <td>
+                    @if (row.current_status === "DRAFT") {
+                      <button
+                        class="button secondary"
+                        [disabled]="busy()"
+                        (click)="approve(row)"
+                      >
+                        Aprobar
+                      </button>
+                    }
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else if (section === "invoices") {
+        <table class="finance-table">
+          <thead>
+            <tr>
+              <th>Factura / proveedor</th>
+              <th>Registro</th>
+              <th>Moneda</th>
+              <th class="number">Neto</th>
+              <th class="number">Impuestos</th>
+              <th class="number">Aplicado</th>
+              <th class="number">Sin provisión / excedente</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of invoices(); track row.id) {
+              <tr>
+                <td>
+                  <strong>{{ row.invoice_number }}</strong
+                  ><small
+                    >{{ row.supplier_name }} · {{ row.company_code }}</small
+                  >
+                </td>
+                <td>{{ row.accounting_period.slice(0, 7) }}</td>
+                <td>{{ row.currency }}</td>
+                <td class="number">{{ money(row.net_amount) }}</td>
+                <td class="number">{{ money(row.tax_amount) }}</td>
+                <td class="number">{{ money(row.applied_amount) }}</td>
+                <td class="number">{{ money(row.pending_amount) }}</td>
+                <td>
+                  <span
+                    class="finance-status"
+                    [class.settled]="row.status === 'APPROVED'"
+                    >{{ labels[row.status] }}</span
+                  >
+                </td>
+                <td>
+                  <div class="finance-buttons">
+                    <button
+                      class="button subtle"
+                      (click)="
+                        expandedInvoice.set(
+                          expandedInvoice() === row.id ? '' : row.id
+                        )
+                      "
+                    >
+                      Detalle
+                    </button>
+                    @if (canWrite && row.status !== "CANCELLED") {
+                      @if (row.status !== "APPROVED") {
+                        <button
+                          class="button secondary"
+                          (click)="reconcile(row)"
+                          [disabled]="busy()"
+                        >
+                          Conciliar
+                        </button>
+                      }
+                      <button
+                        class="button subtle"
+                        (click)="startCancel(row)"
+                        [disabled]="busy()"
+                      >
+                        Cancelar factura
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+              @if (expandedInvoice() === row.id) {
+                <tr>
+                  <td colspan="9">
+                    <div class="invoice-detail">
+                      <h3>Referencias de {{ row.invoice_number }}</h3>
+                      @for (line of row.lines; track line.id) {
+                        <p>
+                          <strong>{{ line.reference }}</strong> ·
+                          {{ line.charge_code }} · Neto
+                          {{ money(line.net_amount) }} {{ row.currency }} ·
+                          Aplicado {{ money(line.applied_amount) }} · Pendiente
+                          {{ money(line.pending_amount) }}
+                        </p>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      } @else {
+        <table class="finance-table history-table">
+          <thead>
+            <tr>
+              <th>Fecha y hora (Ciudad de México)</th>
+              <th>Usuario</th>
+              <th>Acción / referencia</th>
+              <th>Cambios</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of history(); track row.id) {
+              <tr>
+                <td>{{ dateTime(row.occurred_at) }}</td>
+                <td>
+                  <strong>{{ row.actor_name }}</strong
+                  ><small>{{ row.actor_email }}</small>
+                </td>
+                <td>
+                  {{ events[row.event_type] || row.event_type
+                  }}<small>{{ row.reference || "Administración" }}</small>
+                </td>
+                <td>
+                  <details>
+                    <summary>
+                      {{ row.changes.length }} campos · Ver antes y después
+                    </summary>
+                    <dl class="audit-changes">
+                      @for (change of row.changes; track change.field) {
+                        <div>
+                          <dt>{{ fields[change.field] || change.field }}</dt>
+                          <dd>
+                            <span class="old-value">{{
+                              value(change.before)
+                            }}</span
+                            ><span aria-label="cambió a"> → </span
+                            ><strong>{{ value(change.after) }}</strong>
+                          </dd>
+                        </div>
+                      }
+                    </dl>
+                  </details>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+    <div class="finance-pagination">
+      <span
+        >{{ offset() + 1 }}–{{
+          offset() +
+            (section === "provisions"
+              ? balances().length
+              : section === "invoices"
+                ? invoices().length
+                : history().length)
+        }}
+        de {{ total() }}</span
+      ><button
+        class="button subtle"
+        (click)="page(-1)"
+        [disabled]="offset() === 0 || busy()"
+      >
+        Anterior</button
+      ><button
+        class="button subtle"
+        (click)="page(1)"
+        [disabled]="offset() + limit >= total() || busy()"
+      >
+        Siguiente
+      </button>
+    </div>
+  }
+  @if (reportOpen() && report(); as data) {
+    <section class="finance-report" aria-label="Reporte de conciliación">
+      <div class="workspace-heading">
+        <div>
+          <h2>Facturas vs. provisiones · {{ data.month.slice(0, 7) }}</h2>
+          <p class="hint">
+            Consulta mensual calculada, sin cierre contable bloqueado. Incluye
+            todas las filas del alcance, no solo la página visible. Desde
+            Facturas, abarca todas las referencias autorizadas del mes.
+          </p>
+        </div>
+        <div class="finance-buttons">
+          <button
+            class="button primary"
+            (click)="exportReport()"
+            [disabled]="busy() || demo"
+          >
+            Descargar CSV para Excel</button
+          ><button class="button subtle" (click)="reportOpen.set(false)">
+            Cerrar reporte
+          </button>
+        </div>
+      </div>
+      <div class="finance-summary">
+        @for (total of data.totals; track total.currency) {
+          <div>
+            <span class="currency-label">{{ total.currency }}</span
+            ><span
+              >Inicial <strong>{{ money(total.opening_amount) }}</strong></span
+            ><span
+              >Altas <strong>{{ money(total.new_amount) }}</strong></span
+            ><span
+              >Liberado neto
+              <strong>{{ money(total.released_amount) }}</strong></span
+            ><span class="live-balance"
+              >Arrastre siguiente mes
+              <strong>{{ money(total.closing_amount) }}</strong></span
+            >
+          </div>
+        }
+      </div>
+      <h3>Movimientos del mes</h3>
+      <div class="finance-table-scroll">
+        <table class="finance-table">
+          <thead>
+            <tr>
+              <th>Referencia</th>
+              <th>Factura</th>
+              <th>Proveedor</th>
+              <th>Origen provisión</th>
+              <th>Movimiento</th>
+              <th>Moneda</th>
+              <th class="number">Importe</th>
+              <th>Usuario</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of data.movements; track $index) {
+              <tr>
+                <td>{{ m.reference }}</td>
+                <td>{{ m.invoice_number }}</td>
+                <td>{{ m.supplier_name }}</td>
+                <td>{{ m.month_accrued?.slice(0, 7) }}</td>
+                <td>
+                  {{ m.entry_type === "REVERSAL" ? "Reversión" : "Aplicación" }}
+                </td>
+                <td>{{ m.currency }}</td>
+                <td class="number">{{ money(m.amount) }}</td>
+                <td>{{ m.actor_name }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="8">
+                  Sin aplicaciones ni reversiones en este mes.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <h3>Facturas con importe sin provisión compatible al cierre del mes</h3>
+      <div class="finance-table-scroll">
+        <table class="finance-table">
+          <thead>
+            <tr>
+              <th>Referencia</th>
+              <th>Factura</th>
+              <th>Proveedor</th>
+              <th>Mes de registro</th>
+              <th>Moneda</th>
+              <th class="number">Pendiente / excedente</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of data.pending_invoices; track $index) {
+              <tr>
+                <td>{{ m.reference }}</td>
+                <td>{{ m.invoice_number }}</td>
+                <td>{{ m.supplier_name }}</td>
+                <td>{{ m.period_month.slice(0, 7) }}</td>
+                <td>{{ m.currency }}</td>
+                <td class="number">{{ money(m.amount) }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="6">Sin facturas pendientes de aplicación.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+</section>

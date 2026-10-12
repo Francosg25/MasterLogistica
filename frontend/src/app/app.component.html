@@ -35,7 +35,7 @@
     <header class="topbar">
       <div class="wordmark">
         <span class="brand-mark">M</span><strong>MasterLogistica</strong
-        ><span class="product-section">Masters</span>
+        ><span class="product-section">Logística</span>
       </div>
       <div class="account">
         <span
@@ -49,271 +49,294 @@
         </button>
       </div>
     </header>
+    <nav class="workspace-nav" aria-label="Secciones">
+      @for (item of sections; track item.id) {
+        <button
+          class="nav-section"
+          [class.active]="section() === item.id"
+          [attr.aria-current]="section() === item.id ? 'page' : null"
+          (click)="changeSection(item.id)"
+          [disabled]="saving() || sheet?.saving() || finance?.busy()"
+        >
+          {{ item.label }}
+        </button>
+      }
+    </nav>
     <main class="main-content" id="main">
       @if (demo()) {
         <div class="demo-banner">
           Demostración · Datos ficticios · Solo lectura
         </div>
       }
-      <div class="workspace-heading">
-        <h1>Masters de logística.</h1>
-        @if (canWrite()) {
-          <button
-            class="button primary"
-            [disabled]="!canCreate() || sheet?.saving()"
-            (click)="openCreate()"
-          >
-            <span aria-hidden="true">+</span> Nuevo embarque
-          </button>
-        }
-      </div>
-      <section class="master-selector" aria-label="Selección de master">
-        <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
-          @if (consolidated()) {
-            <label
-              >Responsable del master<select
-                aria-label="Responsable del master"
-                formControlName="owner_id"
-                (change)="resetMaster()"
-              >
-                <option value="">Selecciona un integrante</option>
-                @for (owner of logisticsOwners(); track owner.id) {
-                  <option [value]="owner.id">{{ owner.display_name }}</option>
-                }
-                @for (owner of otherOwners(); track owner.id) {
-                  <option [value]="owner.id">{{ owner.display_name }}</option>
-                }
-              </select></label
+      @if (section() === "masters") {
+        <div class="workspace-heading">
+          <h1>Masters de logística.</h1>
+          @if (canWrite()) {
+            <button
+              class="button primary"
+              [disabled]="!canCreate() || sheet?.saving()"
+              (click)="openCreate()"
             >
-          } @else {
-            <div class="master-owner">
-              <small>Responsable del master</small
-              ><strong>{{ user()?.display_name }}</strong>
-            </div>
+              <span aria-hidden="true">+</span> Nuevo embarque
+            </button>
           }
-          <label
-            >Tipo de operación del master<select
-              aria-label="Tipo de operación del master"
-              formControlName="operation_code"
-              (change)="resetMaster()"
-            >
-              <option value="">Selecciona una operación</option>
-              @for (code of catalog()!.operation_codes; track code) {
-                <option [value]="code">
-                  {{ code }} · {{ operations[code] || code }}
-                </option>
-              }
-            </select></label
-          >
-          <button
-            class="button secondary"
-            type="submit"
-            [disabled]="sheet?.saving()"
-          >
-            Abrir master
-          </button>
-          @if (masterReady()) {
-            <span class="access-label">{{
-              canWrite() ? "Edición habilitada" : "Solo lectura"
-            }}</span>
-          }
-        </form>
-      </section>
-      @if (notice()) {
-        <div class="success" role="status">
-          {{ notice()
-          }}<button
-            class="icon-button"
-            aria-label="Cerrar aviso"
-            (click)="notice.set('')"
-          >
-            ×
-          </button>
         </div>
-      }
-      @if (
-        masterReady() &&
-        canWrite() &&
-        masterOwner() === user()?.id &&
-        !canCreate()
-      ) {
-        <div class="notice">
-          Para crear embarques, el administrador debe configurar el catálogo de
-          BU y asignar un código de analista a tu usuario.
-        </div>
-      }
-      @if (!masterReady()) {
-        @if (error()) {
-          <p class="error" role="alert">{{ error() }}</p>
-        }
-        <div class="master-placeholder">
-          <span class="empty-sheet-icon" aria-hidden="true">▦</span>
-          <h2>Abre un master para comenzar</h2>
-          <p>
-            Selecciona {{ consolidated() ? "el responsable y " : "" }}el tipo de
-            operación.
-          </p>
-        </div>
-      } @else {
-        <section class="masters-panel" aria-label="Embarques del master">
-          <div class="active-master">
-            <strong>{{ ownerName(masterOwner()) }}</strong
-            ><span>/</span
-            ><span>{{
-              operations[masterOperation()] || masterOperation()
-            }}</span>
-          </div>
-          <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
-            <div class="filter-main">
-              <label class="search-label"
-                ><span class="sr-only">Buscar</span
-                ><input
-                  formControlName="q"
-                  placeholder="Buscar referencia, documento o empresa"
-                  maxlength="200"
-              /></label>
+        <section class="master-selector" aria-label="Selección de master">
+          <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
+            @if (consolidated()) {
               <label
-                ><span class="sr-only">Estado</span
-                ><select aria-label="Estado" formControlName="status">
-                  <option value="">Todos los estados</option>
-                  @for (code of statusCodes; track code) {
-                    <option [value]="code">{{ status[code] }}</option>
+                >Responsable del master<select
+                  aria-label="Responsable del master"
+                  formControlName="owner_id"
+                  (change)="resetMaster()"
+                >
+                  <option value="">Selecciona un integrante</option>
+                  @for (owner of logisticsOwners(); track owner.id) {
+                    <option [value]="owner.id">{{ owner.display_name }}</option>
+                  }
+                  @for (owner of otherOwners(); track owner.id) {
+                    <option [value]="owner.id">{{ owner.display_name }}</option>
                   }
                 </select></label
               >
-              <button
-                class="button secondary"
-                type="submit"
-                [disabled]="loading() || sheet?.saving()"
-              >
-                Aplicar
-              </button>
-              <button
-                class="button subtle"
-                type="button"
-                (click)="clear()"
-                [disabled]="loading() || sheet?.saving()"
-              >
-                Limpiar filtros
-              </button>
-              <button
-                class="button subtle refresh-button"
-                type="button"
-                (click)="refresh()"
-                [disabled]="loading() || sheet?.saving()"
-              >
-                Actualizar
-              </button>
-            </div>
-            <details class="more-filters">
-              <summary>Más filtros</summary>
-              <div class="filter-grid">
-                <label
-                  >Business unit<select
-                    aria-label="Business unit"
-                    formControlName="business_unit"
-                  >
-                    <option value="">Todas las BU</option>
-                    @for (code of unitCodes(); track code) {
-                      <option [value]="code">
-                        {{ code }} · {{ catalog()!.business_units[code] }}
-                      </option>
-                    }
-                  </select></label
-                >
-                <label
-                  >Empresa<select
-                    aria-label="Empresa"
-                    formControlName="company_code"
-                  >
-                    <option value="">Todas las empresas</option>
-                    @for (code of catalog()!.company_codes; track code) {
-                      <option [value]="code">{{ code }}</option>
-                    }
-                  </select></label
-                >
-                <label
-                  >Embarque desde<input
-                    type="date"
-                    formControlName="ship_date_from" /></label
-                ><label
-                  >Embarque hasta<input
-                    type="date"
-                    formControlName="ship_date_to"
-                /></label>
+            } @else {
+              <div class="master-owner">
+                <small>Responsable del master</small
+                ><strong>{{ user()?.display_name }}</strong>
               </div>
-            </details>
+            }
+            <label
+              >Tipo de operación del master<select
+                aria-label="Tipo de operación del master"
+                formControlName="operation_code"
+                (change)="resetMaster()"
+              >
+                <option value="">Selecciona una operación</option>
+                @for (code of catalog()!.operation_codes; track code) {
+                  <option [value]="code">
+                    {{ code }} · {{ operations[code] || code }}
+                  </option>
+                }
+              </select></label
+            >
+            <button
+              class="button secondary"
+              type="submit"
+              [disabled]="sheet?.saving()"
+            >
+              Abrir master
+            </button>
+            @if (masterReady()) {
+              <span class="access-label">{{
+                canWrite() ? "Edición habilitada" : "Solo lectura"
+              }}</span>
+            }
           </form>
-          @if (error()) {
-            <div class="error table-error" role="alert">
-              {{ error()
-              }}<button class="button secondary" (click)="refresh()">
-                Reintentar
-              </button>
-            </div>
-          }
-          @if (detailLoading()) {
-            <p class="table-loading" role="status">Cargando detalle…</p>
-          }
-          @if (loading()) {
-            <div class="table-loading" role="status">
-              <span class="spinner"></span>Cargando filas…
-            </div>
-          } @else if (!error() && !rows().length) {
-            <div class="empty-state">
-              <h2>No hay embarques para mostrar</h2>
-              <p>
-                {{
-                  canCreate()
-                    ? "Agrega un embarque o cambia los filtros."
-                    : "Prueba con otros filtros."
-                }}
-              </p>
-            </div>
-          } @else if (rows().length) {
-            <master-sheet
-              [rows]="rows()"
-              [readOnly]="!canWrite()"
-              [suppliers]="suppliers()"
-              [offset]="offset()"
-              [operation]="masterOperation()"
-              (opened)="open($event)"
-              (updated)="updateSheetRow($event)"
-            />
-          }
-          <footer class="table-footer">
-            <span class="sheet-tab"
-              ><span aria-hidden="true">▦</span> {{ masterOperation() }} ·
-              {{ ownerName(masterOwner()) }}</span
-            >
-            <span
-              >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
-              {{ total() }} operaciones</span
-            >
-            <div class="pagination">
-              <button
-                class="icon-button"
-                aria-label="Página anterior"
-                title="Página anterior"
-                [disabled]="loading() || offset() === 0 || sheet?.saving()"
-                (click)="changePage(-1)"
-              >
-                ‹</button
-              ><span>Página {{ offset() / limit + 1 }}</span
-              ><button
-                class="icon-button"
-                aria-label="Página siguiente"
-                title="Página siguiente"
-                [disabled]="
-                  loading() || offset() + limit >= total() || sheet?.saving()
-                "
-                (click)="changePage(1)"
-              >
-                ›
-              </button>
-            </div>
-          </footer>
         </section>
+        @if (notice()) {
+          <div class="success" role="status">
+            {{ notice()
+            }}<button
+              class="icon-button"
+              aria-label="Cerrar aviso"
+              (click)="notice.set('')"
+            >
+              ×
+            </button>
+          </div>
+        }
+        @if (
+          masterReady() &&
+          canWrite() &&
+          masterOwner() === user()?.id &&
+          !canCreate()
+        ) {
+          <div class="notice">
+            Para crear embarques, el administrador debe configurar el catálogo
+            de BU y asignar un código de analista a tu usuario.
+          </div>
+        }
+        @if (!masterReady()) {
+          @if (error()) {
+            <p class="error" role="alert">{{ error() }}</p>
+          }
+          <div class="master-placeholder">
+            <span class="empty-sheet-icon" aria-hidden="true">▦</span>
+            <h2>Abre un master para comenzar</h2>
+            <p>
+              Selecciona {{ consolidated() ? "el responsable y " : "" }}el tipo
+              de operación.
+            </p>
+          </div>
+        } @else {
+          <section class="masters-panel" aria-label="Embarques del master">
+            <div class="active-master">
+              <strong>{{ ownerName(masterOwner()) }}</strong
+              ><span>/</span
+              ><span>{{
+                operations[masterOperation()] || masterOperation()
+              }}</span>
+            </div>
+            <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
+              <div class="filter-main">
+                <label class="search-label"
+                  ><span class="sr-only">Buscar</span
+                  ><input
+                    formControlName="q"
+                    placeholder="Buscar referencia, documento o empresa"
+                    maxlength="200"
+                /></label>
+                <label
+                  ><span class="sr-only">Estado</span
+                  ><select aria-label="Estado" formControlName="status">
+                    <option value="">Todos los estados</option>
+                    @for (code of statusCodes; track code) {
+                      <option [value]="code">{{ status[code] }}</option>
+                    }
+                  </select></label
+                >
+                <button
+                  class="button secondary"
+                  type="submit"
+                  [disabled]="loading() || sheet?.saving()"
+                >
+                  Aplicar
+                </button>
+                <button
+                  class="button subtle"
+                  type="button"
+                  (click)="clear()"
+                  [disabled]="loading() || sheet?.saving()"
+                >
+                  Limpiar filtros
+                </button>
+                <button
+                  class="button subtle refresh-button"
+                  type="button"
+                  (click)="refresh()"
+                  [disabled]="loading() || sheet?.saving()"
+                >
+                  Actualizar
+                </button>
+              </div>
+              <details class="more-filters">
+                <summary>Más filtros</summary>
+                <div class="filter-grid">
+                  <label
+                    >Business unit<select
+                      aria-label="Business unit"
+                      formControlName="business_unit"
+                    >
+                      <option value="">Todas las BU</option>
+                      @for (code of unitCodes(); track code) {
+                        <option [value]="code">
+                          {{ code }} · {{ catalog()!.business_units[code] }}
+                        </option>
+                      }
+                    </select></label
+                  >
+                  <label
+                    >Empresa<select
+                      aria-label="Empresa"
+                      formControlName="company_code"
+                    >
+                      <option value="">Todas las empresas</option>
+                      @for (code of catalog()!.company_codes; track code) {
+                        <option [value]="code">{{ code }}</option>
+                      }
+                    </select></label
+                  >
+                  <label
+                    >Embarque desde<input
+                      type="date"
+                      formControlName="ship_date_from" /></label
+                  ><label
+                    >Embarque hasta<input
+                      type="date"
+                      formControlName="ship_date_to"
+                  /></label>
+                </div>
+              </details>
+            </form>
+            @if (error()) {
+              <div class="error table-error" role="alert">
+                {{ error()
+                }}<button class="button secondary" (click)="refresh()">
+                  Reintentar
+                </button>
+              </div>
+            }
+            @if (detailLoading()) {
+              <p class="table-loading" role="status">Cargando detalle…</p>
+            }
+            @if (loading()) {
+              <div class="table-loading" role="status">
+                <span class="spinner"></span>Cargando filas…
+              </div>
+            } @else if (!error() && !rows().length) {
+              <div class="empty-state">
+                <h2>No hay embarques para mostrar</h2>
+                <p>
+                  {{
+                    canCreate()
+                      ? "Agrega un embarque o cambia los filtros."
+                      : "Prueba con otros filtros."
+                  }}
+                </p>
+              </div>
+            } @else if (rows().length) {
+              <master-sheet
+                [rows]="rows()"
+                [readOnly]="!canWrite()"
+                [suppliers]="suppliers()"
+                [offset]="offset()"
+                [operation]="masterOperation()"
+                (opened)="open($event)"
+                (updated)="updateSheetRow($event)"
+              />
+            }
+            <footer class="table-footer">
+              <span class="sheet-tab"
+                ><span aria-hidden="true">▦</span> {{ masterOperation() }} ·
+                {{ ownerName(masterOwner()) }}</span
+              >
+              <span
+                >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
+                {{ total() }} operaciones</span
+              >
+              <div class="pagination">
+                <button
+                  class="icon-button"
+                  aria-label="Página anterior"
+                  title="Página anterior"
+                  [disabled]="loading() || offset() === 0 || sheet?.saving()"
+                  (click)="changePage(-1)"
+                >
+                  ‹</button
+                ><span>Página {{ offset() / limit + 1 }}</span
+                ><button
+                  class="icon-button"
+                  aria-label="Página siguiente"
+                  title="Página siguiente"
+                  [disabled]="
+                    loading() || offset() + limit >= total() || sheet?.saving()
+                  "
+                  (click)="changePage(1)"
+                >
+                  ›
+                </button>
+              </div>
+            </footer>
+          </section>
+        }
+      } @else {
+        <finance-workspace
+          [section]="section()"
+          [user]="user()!"
+          [catalogs]="catalog()!"
+          [suppliers]="suppliers()"
+          [demo]="demo()"
+        />
       }
     </main>
   </div>

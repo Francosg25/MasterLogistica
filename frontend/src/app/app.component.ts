@@ -8,6 +8,8 @@ import {
 } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
 import { ApiError, ApiService } from "./api.service";
+import { FinanceWorkspaceComponent } from "./finance-workspace.component";
+import { Section } from "./finance.types";
 import { AuthService } from "./auth.service";
 import { ShipmentEditorComponent } from "./shipment-editor.component";
 import { MasterSheetComponent } from "./master-sheet.component";
@@ -27,10 +29,30 @@ import {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [ReactiveFormsModule, ShipmentEditorComponent, MasterSheetComponent],
+  imports: [
+    ReactiveFormsModule,
+    ShipmentEditorComponent,
+    MasterSheetComponent,
+    FinanceWorkspaceComponent,
+  ],
   templateUrl: "./app.component.html",
 })
 export class AppComponent implements OnInit {
+  @ViewChild(FinanceWorkspaceComponent) finance?: FinanceWorkspaceComponent;
+  section = signal<Section>("masters");
+  readonly sections: { id: Section; label: string }[] = [
+    { id: "masters", label: "Masters" },
+    { id: "provisions", label: "Provisiones" },
+    { id: "invoices", label: "Facturas y conciliación" },
+    { id: "history", label: "Historial" },
+  ];
+  changeSection(section: Section) {
+    if (section === this.section() || this.saving() || this.sheet?.saving())
+      return;
+    if (this.sheet && !this.sheet.canLeave()) return;
+    if (this.finance && !this.finance.canLeave()) return;
+    this.section.set(section);
+  }
   @ViewChild(ShipmentEditorComponent) editor?: ShipmentEditorComponent;
   @ViewChild(MasterSheetComponent) sheet?: MasterSheetComponent;
   readonly auth = inject(AuthService);
@@ -202,12 +224,14 @@ export class AppComponent implements OnInit {
     }
   }
   async logout(): Promise<void> {
+    if (this.finance && !this.finance.canLeave()) return;
     if (this.sheet && !this.sheet.canLeave()) return;
     if (this.demo()) {
       this.demo.set(false);
       this.user.set(null);
       this.catalog.set(null);
       this.rows.set([]);
+      this.section.set("masters");
       this.phase.set("login");
       return;
     }

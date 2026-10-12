@@ -381,6 +381,9 @@ class Invoice(IdentityMixin, VersionedMixin, Base):
 class InvoiceLine(IdentityMixin, Base):
     __tablename__ = "invoice_lines"
     invoice_id: Mapped[UUID] = mapped_column(ForeignKey("invoices.id", ondelete="RESTRICT"))
+    shipment_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("shipments.id", ondelete="RESTRICT"), index=True
+    )
     line_no: Mapped[int] = mapped_column(Integer)
     charge_code: Mapped[str | None] = mapped_column(String(40))
     description: Mapped[str | None] = mapped_column(Text)
@@ -579,6 +582,7 @@ class ReconciliationLog(IdentityMixin, Base):
         CheckConstraint(
             "severity IS NULL OR severity IN ('GREEN','YELLOW','RED')", name="ck_log_severity"
         ),
+        Index("ix_logs_shipment_time", "shipment_id", "occurred_at"),
         Index("ix_logs_provision_time", "provision_id", "occurred_at"),
         Index("ix_logs_invoice_time", "invoice_id", "occurred_at"),
     )

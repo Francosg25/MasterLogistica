@@ -8,7 +8,9 @@ Aplicación de control de embarques. Incluye backend FastAPI/PostgreSQL y el pri
 - Masters: selección obligatoria de responsable y tipo de operación; búsqueda, paginación e indicadores limitados al master seleccionado. Los cinco integrantes de logística conservan masters individuales.
 - Detalle: edición con control de concurrencia, pedimentos, BL, contenedores, guías y seguimiento de incidencias.
 - Demostración: disponible sin credenciales, con datos ficticios y sólo lectura. No consulta ni modifica registros operativos.
-- Pendiente: importación de Excel, provisiones aprobadas/rolling, facturas y conciliación. La validación con PostgreSQL, Docker y Microsoft Entra ID real todavía debe realizarse en el entorno autorizado.
+- Finanzas: provisiones por referencia, aprobación, conciliación de facturas con varias referencias, arrastre mensual, cancelación con reversión y reporte CSV.
+- Historial: usuario, fecha, acción, referencia y valores anteriores/nuevos; filtros y registros inmutables.
+- Pendiente: importación automática de Excel/PDF/XML, cierre contable bloqueado y validación en PostgreSQL nativo, Docker y Microsoft Entra ID real.
 
 ## Arranque con Docker
 
@@ -95,7 +97,7 @@ npx.cmd playwright install chromium
 npm.cmd test
 ```
 
-Verificación de la interfaz de hoja de cálculo: **24 pruebas de navegador aprobadas** y build de producción correcto. La última validación del backend registró **165 pruebas aprobadas y 18 de integración pendientes por falta de PostgreSQL**.
+Verificación de la interfaz de hoja de cálculo: **31 pruebas de navegador aprobadas** y build de producción correcto. La ejecución local general del backend registró **166 pruebas aprobadas y 31 pruebas de integración pendientes de PostgreSQL nativo**. Los casos financieros también se comprobaron por separado en PGlite, con los límites descritos abajo.
 
 Las pruebas de Masters usan un punto de entrada exclusivo de pruebas y respuestas simuladas. La prueba de acceso comprueba el bundle de producción y la demostración con el proveedor de autenticación real, sin iniciar sesión contra Microsoft. El build normal y el Dockerfile no incluyen el proveedor de pruebas.
 
@@ -128,3 +130,63 @@ La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipogra
 Los registros modificados permanecen visibles hasta actualizar o volver a aplicar los filtros.
 
 ![Masters con datos ficticios](frontend/docs/masters-preview.png)
+
+## Provisiones, facturas e historial
+
+El menú principal incorpora **Provisiones**, **Facturas y conciliación** e **Historial**. La demostración incluye ejemplos financieros ficticios de octubre de 2026 y continúa siendo de solo lectura.
+
+### Flujo financiero
+
+1. Finanzas o Administración selecciona un mes y pulsa **Abrir periodo**. Esto crea un periodo abierto; no cierra ni reemplaza otros meses.
+2. En **Provisiones**, captura referencia existente, proveedor, concepto, línea de costo, mes de origen, moneda, importe neto y cargos extra. Guarda el borrador y pulsa **Aprobar**. Los borradores no afectan los saldos.
+3. En **Facturas y conciliación**, registra folio, proveedor, empresa, moneda, fecha, periodo y una o varias líneas por referencia. **Registrar y conciliar** aplica automáticamente los importes compatibles. No se interpreta un archivo PDF/XML: esta versión utiliza captura manual estructurada.
+4. Si una factura llegó antes que su provisión, queda pendiente. Después de aprobar la provisión, selecciona el mes de aplicación y pulsa **Conciliar** en la factura.
+5. **Reporte mensual** muestra saldos, movimientos y facturas pendientes. **Descargar CSV para Excel** exporta todas las filas del alcance, independientemente de la paginación.
+
+| Provisión | Neto facturado | Resultado |
+| --- | --- | --- |
+| 500 | 500 | Liquidada; saldo 0 |
+| 500 | 300 | Parcial; saldo 200 arrastrado |
+| 500 | Sin factura | Viva; saldo 500 arrastrado |
+| 500 | 600 | Liquidada; 100 de factura pendientes/sin provisión |
+
+**Reglas:** la aplicación concilia importes netos, sin impuestos, contra provisiones aprobadas de la misma referencia, empresa, proveedor, concepto y moneda. Si hay varias líneas compatibles, consume primero las de origen más antiguo. Las referencias y sus alias deben existir en el master. Los impuestos se guardan por separado; no se hace conversión automática entre USD y MXN. Una factura pendiente puede requerir una provisión adicional o corregir la captura mediante cancelación y nuevo registro.
+
+El saldo de cada mes se calcula como **saldo inicial + altas + ajustes − liberaciones netas**. Las provisiones mantienen su mes de origen; el arrastre no crea copias ni nuevas provisiones. Los totales de cada moneda permanecen separados. Una provisión liquidada se conserva como `CLOSED`; no se borra ni se marca como cancelación administrativa.
+
+**Cancelar factura** exige mes abierto y motivo, registra reversiones y restituye los saldos afectados. Los movimientos originales se conservan y el reporte de meses anteriores no cambia por una reversión posterior. La conciliación y reversión no pueden retroceder respecto del último mes con movimientos de la referencia. Los importes positivos/negativos del reporte distinguen aplicación y reversión.
+
+Los reportes son consultas calculadas, **no cierres contables bloqueados**. Una captura o aprobación retroactiva en un periodo que sigue abierto puede modificar su reporte. Desde Provisiones, el reporte respeta referencia, responsable y operación consultados, incluyendo todos los estados. Desde Facturas, cubre todas las referencias autorizadas del mes elegido; la búsqueda de folio solo afecta la lista de facturas. El CSV separa filas `SALDO`, `MATCH`, `REVERSAL` y `UNPROVISIONED` para evitar sumar saldos y movimientos como si fueran el mismo dato.
+
+### Permisos e historial
+
+- **Finanzas y Super Admin:** consulta financiera de todos los responsables, apertura de periodos, creación y aprobación de provisiones, registro/conciliación/cancelación de facturas.
+- **Gerencia:** consulta financiera e historial; sin cambios financieros.
+- **Operaciones:** consulta de saldos, reporte e historial de sus propias referencias. Los permisos de edición de Masters se conservan.
+
+El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos guardan su nombre/correo, acción y valores anteriores/nuevos. Incluye altas, cambios de campos, vaciado de valores, documentos agregados, aprobaciones, aplicaciones y cancelaciones. No registra cada pulsación: registra cambios guardados. No se ofrece borrado físico de embarques; su cancelación es un cambio de estado auditado. La auditoría y las asignaciones financieras rechazan UPDATE/DELETE en PostgreSQL. La hora se muestra en Ciudad de México y los filtros de fechas del historial se indican en UTC.
+
+### Actualizar una instalación existente
+
+Esta versión requiere la migración **0004_financial_workflows** para vincular líneas de factura a embarques y habilitar los permisos de base de datos. No regeneres `.env`.
+
+Con Docker, desde la raíz:
+
+```powershell
+git pull --ff-only origin main
+docker compose build api migrate web
+docker compose run --rm migrate
+docker compose up -d api web
+```
+
+Sin Docker, detén el backend y el frontend, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend`, utilizando la configuración existente de `MIGRATION_DATABASE_URL` y el intérprete del backend. Después reinicia ambos servicios; desde `frontend`, usa `npm.cmd start`. Recarga el navegador con Ctrl+F5.
+
+### Verificación de este bloque
+
+- Build Angular de producción correcto y **31 pruebas de navegador** aprobadas, incluyendo 7 nuevas de finanzas/historial y las 24 anteriores.
+- Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
+- La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
+
+![Provisiones y conciliación con datos ficticios](frontend/docs/finance-preview.png)
+
+![Historial con datos ficticios](frontend/docs/history-preview.png)

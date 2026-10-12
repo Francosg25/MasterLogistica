@@ -18,6 +18,7 @@ from app.api import router
 from app.auth import EntraTokenValidator
 from app.config import Settings
 from app.db import build_engine, build_session_factory
+from app.finance import router as finance_router
 from app.observability import RequestLoggingMiddleware, logger
 
 
@@ -54,6 +55,7 @@ def create_app(
     app.state.session_factory = build_session_factory(engine)
     app.state.token_validator = EntraTokenValidator(settings, key_resolver)
     app.include_router(router)
+    app.include_router(finance_router)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
