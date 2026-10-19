@@ -40,13 +40,25 @@ def scoped_client(settings, rsa_key):
 
 
 @pytest.mark.parametrize("path", ["/masters/shipments", "/masters/summary"])
-@pytest.mark.parametrize("missing", ["owner_id", "operation_code"])
-def test_master_requires_owner_and_operation(scoped_client, path, missing):
+def test_master_requires_operation(scoped_client, path):
     client, actor, db = scoped_client
     params = {"owner_id": str(actor.id), "operation_code": "SI"}
-    params.pop(missing)
+    params.pop("operation_code")
     assert client.get("/api/v1" + path, params=params).status_code == 422
     assert db.queries == []
+
+
+@pytest.mark.parametrize("role", ["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"])
+def test_ownerless_master_retains_role_scope(scoped_client, role):
+    client, actor, db = scoped_client
+    actor.role = role
+    assert (
+        client.get("/api/v1/masters/shipments", params={"operation_code": "SI"}).status_code == 200
+    )
+    for statement in db.queries:
+        compiled = statement.compile()
+        assert "SI" in compiled.params.values()
+        assert (actor.id in compiled.params.values()) == (role in {"OPERATOR", "FINANCE"})
 
 
 @pytest.mark.parametrize("role", ["OPERATOR", "FINANCE"])

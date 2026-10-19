@@ -34,6 +34,7 @@
           : "Sin cambios pendientes"
     }}</span>
   </div>
+  <button class="button secondary" (click)="activity.emit(rows()[active().row])" [disabled]="saving() || !rows()[active().row]">Movimientos de referencia</button>
   <button class="button subtle" (click)="exportPage()" [disabled]="saving()">
     Exportar página CSV
   </button>

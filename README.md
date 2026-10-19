@@ -5,12 +5,12 @@ Aplicación de control de embarques. Incluye backend FastAPI/PostgreSQL y el pri
 ## Estado
 
 - Referencias: nomenclatura versionada y catálogo de BU configurable.
-- Masters: selección obligatoria de responsable y tipo de operación; búsqueda, paginación e indicadores limitados al master seleccionado. Los cinco integrantes de logística conservan masters individuales.
+- Inicio con accesos a Masters, Provisiones, Facturas e Historial. Masters por tipo de operación, sin selector de responsable, con vista ampliada y 50 filas por página. Se conserva la propiedad y autorización de cada registro.
 - Detalle: edición con control de concurrencia, pedimentos, BL, contenedores, guías y seguimiento de incidencias.
 - Demostración: disponible sin credenciales, con datos ficticios y sólo lectura. No consulta ni modifica registros operativos.
 - Finanzas: provisiones por referencia, aprobación, conciliación de facturas con varias referencias, arrastre mensual, cancelación con reversión y reporte CSV.
 - Historial: usuario, fecha, acción, referencia y valores anteriores/nuevos; filtros y registros inmutables.
-- Pendiente: importación automática de Excel/PDF/XML, cierre contable bloqueado y validación en PostgreSQL nativo, Docker y Microsoft Entra ID real.
+- Importación del consolidado XLSX con vista previa, equivalencias de compañías/proveedores, prevención de duplicados y USD AMOUNT completo. Pendientes: lectura directa de PDF/XML, cierre contable bloqueado y validación en PostgreSQL nativo, Docker y Microsoft Entra ID real.
 
 ## Arranque con Docker
 
@@ -78,11 +78,11 @@ El acceso requiere una identidad Microsoft Entra válida y un usuario local acti
 | Rol | Consulta de masters | Modificación de datos operativos |
 | --- | --- | --- |
 | Operaciones (`OPERATOR`) | Su propio master, separado por operación | Alta y edición de registros propios |
-| Gerencia (`MANAGER`) | Puede seleccionar responsables, uno por vez | Sólo lectura |
+| Gerencia (`MANAGER`) | Todos los responsables autorizados por operación | Sólo lectura |
 | Finanzas (`FINANCE`) | Registros propios según el alcance actual | Sin alta ni edición operativa; los permisos de provisiones se gestionan por separado |
-| Super Admin (`SUPER_ADMIN`) | Puede seleccionar responsables, uno por vez | Edición y administración de usuarios; la captura desde esta interfaz se habilita sólo en su propio master |
+| Super Admin (`SUPER_ADMIN`) | Todos los responsables autorizados por operación | Edición y administración de usuarios; las altas se asignan siempre al usuario autenticado |
 
-La interfaz no carga embarques hasta seleccionar un master. Las rutas `/masters/shipments` y `/masters/summary` exigen `owner_id` y un único `operation_code`; la API rechaza el acceso a otro responsable para roles sin permiso de consulta transversal. Cambiar el responsable o la operación limpia los resultados y cierra el detalle anterior. La captura conserva el tipo de operación seleccionado y el servidor asigna el dueño autenticado.
+La interfaz no carga embarques hasta seleccionar una operación. Las rutas `/masters/shipments` y `/masters/summary` exigen un único `operation_code`; `owner_id` es opcional y conserva sus comprobaciones de autorización. Gerencia y Super Admin pueden consultar la operación completa. Los otros roles siguen limitados a sus registros. El servidor asigna el dueño autenticado en cada alta.
 
 Los códigos de analista 1–5 identifican a los integrantes de logística en el catálogo. Las cinco identidades de la demostración son ficticias; las cuentas reales deben aprovisionarse con sus códigos verificados. Los endpoints generales de embarques mantienen la consulta consolidada autorizada para Gerencia y Super Admin.
 
@@ -115,7 +115,7 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 ## Vista de demostración
 
-La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. No carga registros hasta abrir un master con un responsable y una operación. La demostración sigue siendo de solo lectura.
+La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. No carga registros hasta abrir un master por tipo de operación. La demostración sigue siendo de solo lectura.
 
 ## Edición del master
 
@@ -123,9 +123,9 @@ La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipogra
 - Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa` o `aaaa-mm-dd`. Los estados y proveedores se validan contra sus catálogos. Un rango inválido se rechaza completo.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
-- Referencia y BU están protegidas porque forman parte de la identidad de la operación. El responsable y el tipo de operación permanecen fijados por el master. La edición respeta los roles del servidor.
+- Referencia y BU están protegidas porque forman parte de la identidad de la operación. La propiedad del registro permanece protegida y el tipo de operación lo define el master. La edición respeta los roles del servidor.
 - **Nuevo embarque** genera la referencia mediante el servidor. Abrir una referencia permite consultar o editar su detalle, incidencias y documentos.
-- **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros completos.
+- **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros como masters; la carga del consolidado de facturación se realiza en su sección dedicada.
 
 Los registros modificados permanecen visibles hasta actualizar o volver a aplicar los filtros.
 
@@ -139,7 +139,7 @@ El menú principal incorpora **Provisiones**, **Facturas y conciliación** e **H
 
 1. Finanzas o Administración selecciona un mes y pulsa **Abrir periodo**. Esto crea un periodo abierto; no cierra ni reemplaza otros meses.
 2. En **Provisiones**, captura referencia existente, proveedor, concepto, línea de costo, mes de origen, moneda, importe neto y cargos extra. Guarda el borrador y pulsa **Aprobar**. Los borradores no afectan los saldos.
-3. En **Facturas y conciliación**, registra folio, proveedor, empresa, moneda, fecha, periodo y una o varias líneas por referencia. **Registrar y conciliar** aplica automáticamente los importes compatibles. No se interpreta un archivo PDF/XML: esta versión utiliza captura manual estructurada.
+3. En **Facturas y conciliación**, registra folio, proveedor, empresa, moneda, fecha, periodo y una o varias líneas por referencia. **Registrar y conciliar** aplica automáticamente los importes compatibles. También puedes usar **Subir consolidado Excel**, descrito abajo. La captura manual sigue disponible; no se interpretan archivos PDF/XML.
 4. Si una factura llegó antes que su provisión, queda pendiente. Después de aprobar la provisión, selecciona el mes de aplicación y pulsa **Conciliar** en la factura.
 5. **Reporte mensual** muestra saldos, movimientos y facturas pendientes. **Descargar CSV para Excel** exporta todas las filas del alcance, independientemente de la paginación.
 
@@ -150,7 +150,7 @@ El menú principal incorpora **Provisiones**, **Facturas y conciliación** e **H
 | 500 | Sin factura | Viva; saldo 500 arrastrado |
 | 500 | 600 | Liquidada; 100 de factura pendientes/sin provisión |
 
-**Reglas:** la aplicación concilia importes netos, sin impuestos, contra provisiones aprobadas de la misma referencia, empresa, proveedor, concepto y moneda. Si hay varias líneas compatibles, consume primero las de origen más antiguo. Las referencias y sus alias deben existir en el master. Los impuestos se guardan por separado; no se hace conversión automática entre USD y MXN. Una factura pendiente puede requerir una provisión adicional o corregir la captura mediante cancelación y nuevo registro.
+**Reglas:** la captura manual concilia el neto; la importación XLSX concilia **USD AMOUNT completo**, ya convertido en el archivo. Ambos flujos aplican el importe conciliable contra provisiones aprobadas de la misma referencia, empresa, proveedor, concepto y moneda. Si hay varias líneas compatibles, consume primero las de origen más antiguo. Las referencias y sus alias deben existir en el master. En captura manual los impuestos se guardan por separado. En la importación, moneda e impuestos originales se conservan como evidencia y no se vuelven a sumar ni convertir; el importe conciliable se registra en USD. Las provisiones MXN existentes no se convierten ni se cancelan con una importación USD. Una factura pendiente puede requerir una provisión adicional o corregir la captura mediante cancelación y nuevo registro.
 
 El saldo de cada mes se calcula como **saldo inicial + altas + ajustes − liberaciones netas**. Las provisiones mantienen su mes de origen; el arrastre no crea copias ni nuevas provisiones. Los totales de cada moneda permanecen separados. Una provisión liquidada se conserva como `CLOSED`; no se borra ni se marca como cancelación administrativa.
 
@@ -168,7 +168,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere la migración **0004_financial_workflows** para vincular líneas de factura a embarques y habilitar los permisos de base de datos. No regeneres `.env`.
+Esta versión requiere **0005_invoice_excel**, además de las migraciones anteriores, para conservar la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -183,10 +183,31 @@ Sin Docker, detén el backend y el frontend, actualiza el repositorio y ejecuta 
 
 ### Verificación de este bloque
 
-- Build Angular de producción correcto y **31 pruebas de navegador** aprobadas, incluyendo 7 nuevas de finanzas/historial y las 24 anteriores.
+- Build Angular de producción correcto y **34 pruebas de navegador** verificadas, incluyendo importación con vista previa, equivalencias, detalle por referencia, inicio y vista ampliada.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
 ![Provisiones y conciliación con datos ficticios](frontend/docs/finance-preview.png)
 
 ![Historial con datos ficticios](frontend/docs/history-preview.png)
+
+### Importar el consolidado de facturación
+
+1. En **Facturas y conciliación**, abre **Subir consolidado Excel** y elige un mes.
+2. Selecciona un `.xlsx` de hasta 10 MB con la hoja `CONSOLIDADO <año>`. Se lee esa hoja; las hojas auxiliares no se importan.
+3. El mes se obtiene de `MOUTH` y el año del nombre de la hoja. Las facturas de otros meses se muestran aparte. La fecha de factura se conserva independientemente del periodo del gasto.
+4. Si una compañía o proveedor no coincide con el catálogo, selecciona su equivalencia y actualiza la vista previa. No se crean proveedores ni embarques automáticamente.
+5. Revisa las pestañas **Listas**, **Revisar**, **Ya registradas** y **Otros meses**. Solo las listas se pueden importar. Abre primero el periodo contable si no existe.
+6. **Importar facturas listas** registra y concilia por lotes de hasta 100 facturas. Cada lote es atómico. Si falla un lote, los anteriores confirmados permanecen guardados; la vista previa reconoce sus facturas al reintentar.
+
+La identidad de factura usa compañía, proveedor y folio normalizado. El concepto se toma del primer `TYPE` (Freight, Broker, Storage u Other); se respeta cada concepto sin sumarlos entre sí. La referencia debe coincidir de manera única con un embarque o alias registrado. Un movimiento `PAQUETERIA` sin referencia concreta necesita corregirse o vincularse antes de importar.
+
+**El importe conciliable es la columna `USD AMOUNT` completa**, redondeada a cuatro decimales según la precisión del sistema. No se recalculan fórmulas ni tipos de cambio. Un resultado de fórmula sin valor guardado requiere abrir, recalcular y guardar el Excel. `TOTAL`, subtotal, impuestos, moneda original, fórmula USD, fila, nombre y huella del archivo quedan guardados como evidencia. La columna interna `net_amount` contiene la base conciliable; `source_data.amount_basis = USD_AMOUNT` distingue las importaciones de la captura manual neta. El reporte CSV incluye esta base.
+
+Una factura con varias referencias e importe concentrado en una fila, otra en cero, no se reparte automáticamente: se bloquea el grupo completo hasta corregir el reparto en el Excel. También requieren revisión las notas de crédito, negativos, fechas inválidas, conceptos desconocidos o fechas/meses inconsistentes dentro de la factura. Si dos nombres de proveedor o compañía terminan identificando la misma factura al aplicar equivalencias, se bloquea su importación hasta unificar los datos, incluso si uno de los grupos tiene errores o pertenece a otro mes. No se dividen ni sustituyen referencias por coincidencia aproximada.
+
+Desde el master, selecciona una celda y pulsa **Movimientos de referencia**. Desde Provisiones o el detalle de una factura, pulsa la referencia. La consulta reúne provisiones, facturas y auditoría, respeta el alcance del usuario y permite cargar el historial completo por páginas. **Ampliar master** oculta controles secundarios temporalmente sin perder las filas ni los cambios pendientes.
+
+Validación de la actualización XLSX: 177 pruebas de backend sin base externa y 30 casos de parser/finanzas sobre PGlite aprobados. La lectura se comprobó también contra el consolidado suministrado, sin incorporar datos operativos al repositorio. Las pruebas de navegador usan respuestas de API y datos ficticios; la integración con PostgreSQL nativo y Microsoft Entra ID sigue pendiente en el entorno autorizado.
+
+![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)

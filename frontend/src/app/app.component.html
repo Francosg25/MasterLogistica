@@ -31,7 +31,7 @@
     </section>
   </main>
 } @else {
-  <div class="workspace">
+  <div class="workspace" [class.sheet-focus]="focusedSheet() && section() === 'masters'">
     <header class="topbar">
       <div class="wordmark">
         <span class="brand-mark">M</span><strong>MasterLogistica</strong
@@ -68,9 +68,22 @@
           Demostración · Datos ficticios · Solo lectura
         </div>
       }
-      @if (section() === "masters") {
+      @if (section() === "home") {
+        <section class="home-page" aria-label="Inicio de logística">
+          <p class="home-eyebrow">MASTERLOGISTICA</p>
+          <h1>Tu espacio de trabajo.</h1>
+          <p>Consulta los masters, sigue las provisiones y concilia la facturación.</p>
+          <div class="home-grid">
+            <button (click)="changeSection('masters')"><span>01</span><h2>Masters</h2><p>Abre una operación y trabaja en la tabla. Consulta los movimientos de cada referencia.</p><strong>Abrir masters →</strong></button>
+            <button (click)="changeSection('provisions')"><span>02</span><h2>Provisiones</h2><p>Consulta saldos vivos, importes aplicados y el mes de origen de cada provisión.</p><strong>Ver provisiones →</strong></button>
+            <button (click)="changeSection('invoices')"><span>03</span><h2>Facturas</h2><p>Importa el consolidado de Excel y aplica USD AMOUNT a las referencias provisionadas.</p><strong>Facturas y conciliación →</strong></button>
+            <button (click)="changeSection('history')"><span>04</span><h2>Historial</h2><p>Revisa quién agregó, modificó o canceló un movimiento y consulta los valores anteriores.</p><strong>Consultar cambios →</strong></button>
+          </div>
+        </section>
+      } @else if (section() === "masters") {
         <div class="workspace-heading">
           <h1>Masters de logística.</h1>
+          <button class="button secondary" (click)="focusedSheet.set(!focusedSheet())">{{ focusedSheet() ? 'Salir de vista ampliada' : 'Ampliar master' }}</button>
           @if (canWrite()) {
             <button
               class="button primary"
@@ -83,28 +96,6 @@
         </div>
         <section class="master-selector" aria-label="Selección de master">
           <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
-            @if (consolidated()) {
-              <label
-                >Responsable del master<select
-                  aria-label="Responsable del master"
-                  formControlName="owner_id"
-                  (change)="resetMaster()"
-                >
-                  <option value="">Selecciona un integrante</option>
-                  @for (owner of logisticsOwners(); track owner.id) {
-                    <option [value]="owner.id">{{ owner.display_name }}</option>
-                  }
-                  @for (owner of otherOwners(); track owner.id) {
-                    <option [value]="owner.id">{{ owner.display_name }}</option>
-                  }
-                </select></label
-              >
-            } @else {
-              <div class="master-owner">
-                <small>Responsable del master</small
-                ><strong>{{ user()?.display_name }}</strong>
-              </div>
-            }
             <label
               >Tipo de operación del master<select
                 aria-label="Tipo de operación del master"
@@ -164,14 +155,14 @@
             <span class="empty-sheet-icon" aria-hidden="true">▦</span>
             <h2>Abre un master para comenzar</h2>
             <p>
-              Selecciona {{ consolidated() ? "el responsable y " : "" }}el tipo
+              Selecciona el tipo
               de operación.
             </p>
           </div>
         } @else {
           <section class="masters-panel" aria-label="Embarques del master">
             <div class="active-master">
-              <strong>{{ ownerName(masterOwner()) }}</strong
+              <strong>Master {{ masterOperation() }}</strong
               ><span>/</span
               ><span>{{
                 operations[masterOperation()] || masterOperation()
@@ -292,13 +283,14 @@
                 [offset]="offset()"
                 [operation]="masterOperation()"
                 (opened)="open($event)"
+                (activity)="activity.set($event)"
                 (updated)="updateSheetRow($event)"
               />
             }
             <footer class="table-footer">
               <span class="sheet-tab"
                 ><span aria-hidden="true">▦</span> {{ masterOperation() }} ·
-                {{ ownerName(masterOwner()) }}</span
+                Vista de operaciones</span
               >
               <span
                 >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
@@ -347,7 +339,7 @@
     [suppliers]="suppliers()"
     [shipment]="selected()"
     [masterOperation]="masterOperation()"
-    [masterOwnerName]="ownerName(masterOwner())"
+    [masterOwnerName]="ownerName(selected()?.owner_id || user()!.id)"
     [identifiers]="identifiers()"
     [readOnly]="!canWrite()"
     [busy]="saving()"
@@ -360,4 +352,7 @@
     (reload)="reloadDetail()"
     (addIdentifier)="addIdentifier($event)"
   />
+}
+@if (activity(); as target) {
+  <reference-activity [shipmentId]="target.id" [reference]="target.reference_raw || ''" [demo]="demo()" (closed)="activity.set(null)" />
 }

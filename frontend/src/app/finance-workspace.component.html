@@ -16,7 +16,7 @@
       <button
         class="button primary"
         (click)="openForm()"
-        [disabled]="busy() || formOpen()"
+        [disabled]="busy() || formOpen() || importOpen()"
       >
         {{
           section === "provisions" ? "+ Nueva provisión" : "+ Registrar factura"
@@ -24,6 +24,12 @@
       </button>
     }
   </div>
+  @if (section === "invoices" && canWrite) {
+    <div class="import-entry"><button class="button primary" (click)="importOpen.set(true)" [disabled]="busy() || formOpen() || importOpen()">Subir consolidado Excel</button><span class="hint">Base de conciliación: USD AMOUNT completo.</span></div>
+    @if (importOpen()) {
+      <invoice-import [suppliers]="suppliers" [companies]="catalogs.company_codes" [month]="filters.controls.month.value" (working)="busy.set($event)" (closed)="importOpen.set(false)" (imported)="apply()" />
+    }
+  }
   @if (demo) {
     <p class="notice">
       Ejemplo de octubre de 2026 · Importes y usuarios ficticios · Solo lectura.
@@ -119,7 +125,7 @@
   @if (section !== "history") {
     <div class="finance-rule">
       <span
-        >Base de conciliación: <strong>importe neto, sin impuestos</strong>.
+        >Excel: <strong>USD AMOUNT completo</strong>. Captura manual: importe neto.
         Coincidencia por referencia, empresa, proveedor, concepto y moneda. USD
         y MXN se muestran separados.</span
       ><button
@@ -142,7 +148,7 @@
           ><span
             >Altas <strong>{{ money(total.new_amount) }}</strong></span
           ><span
-            >Liberado neto
+            >Provisión aplicada
             <strong>{{ money(total.released_amount) }}</strong></span
           ><span class="live-balance"
             >Saldo vivo <strong>{{ money(total.closing_amount) }}</strong></span
@@ -464,7 +470,7 @@
               <th class="number">Provisión</th>
               <th class="number">Inicial</th>
               <th class="number">Alta del mes</th>
-              <th class="number">Liberado neto</th>
+              <th class="number">Provisión aplicada</th>
               <th class="number">Saldo final</th>
               <th>Estado</th>
               @if (canWrite) {
@@ -476,8 +482,7 @@
             @for (row of balances(); track row.id) {
               <tr>
                 <td>
-                  <strong>{{ row.reference }}</strong
-                  ><small
+                  <button class="reference-link" (click)="activity.set({id: row.shipment_id || row.id, reference: row.reference})">{{ row.reference }}</button><small
                     >{{ row.owner_name }} · {{ row.operation_code }}</small
                   >
                 </td>
@@ -527,7 +532,7 @@
               <th>Factura / proveedor</th>
               <th>Registro</th>
               <th>Moneda</th>
-              <th class="number">Neto</th>
+              <th class="number">Importe conciliable</th>
               <th class="number">Impuestos</th>
               <th class="number">Aplicado</th>
               <th class="number">Sin provisión / excedente</th>
@@ -547,7 +552,7 @@
                 <td>{{ row.accounting_period.slice(0, 7) }}</td>
                 <td>{{ row.currency }}</td>
                 <td class="number">{{ money(row.net_amount) }}</td>
-                <td class="number">{{ money(row.tax_amount) }}</td>
+                <td class="number">{{ row.amount_basis === 'USD_AMOUNT' ? 'Incluidos en origen' : money(row.tax_amount) }}</td>
                 <td class="number">{{ money(row.applied_amount) }}</td>
                 <td class="number">{{ money(row.pending_amount) }}</td>
                 <td>
@@ -595,10 +600,11 @@
                   <td colspan="9">
                     <div class="invoice-detail">
                       <h3>Referencias de {{ row.invoice_number }}</h3>
+                      @if (row.amount_basis === 'USD_AMOUNT') {<p>Base de conciliación: USD AMOUNT completo. Importes originales conservados en el registro de importación.</p><p>{{ row.source_data?.filename }} · {{ row.source_data?.sheet }} · Filas {{ row.source_data?.row_numbers?.join(', ') }}</p>}
                       @for (line of row.lines; track line.id) {
                         <p>
-                          <strong>{{ line.reference }}</strong> ·
-                          {{ line.charge_code }} · Neto
+                          <button class="reference-link" [disabled]="!demo && !line.shipment_id" (click)="activity.set({id: line.shipment_id || line.id, reference: line.reference})">{{ line.reference }}</button> ·
+                          {{ line.charge_code }} · Importe
                           {{ money(line.net_amount) }} {{ row.currency }} ·
                           Aplicado {{ money(line.applied_amount) }} · Pendiente
                           {{ money(line.pending_amount) }}
@@ -718,7 +724,7 @@
             ><span
               >Altas <strong>{{ money(total.new_amount) }}</strong></span
             ><span
-              >Liberado neto
+              >Provisión aplicada
               <strong>{{ money(total.released_amount) }}</strong></span
             ><span class="live-balance"
               >Arrastre siguiente mes
@@ -800,3 +806,5 @@
     </section>
   }
 </section>
+
+@if (activity(); as target) {<reference-activity [shipmentId]="target.id" [reference]="target.reference" [demo]="demo" (closed)="activity.set(null)" />}

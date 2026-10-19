@@ -38,6 +38,7 @@ export class MasterSheetComponent {
   suppliers = input<Supplier[]>([]);
   operation = input("");
   opened = output<Shipment>();
+  activity = output<Shipment>();
   updated = output<Shipment>();
   drafts = signal<Changes>({});
   saving = signal(false);

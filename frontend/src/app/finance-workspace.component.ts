@@ -6,9 +6,12 @@ import {
   HostListener,
   inject,
   signal,
+  ViewChild,
 } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ApiError, ApiService } from "./api.service";
+import { InvoiceImportComponent } from "./invoice-import.component";
+import { ReferenceActivityComponent } from "./reference-activity.component";
 import {
   Catalogs,
   Owner,
@@ -33,10 +36,13 @@ import {
 @Component({
   selector: "finance-workspace",
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, InvoiceImportComponent, ReferenceActivityComponent],
   templateUrl: "./finance-workspace.component.html",
 })
 export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
+  @ViewChild(InvoiceImportComponent) importer?: InvoiceImportComponent;
+  importOpen = signal(false);
+  activity = signal<{ id: string; reference: string } | null>(null);
   @Input({ required: true }) section!: Section;
   @Input({ required: true }) user!: User;
   @Input({ required: true }) catalogs!: Catalogs;
@@ -148,6 +154,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     return this.invoiceForm.controls.lines;
   }
   ngOnChanges() {
+    this.importOpen.set(false);
     this.formOpen.set(false);
     this.reportOpen.set(false);
     this.report.set(null);
@@ -172,6 +179,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   dirty() {
     return (
+      !!this.importer?.dirty() ||
       (this.formOpen() &&
         (this.section === "provisions"
           ? this.provisionForm.dirty

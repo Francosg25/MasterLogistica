@@ -3,6 +3,23 @@ import { demoCatalogs, demoShipments } from "../src/app/demo";
 
 const cell = (page: Page, row: number, field: string) =>
   page.locator(`td[data-row="${row}"][data-field="${field}"]`);
+
+test("home navigation and expanded master preserve the sheet", async ({ page }) => {
+  await mock(page);
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Inicio", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tu espacio de trabajo." })).toBeVisible();
+  await page.screenshot({ path: "test-results/home.png", fullPage: true });
+  await page.locator(".home-grid").getByRole("button", { name: /Abrir masters/ }).click();
+  const normal = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
+  await page.getByRole("button", { name: "Ampliar master" }).click();
+  await expect(page.getByRole("navigation", { name: "Secciones" })).toBeHidden();
+  const expanded = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
+  expect(expanded!.y).toBeLessThan(normal!.y);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await page.screenshot({ path: "test-results/master-expanded.png", fullPage: true });
+  await page.getByRole("button", { name: "Salir de vista ampliada" }).click();
+  await expect(page.getByRole("navigation", { name: "Secciones" })).toBeVisible();
+});
 async function pasteCells(
   page: Page,
   row: number,
@@ -178,14 +195,11 @@ async function mock(
     return json({ detail: "Unexpected request" }, 404);
   });
   await page.goto("/");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Masters de logística." }),
   ).toBeVisible();
   if (!options.noMaster) {
-    if (options.role === "MANAGER" || options.role === "SUPER_ADMIN")
-      await page
-        .getByLabel("Responsable del master", { exact: true })
-        .selectOption("owner-1");
     await page
       .getByLabel("Tipo de operación del master", { exact: true })
       .selectOption("SI");
@@ -217,43 +231,20 @@ test("filters and reset retain the selected master", async ({ page }) => {
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
 });
-test("five owner masters and operation types stay separated", async ({
-  page,
-}) => {
-  const requests = await mock(page, {
-    role: "MANAGER",
-    mixed: true,
-    noMaster: true,
-  });
-  expect(requests.some((req) => req.path === "/masters/shipments")).toBeFalsy();
-  await expect(page.locator("tbody tr")).toHaveCount(0);
-  for (let i = 1; i <= 5; i++) {
-    await page
-      .getByLabel("Responsable del master", { exact: true })
-      .selectOption(`owner-${i}`);
-    await expect(page.locator("tbody tr")).toHaveCount(0);
-    await page
-      .getByLabel("Tipo de operación del master", { exact: true })
-      .selectOption("SI");
-    await page
-      .getByRole("button", { name: "Abrir master", exact: true })
-      .click();
-    await expect(page.locator("tbody tr")).toHaveCount(1);
-    await expect(page.locator("tbody tr").first()).toContainText(
-      `RM${i}-0001SI26`,
-    );
-    await page
-      .getByRole("button", { name: "Limpiar filtros", exact: true })
-      .click();
-    await expect(page.locator("tbody tr")).toHaveCount(1);
-  }
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("AI");
+test("consolidated master spans authorized owners and retains operation scope", async ({ page }) => {
+  const requests = await mock(page, { role: "MANAGER", mixed: true, noMaster: true });
+  expect(requests.some(req => req.path === "/masters/shipments")).toBeFalsy();
+  await expect(page.getByLabel("Responsable del master", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Tipo de operación del master", { exact: true }).selectOption("SI");
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await expect(page.locator("tbody")).toContainText("RM1-0001SI26");
+  await expect(page.locator("tbody")).toContainText("RM5-0001SI26");
+  await page.getByLabel("Tipo de operación del master", { exact: true }).selectOption("AI");
   await expect(page.locator("tbody tr")).toHaveCount(0);
   await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator("tbody tr").first()).toContainText("RM5-0002AI26");
+  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await expect(page.locator("tbody")).toContainText("RM5-0002AI26");
 });
 test("operator has no owner selector and no unscoped initial list", async ({
   page,
@@ -374,34 +365,21 @@ for (const role of ["MANAGER", "FINANCE"]) {
     ).toHaveCount(0);
   });
 }
-test("administrator cannot create into another owner's master", async ({
-  page,
-}) => {
+test("administrator can edit the consolidated master", async ({ page }) => {
   await mock(page, { role: "SUPER_ADMIN", mixed: true });
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toBeEnabled();
-  await page
-    .getByLabel("Responsable del master", { exact: true })
-    .selectOption("owner-2");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toBeDisabled();
-  await page.locator(".reference-link").first().click();
-  await expect(
-    page.getByRole("dialog").getByLabel("Comentarios"),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeEnabled();
+  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await page.locator(".reference-link").last().click();
+  await expect(page.getByRole("dialog").getByLabel("Comentarios")).toBeEnabled();
 });
 test("pagination retains filters", async ({ page }) => {
-  await mock(page, { count: 25 });
-  await expect(page.locator("tbody tr")).toHaveCount(20);
+  await mock(page, { count: 55 });
+  await expect(page.locator("tbody tr")).toHaveCount(50);
   await page.getByRole("button", { name: "Página siguiente" }).click();
   await expect(page.locator("tbody tr")).toHaveCount(5);
-  await expect(page.locator(".table-footer")).toContainText("21–25 de 25");
+  await expect(page.locator(".table-footer")).toContainText("51–55 de 55");
   await page.getByRole("button", { name: "Página anterior" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(20);
+  await expect(page.locator("tbody tr")).toHaveCount(50);
 });
 test("database errors do not masquerade as empty success", async ({ page }) => {
   await mock(page, { failure: true });
@@ -620,7 +598,7 @@ test("unconfirmed network writes are retained and not submitted twice", async ({
 test("pending edits survive a canceled master switch, refresh and page change", async ({
   page,
 }) => {
-  await mock(page, { count: 25 });
+  await mock(page, { count: 55 });
   await pasteCells(page, 0, "origin", "Cambio pendiente");
   page.on("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Página siguiente" }).click();

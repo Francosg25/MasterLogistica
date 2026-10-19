@@ -1,5 +1,6 @@
-export type Section = "masters" | "provisions" | "invoices" | "history";
+export type Section = "home" | "masters" | "provisions" | "invoices" | "history";
 export interface Balance {
+  shipment_id?: string;
   id: string;
   row_version: number;
   reference: string;
@@ -31,6 +32,8 @@ export interface CurrencyTotal {
   closing_amount: string;
 }
 export interface InvoiceRow {
+  amount_basis?: string;
+  source_data?: { filename?: string; sheet?: string; row_numbers?: number[] };
   id: string;
   row_version: number;
   invoice_number: string;
@@ -46,6 +49,7 @@ export interface InvoiceRow {
   applied_amount: string;
   pending_amount: string;
   lines: {
+    shipment_id?: string;
     id: string;
     reference: string;
     charge_code: string;
@@ -112,6 +116,9 @@ export const EVENTS: Record<string, string> = {
   INVOICE_CANCELLED: "Canceló una factura",
 };
 export const FIELDS: Record<string, string> = {
+  amount_basis: "Base de conciliación",
+  source_file: "Archivo de origen",
+  source_rows: "Filas de origen",
   status: "Estado",
   balance: "Saldo",
   amount: "Importe",

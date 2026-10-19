@@ -370,14 +370,16 @@ def shipments(
 
 def master_statement(
     user: Actor,
-    owner_id: UUID,
     operation_code: Operation,
+    owner_id: UUID | None = None,
     statement=Depends(filtered_shipments),
 ):
-    # Both context fields are mandatory. Existing owner authorization remains in the query.
-    if not consolidated(user) and owner_id != user.id:
+    # Owner is optional for consolidated roles; operators retain their existing scope.
+    if not consolidated(user) and owner_id is not None and owner_id != user.id:
         raise HTTPException(403, "Cannot access another owner's master")
-    return statement.where(Shipment.owner_id == owner_id, Shipment.operation_code == operation_code)
+    if owner_id:
+        statement = statement.where(Shipment.owner_id == owner_id)
+    return statement.where(Shipment.operation_code == operation_code)
 
 
 @router.get("/masters/shipments", response_model=Page[ShipmentRead], tags=["Masters"])

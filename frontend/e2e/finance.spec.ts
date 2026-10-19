@@ -1,6 +1,76 @@
 import { test, expect, Page } from "@playwright/test";
 import { demoCatalogs } from "../src/app/demo";
 import { demoReport, demoInvoices, demoHistory } from "../src/app/finance-demo";
+
+test("Excel preview imports only ready invoices and requires refreshing changed mappings", async ({ page }) => {
+  await setup(page);
+  let confirmed = false;
+  let previewFailure = false;
+  let submitted: any;
+  await page.route("**/api/v1/finance/import/*", async route => {
+    if (route.request().url().endsWith("/confirm")) {
+      submitted = route.request().postDataJSON(); confirmed = true;
+      return route.fulfill({ status: 201, json: { imported: 1 } });
+    }
+    if (previewFailure) return route.fulfill({ status: 503, json: { detail: "No se pudo actualizar la vista previa" } });
+    return route.fulfill({ json: {
+      sheet: "CONSOLIDADO 2026", row_count: 3, invoice_count: 3,
+      counts: { READY: confirmed ? 0 : 1, REVIEW: 1, DUPLICATE: confirmed ? 1 : 0, OUTSIDE: 1 },
+      companies: ["DEMO"], suppliers: ["TRANSPORTES DEMO"],
+      groups: [
+        { key: "ready", invoice_number: "EXCEL-001", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: confirmed ? "DUPLICATE" : "READY", usd_amount: "500", issues: [], rows: [{ row: 2, reference: "RM1-0001LI26-T01-MAT", charge_code: "FREIGHT", usd_amount: "500" }] },
+        { key: "review", invoice_number: "EXCEL-002", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: "REVIEW", usd_amount: "0", issues: ["Importe cero: revisar reparto"], rows: [{ row: 3, reference: "PAQUETERIA", charge_code: "FREIGHT", usd_amount: "0" }] },
+      ],
+    } });
+  });
+  await section(page, "Facturas y conciliación");
+  await page.getByRole("button", { name: "Subir consolidado Excel" }).click();
+  await page.getByLabel("Mes del consolidado").fill("2026-10");
+  await page.getByLabel("Archivo consolidado (.xlsx)").setInputFiles({ name: "consolidado.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic upload; parser tested on backend") });
+  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeEnabled();
+  previewFailure = true;
+  await page.getByRole("button", { name: "Actualizar vista previa" }).click();
+  await expect(page.getByRole("alert")).toContainText("El servicio no está disponible");
+  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeDisabled();
+  previewFailure = false;
+  await page.getByRole("button", { name: "Actualizar vista previa" }).click();
+  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeEnabled();
+  await page.getByText("Vincular compañías y proveedores del Excel").click();
+  await page.getByLabel("Compañía para DEMO", { exact: true }).selectOption("DEMO");
+  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeDisabled();
+  await page.getByRole("button", { name: "Actualizar vista previa" }).click();
+  await page.getByRole("button", { name: "Revisar (1)", exact: true }).click();
+  await page.getByText("1 movimientos · Revisar").click();
+  await expect(page.getByText("Importe cero: revisar reparto")).toBeVisible();
+  await page.screenshot({ path: "test-results/import-preview.png", fullPage: true });
+  await page.getByRole("button", { name: "Importar 1 facturas listas" }).click();
+  await expect(page.getByText("1 facturas registradas.", { exact: false })).toBeVisible();
+  expect(submitted.selected).toEqual(["ready"]);
+  expect(submitted.period_month).toBe("2026-10-01");
+  expect(submitted.company_map).toEqual({ DEMO: "DEMO" });
+  await expect(page.getByRole("button", { name: "Importar 0 facturas listas" })).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("reference detail shows its provisions invoices and audit trail", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/finance/references/*/activity", route => route.fulfill({ json: {
+    reference: demoReport.balances[0].reference,
+    provisions: [{ id: "p1", supplier: "Transportes Demo", concept: "FREIGHT", month: "2026-05-01", currency: "USD", total: "500", balance: "200", status: "PARTIALLY_MATCHED" }],
+    invoices: [{ id: "l1", invoice_number: "EXCEL-01", supplier: "Transportes Demo", concept: "FREIGHT", month: "2026-10-01", currency: "USD", amount: "300", applied: "300", status: "APPROVED", amount_basis: "USD_AMOUNT" }],
+    history: { items: demoHistory, total: demoHistory.length },
+  } }));
+  await section(page, "Provisiones");
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("200.00 USD");
+  await expect(dialog).toContainText("EXCEL-01");
+  await expect(dialog).toContainText("USD AMOUNT completo");
+  await page.screenshot({ path: "test-results/reference-activity.png", fullPage: true });
+  await dialog.getByRole("button", { name: "Cerrar movimientos" }).click();
+  await expect(dialog).toHaveCount(0);
+});
 async function setup(page: Page, role = "FINANCE") {
   const writes: { path: string; body: any }[] = [];
   await page.route("**/api/v1/**", async (route) => {

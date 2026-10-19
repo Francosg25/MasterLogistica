@@ -204,6 +204,7 @@ input[readonly] {
 }
 .workspace-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -365,11 +366,51 @@ master-sheet {
 .sheet-scroll {
   overflow: auto;
   position: relative;
-  max-height: min(58vh, 640px);
+  max-height: calc(100dvh - 345px);
   min-height: 300px;
   background: #fff;
   scrollbar-color: #bdc6bf #f2f4f2;
 }
+
+.home-page { max-width: 1120px; margin: 36px auto; }
+.home-eyebrow { font-size: 11px; letter-spacing: .12em; color: var(--muted); }
+.home-page h1 { font-size: 30px; margin: 12px 0; font-weight: 500; }
+.home-page > p { color: var(--muted); }
+.home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 32px; }
+.home-grid button { text-align: left; padding: 26px; background: white; border: 1px solid var(--border); border-radius: 8px; color: inherit; cursor: pointer; }
+.home-grid button:hover { border-color: var(--green); background: #f8faf9; }
+.home-grid button > span { color: var(--muted); font-size: 12px; }
+.home-grid h2 { margin: 12px 0; font-size: 20px; font-weight: 500; }
+.home-grid p { line-height: 1.6; color: var(--muted); margin-bottom: 22px; }
+.home-grid strong { font-size: 13px; font-weight: 500; color: var(--green); }
+.sheet-focus .topbar, .sheet-focus .workspace-nav, .sheet-focus .master-selector,
+.sheet-focus .filters, .sheet-focus .active-master, .sheet-focus .demo-banner,
+.sheet-focus .master-summary, .sheet-focus .view-tabs { display: none; }
+.sheet-focus .main-content { padding: 10px; }
+.sheet-focus .sheet-scroll { max-height: calc(100dvh - 210px); }
+.sheet-focus .workspace-heading { margin-bottom: 10px; }
+.import-panel { border: 1px solid var(--border); padding: 20px; border-radius: 6px; background: white; margin: 16px 0; }
+.import-controls, .import-entry { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
+.import-controls label { min-width: 180px; }
+.import-mappings { padding: 12px 0; }
+.import-mappings summary { cursor: pointer; }
+.supplier-mappings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; max-height: 290px; overflow: auto; padding: 12px 0; }
+.supplier-mappings label { min-width: 0; overflow-wrap: anywhere; }
+.import-table td { vertical-align: top; }
+.finance-scroll { width: 100%; max-width: 100%; overflow: auto; }
+.import-panel, invoice-import { display: block; min-width: 0; max-width: 100%; }
+.import-controls label { max-width: 100%; }
+.import-table small { display: block; margin-top: 5px; color: var(--muted); }
+.import-table details p { margin: 8px 0; overflow-wrap: anywhere; white-space: normal; max-width: 560px; }
+.import-issue { color: #943a22; }
+.activity-dialog { width: min(1100px, 96vw); max-height: 90dvh; padding: 0; border: 1px solid var(--border); border-radius: 8px; color: inherit; }
+.activity-dialog::backdrop { background: #182a2059; }
+.activity-content { padding: 20px; }
+.activity-content h3 { margin: 22px 0 12px; }
+.activity-timeline article { border-left: 2px solid var(--border); padding: 5px 16px 18px; overflow-wrap: anywhere; }
+.activity-timeline article p { margin: 7px 0; font-size: 12px; }
+.reference-link { border: 0; background: transparent; color: var(--green); padding: 0; font: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 760px) { .home-grid { grid-template-columns: 1fr; } .home-page { margin: 16px auto; } .import-panel { padding: 12px; } .activity-content { padding: 12px; } }
 .spreadsheet {
   table-layout: fixed;
   border-collapse: separate;

@@ -1,8 +1,9 @@
 """Reference-level accruals, immutable invoice movements and monthly carry-forward.
 
 Balances are derived from the ledger, never copied into a new provision each month.
-Amounts are net of tax; matching requires reference, company, supplier, currency and
-charge to agree. No implicit exchange rate or fuzzy reference matching is allowed.
+Manual amounts use net values. Consolidated imports use the full USD AMOUNT as
+their allocation basis, keeping original tax and currency evidence separately.
+Matching requires reference, company, supplier, currency and charge to agree.
 """
 
 import csv
@@ -202,6 +203,8 @@ def invoice_snapshot(session, row):
             net_amount=row.net_amount,
             tax_amount=row.tax_amount,
             gross_amount=row.gross_amount,
+            amount_basis=(row.source_data or {}).get("amount_basis", "NET"),
+            source_data=row.source_data or {},
             applied_amount=sum((x["applied_amount"] for x in items), ZERO),
             pending_amount=sum((x["pending_amount"] for x in items), ZERO),
             lines=items,
@@ -268,7 +271,9 @@ def match_invoice(session, row, period, user, request):
                 provision_release_amount=amount,
                 invoice_allocated_amount=amount,
                 decision="GREEN",
-                rule_version=RULE,
+                rule_version="REFERENCE_USD_AMOUNT_V1"
+                if (row.source_data or {}).get("amount_basis") == "USD_AMOUNT"
+                else RULE,
                 accepted_by_id=user.id,
                 idempotency_key=str(uuid4()),
             )
@@ -426,6 +431,10 @@ def approve(
 
 @router.post("/invoices", status_code=201)
 def create_invoice(data: InvoiceCreate, session: DB, user: FinanceWriter, request: Request):
+    return register_invoice(data, session, user, request)
+
+
+def register_invoice(data, session, user, request, *, source_data=None, persist=True):
     if data.company_code not in request.app.state.settings.company_codes:
         raise HTTPException(422, "Empresa no configurada")
     open_period(session, data.accounting_period)
@@ -476,6 +485,8 @@ def create_invoice(data: InvoiceCreate, session: DB, user: FinanceWriter, reques
         tax_amount=sum(x.tax_amount for x in data.lines),
         status="RECEIVED",
         uploaded_by_id=user.id,
+        source_data=source_data or {},
+        document_sha256=(source_data or {}).get("sha256"),
     )
     session.add(row)
     try:
@@ -520,13 +531,18 @@ def create_invoice(data: InvoiceCreate, session: DB, user: FinanceWriter, reques
                 "tax_amount": item.tax_amount,
                 "currency": row.currency,
                 "accounting_period": row.accounting_period,
+                "amount_basis": (source_data or {}).get("amount_basis", "NET"),
+                "source_file": (source_data or {}).get("filename"),
+                "source_rows": (source_data or {}).get("row_numbers"),
             },
         )
     session.flush()
     match_invoice(session, row, data.accounting_period, user, request)
-    commit(session)
-    session.refresh(row)
-    return invoice_snapshot(session, row)
+    if persist:
+        commit(session)
+        session.refresh(row)
+        return invoice_snapshot(session, row)
+    return row
 
 
 @router.get("/invoices")
@@ -619,7 +635,7 @@ def cancel_invoice(
             invoice_allocated_amount=-entry.invoice_allocated_amount,
             decision="YELLOW",
             decision_reason=data.reason,
-            rule_version=RULE,
+            rule_version=entry.rule_version,
             accepted_by_id=user.id,
             idempotency_key="cancel:" + str(entry.id),
         )
@@ -817,6 +833,7 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
             Allocation,
             Invoice.invoice_number_raw,
             Invoice.currency,
+            Invoice.source_data,
             Shipment.reference_raw,
             Supplier.legal_name,
             Provision.month_accrued,
@@ -861,8 +878,9 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
             amount=a.invoice_allocated_amount,
             actor_name=actor,
             occurred_at=a.accepted_at,
+            amount_basis=(source or {}).get("amount_basis", "NET"),
         )
-        for a, number, currency, ref, supplier, origin, actor in session.execute(
+        for a, number, currency, source, ref, supplier, origin, actor in session.execute(
             statement.order_by(Allocation.accepted_at, Allocation.id)
         )
     ]
@@ -899,6 +917,7 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
                     supplier_name=supplier,
                     period_month=inv.accounting_period,
                     currency=inv.currency,
+                    amount_basis=(inv.source_data or {}).get("amount_basis", "NET"),
                     amount=remaining,
                     charge_code=line.charge_code,
                     entry_type="UNPROVISIONED",
@@ -958,12 +977,13 @@ def report_csv(
             "Provision original",
             "Saldo inicial",
             "Alta del mes",
-            "Liberacion neta del mes",
+            "Provision aplicada del mes",
             "Ajuste",
             "Saldo final",
             "Movimiento factura",
             "Estado",
             "Usuario",
+            "Base de conciliacion",
         ]
     )
     for b in data["balances"]:
@@ -988,6 +1008,7 @@ def report_csv(
                     "",
                     b["status"],
                     b["owner_name"],
+                    "",
                 ]
             ]
         )
@@ -1013,6 +1034,7 @@ def report_csv(
                     m["amount"],
                     "",
                     m.get("actor_name", ""),
+                    m.get("amount_basis", "NET"),
                 ]
             ]
         )
@@ -1039,6 +1061,7 @@ def history(
     date_to: date | None = None,
     owner_id: UUID | None = None,
     operation_code: str | None = None,
+    shipment_id: UUID | None = None,
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(422, "La fecha inicial es posterior a la final")
@@ -1052,6 +1075,7 @@ def history(
     elif user.role != "SUPER_ADMIN":
         statement = statement.where(ReconciliationLog.shipment_id.is_not(None))
     for column, value in (
+        (Shipment.id, shipment_id),
         (Shipment.owner_id, owner_id),
         (Shipment.operation_code, operation_code),
         (ReconciliationLog.event_type, action),
@@ -1109,3 +1133,61 @@ def history(
             )
         )
     return dict(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get("/references/{shipment_id}/activity")
+def reference_activity(shipment_id: UUID, session: DB, user: Actor):
+    shipment = session.scalar(
+        finance_scope(select(Shipment).where(Shipment.id == shipment_id), user)
+    )
+    if not shipment:
+        raise HTTPException(404, "Referencia no disponible para tu usuario")
+    provisions = session.execute(
+        select(Provision, Supplier.legal_name)
+        .join(Supplier)
+        .where(Provision.shipment_id == shipment_id)
+        .order_by(Provision.month_accrued, Provision.id)
+    ).all()
+    lines = session.execute(
+        select(InvoiceLine, Invoice, Supplier.legal_name)
+        .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
+        .join(Supplier, Supplier.id == Invoice.supplier_id)
+        .where(InvoiceLine.shipment_id == shipment_id)
+        .order_by(Invoice.accounting_period, Invoice.created_at)
+    ).all()
+    return financial_json(
+        dict(
+            reference=shipment.reference_raw,
+            provisions=[
+                dict(
+                    id=p.id,
+                    supplier=supplier,
+                    concept=p.charge_code,
+                    month=p.month_accrued,
+                    currency=p.currency,
+                    total=p.total_amount,
+                    balance=p.total_amount - released(session, p.id)
+                    if p.total_amount is not None and p.status not in {"DRAFT", "CANCELLED"}
+                    else None,
+                    status=p.status,
+                )
+                for p, supplier in provisions
+            ],
+            invoices=[
+                dict(
+                    id=line.id,
+                    invoice_number=invoice.invoice_number_raw,
+                    supplier=supplier,
+                    concept=line.charge_code,
+                    month=invoice.accounting_period,
+                    currency=invoice.currency,
+                    amount=line.net_amount,
+                    applied=applied(session, line.id),
+                    status=invoice.status,
+                    amount_basis=(invoice.source_data or {}).get("amount_basis", "NET"),
+                )
+                for line, invoice, supplier in lines
+            ],
+            history=history(session, user, limit=100, shipment_id=shipment_id),
+        )
+    )

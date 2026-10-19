@@ -10,6 +10,7 @@ import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
 import { ApiError, ApiService } from "./api.service";
 import { FinanceWorkspaceComponent } from "./finance-workspace.component";
 import { Section } from "./finance.types";
+import { ReferenceActivityComponent } from "./reference-activity.component";
 import { AuthService } from "./auth.service";
 import { ShipmentEditorComponent } from "./shipment-editor.component";
 import { MasterSheetComponent } from "./master-sheet.component";
@@ -34,13 +35,16 @@ import {
     ShipmentEditorComponent,
     MasterSheetComponent,
     FinanceWorkspaceComponent,
+    ReferenceActivityComponent,
   ],
   templateUrl: "./app.component.html",
 })
 export class AppComponent implements OnInit {
+  activity = signal<Shipment | null>(null);
   @ViewChild(FinanceWorkspaceComponent) finance?: FinanceWorkspaceComponent;
-  section = signal<Section>("masters");
+  section = signal<Section>("home");
   readonly sections: { id: Section; label: string }[] = [
+    { id: "home", label: "Inicio" },
     { id: "masters", label: "Masters" },
     { id: "provisions", label: "Provisiones" },
     { id: "invoices", label: "Facturas y conciliación" },
@@ -67,7 +71,8 @@ export class AppComponent implements OnInit {
   summary = signal<Summary | null>(null);
   total = signal(0);
   offset = signal(0);
-  limit = 20;
+  limit = 50;
+  focusedSheet = signal(false);
   loading = signal(false);
   error = signal("");
   notice = signal("");
@@ -102,7 +107,7 @@ export class AppComponent implements OnInit {
   masterOwner = signal("");
   masterOperation = signal("");
   masterReady = computed(
-    () => !!this.masterOwner() && !!this.masterOperation(),
+    () => !!this.masterOperation(),
   );
   masterSelection = new FormBuilder().nonNullable.group({
     owner_id: [""],
@@ -151,18 +156,17 @@ export class AppComponent implements OnInit {
   }
   async chooseMaster(): Promise<void> {
     const selection = this.masterSelection.getRawValue();
-    const owner = this.consolidated() ? selection.owner_id : this.user()?.id;
+    const owner = this.consolidated() ? "" : this.user()?.id;
     if (!this.resetMaster()) return;
-    if (!owner || !selection.operation_code) {
-      this.error.set("Selecciona un responsable y un tipo de operación.");
+    if (!selection.operation_code) {
+      this.error.set("Selecciona un tipo de operación.");
       return;
     }
     if (
-      !this.owners().some((item) => item.id === owner) ||
       !this.catalog()?.operation_codes.includes(selection.operation_code)
     )
       return;
-    this.masterOwner.set(owner);
+    this.masterOwner.set(owner ?? "");
     this.masterOperation.set(selection.operation_code);
     await this.apply();
   }
@@ -170,7 +174,6 @@ export class AppComponent implements OnInit {
     () =>
       this.canWrite() &&
       this.masterReady() &&
-      this.masterOwner() === this.user()?.id &&
       this.user()?.analyst_code != null &&
       !!this.catalog()?.business_units_configured,
   );
@@ -231,7 +234,7 @@ export class AppComponent implements OnInit {
       this.user.set(null);
       this.catalog.set(null);
       this.rows.set([]);
-      this.section.set("masters");
+      this.section.set("home");
       this.phase.set("login");
       return;
     }
@@ -304,7 +307,7 @@ export class AppComponent implements OnInit {
         .map(([key, value]) => [key, value.trim()])
         .filter(([, value]) => value !== ""),
     );
-    this.applied["owner_id"] = this.masterOwner();
+    if (this.masterOwner()) this.applied["owner_id"] = this.masterOwner();
     this.applied["operation_code"] = this.masterOperation();
     this.offset.set(0);
     await this.refresh();
@@ -420,7 +423,7 @@ export class AppComponent implements OnInit {
         : await this.api.request<Shipment>(`/shipments/${row.id}`);
       if (request !== this.detailRequest) return;
       if (
-        fresh.owner_id !== this.masterOwner() ||
+        (!!this.masterOwner() && fresh.owner_id !== this.masterOwner()) ||
         fresh.operation_code !== this.masterOperation()
       )
         throw new Error("El registro no pertenece al master seleccionado.");
@@ -442,7 +445,7 @@ export class AppComponent implements OnInit {
     const previous = this.rows().find((item) => item.id === row.id);
     if (
       !previous ||
-      row.owner_id !== this.masterOwner() ||
+      (!!this.masterOwner() && row.owner_id !== this.masterOwner()) ||
       row.operation_code !== this.masterOperation()
     )
       return;

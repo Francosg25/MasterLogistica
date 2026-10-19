@@ -361,6 +361,7 @@ class Invoice(IdentityMixin, VersionedMixin, Base):
     uploaded_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     document_location: Mapped[str | None] = mapped_column(Text)
     document_sha256: Mapped[str | None] = mapped_column(String(64))
+    source_data: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     __table_args__ = (
         UniqueConstraint(
             "company_code", "supplier_id", "invoice_number_normalized", name="uq_supplier_invoice"
