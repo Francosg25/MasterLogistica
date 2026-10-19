@@ -1,5 +1,6 @@
 """Validate delegated Entra v2 access tokens; authorize provisioned local identities."""
 
+import ssl
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -30,7 +31,10 @@ class EntraTokenValidator:
     def __init__(self, settings: Settings, key_resolver: Callable[[str], Any] | None = None):
         self.settings = settings
         # The JWKS endpoint is constructed from a validated tenant UUID, never from token claims.
-        self.jwks = PyJWKClient(settings.jwks_url, timeout=5, lifespan=300)
+        context = ssl.create_default_context()
+        if settings.entra_ca_bundle:
+            context.load_verify_locations(cafile=settings.entra_ca_bundle)
+        self.jwks = PyJWKClient(settings.jwks_url, timeout=5, lifespan=300, ssl_context=context)
         self.key_resolver = key_resolver or self._resolve_key
 
     def _resolve_key(self, token: str):

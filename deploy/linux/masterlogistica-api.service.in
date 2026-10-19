@@ -1,0 +1,38 @@
+[Unit]
+Description=MasterLogistica API
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=masterlogistica
+Group=masterlogistica
+WorkingDirectory=/opt/masterlogistica/current/backend
+ExecStartPre=/opt/masterlogistica/current/.venv/bin/python -m app.runtime check --env-file /etc/masterlogistica/api.env
+ExecStart=/opt/masterlogistica/current/.venv/bin/python -m app.runtime serve --env-file /etc/masterlogistica/api.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/etc/masterlogistica/network.env
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=masterlogistica-api
+
+[Install]
+WantedBy=multi-user.target

@@ -23,6 +23,7 @@ from local_dev import (
     Launcher,
     LocalError,
     checkout_lock,
+    frontend_dependencies_current,
     port_busy,
     read_json,
 )
@@ -108,15 +109,29 @@ class Native:
             raise LocalError(
                 "No se encontro Node. Usa la instalacion autorizada compatible con Angular 21."
             )
+        _, version = self.core.run([node, "-p", "process.versions.node"])
+        try:
+            major, minor, _ = (int(part) for part in version.strip().split(".", 2))
+        except ValueError:
+            raise LocalError("No se pudo comprobar la version de Node.") from None
+        if not (
+            (major == 20 and minor >= 19)
+            or (major == 22 and minor >= 12)
+            or major == 24
+        ):
+            raise LocalError(
+                "Angular 21 requiere Node 20.19+, 22.12+ o 24.x. Usa la version autorizada por TI."
+            )
         cli = self.root / "frontend/node_modules/@angular/cli/bin/ng.js"
         installed = self.core.data / "native-frontend.json"
         lock = self.root / "frontend/package-lock.json"
         import hashlib
 
         digest = hashlib.sha256(lock.read_bytes()).hexdigest()
-        saved = read_json(installed).get("lock")
         install = (
-            args.install or not cli.exists() or (saved is not None and saved != digest)
+            args.install
+            or not cli.exists()
+            or not frontend_dependencies_current(self.root)
         )
         if install and args.skip_install:
             raise LocalError(
@@ -146,6 +161,9 @@ class Native:
                 stream=True,
             )
         installed.write_text(json.dumps({"lock": digest}), encoding="utf-8")
+        self.core.run(
+            [node, str(self.root / "frontend/scripts/check-toolchain.cjs")], stream=True
+        )
         return [
             node,
             str(cli),
@@ -452,6 +470,10 @@ def main(argv=None):
                     and time.monotonic() < deadline
                 ):
                     time.sleep(0.25)
+                if control_request(native.state, "status"):
+                    raise LocalError(
+                        "La sesion no termino dentro de la espera. Revisa sus logs."
+                    )
             native.core.say(
                 json.dumps(result)
                 if result

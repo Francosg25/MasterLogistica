@@ -2,6 +2,10 @@
 
 Aplicación de control de embarques. Incluye backend FastAPI/PostgreSQL y el primer bloque de Masters en Angular 21: acceso Microsoft, consulta, filtros, alta, edición y documentos por operación.
 
+Preparación de producción: [guía de despliegue corporativo](docs/DESPLIEGUE_EMPRESA.md), con alternativas Linux, solicitud ITPM, licencias, red de entrada/salida y diagnóstico desde las estaciones de usuarios.
+
+La propuesta basada en las tecnologías permitidas indicadas por el usuario es **Angular + Python FastAPI + PostgreSQL + Microsoft Entra ID en Linux interno, sin Docker**, con código y entregas corporativas mediante JE Git. La recomendación de contenedores/AKS de la referencia recibida se refiere a aplicaciones para varias regiones; confirmar ese alcance si aplica al proyecto.
+
 ## Estado
 
 - Referencias: nomenclatura versionada y catálogo de BU configurable.
@@ -15,6 +19,8 @@ Aplicación de control de embarques. Incluye backend FastAPI/PostgreSQL y el pri
 ## Inicio local con un comando
 
 El inicio predeterminado es **directo, sin Docker ni WSL**. Requiere Python 3.11 o posterior y Node compatible con Angular 21 (`^20.19.0`, `^22.12.0` o `^24.0.0`), instalados por el canal autorizado. Node 24.13.1 es compatible.
+
+El lock fija Rollup **4.63.4**, la versión que el usuario comprobó que carga en su equipo, e incluye las dependencias opcionales Windows y Linux. Una política diferente de Application Control debe validarse con TI; el proyecto no cambia esas políticas.
 
 En Windows, desde la carpeta principal, ejecuta en CMD o abre con doble clic:
 
@@ -99,12 +105,24 @@ Los problemas corporativos anteriores sí pueden reaparecer si se elige Docker:
 | Firewall o proxy bloqueando Docker Hub | Puede bloquear las imágenes también en Linux. TI debe validar registro, autenticación, descargas, proxy y certificados; los tres dominios de un ticket previo no garantizan cobertura actual. El inicio directo puede requerir npm y Python al instalar dependencias. |
 | Permisos de `docker.sock` | Afectan al modo Docker. No usar `chmod 666`: el acceso al daemon permite operaciones de alto privilegio. TI debe definir quién despliega y con qué permisos. |
 | Aprobaciones y licencia | Revisar con TI el uso corporativo de Docker Desktop y su licencia. Un despliegue con Engine en Linux cambia los componentes necesarios, pero mantiene las autorizaciones corporativas de red, servicios y acceso. |
+| Solicitud ITPM para descargas | Preparar una solicitud específica de MasterLogistica: propósito, componentes, software y destinos. Engine de código abierto, pulls anónimos y Linux no sustituyen la autorización de red. |
+| Funciona en el servidor pero no desde otra estación | Comprobar listener, proxy, DNS, TLS, rutas y firewalls. El Compose actual publica en `127.0.0.1` para uso local; producción necesita una entrada HTTPS corporativa. Un timeout no demuestra por sí solo que `ufw` sea la causa. |
 
 Para producción en Linux con el clúster corporativo, se debe preparar una configuración de despliegue separada: API como servicio, frontend compilado servido por el proxy web, HTTPS, Entra y conexión al endpoint PostgreSQL autorizado. Docker es una opción de empaquetado. El `compose.yaml` actual incluye una base local y no debe usarse sin adaptar para apuntar al clúster. El lanzador nativo está limitado a desarrollo y no instala servicios de producción.
 
 Referencias oficiales: [Docker Desktop en VM/VDI](https://docs.docker.com/desktop/setup/vm-vdi/), [permisos en Linux](https://docs.docker.com/engine/install/linux-postinstall/), [licencia de Desktop](https://docs.docker.com/subscription-billing/desktop-license/) y [lista de acceso de red](https://docs.docker.com/desktop/enterprise/allow-list/).
 
-Las comprobaciones del lanzador cubren migraciones, reutilización, puertos ocupados, propiedad de servicios, cierre de sesión, demostración y ocultación de credenciales. La ejecución con Windows corporativo, PostgreSQL real y Entra debe validarse en ese entorno. CI incluye pruebas del lanzador en Windows y Linux y arranque Docker real en Linux, sujeto a disponibilidad de runners.
+Las comprobaciones del lanzador cubren migraciones, reutilización, puertos ocupados, propiedad de servicios, cierre de sesión, demostración y ocultación de credenciales. La ejecución con Windows corporativo y Entra debe validarse en ese entorno. CI incluye pruebas del lanzador en Windows/Linux y del proxy HTTPS nativo. La comprobación Docker es opcional mediante ejecución manual del workflow.
+
+## Despliegue Linux sin Docker
+
+El perfil productivo está en [deploy/linux/README.md](deploy/linux/README.md). Incluye servicio systemd, Nginx HTTPS, configuración de salida por proxy, roles PostgreSQL separados, comprobaciones y activación de entregas versionadas.
+
+Desde Windows, `PREPARAR_ENTREGA.cmd` construye Angular en producción y prepara el paquete del servidor. En Linux, `python3 scripts/build_release.py` hace lo mismo. El servidor recibe la interfaz compilada: no necesita Node, Angular CLI ni Docker. Se puede incluir un wheelhouse Linux para instalar Python sin acceso a Internet.
+
+`deploy/linux/configure.py` genera la configuración a partir del nombre DNS asignado. TI completa endpoint/credenciales PostgreSQL, CA, certificado HTTPS y Entra. La instalación conserva los secretos existentes; la activación comprueba las conexiones, aplica Alembic con el rol migrador y espera la disponibilidad de la API. `scripts/check_deployment.py` permite comprobar HTTPS y configuración pública Entra desde una estación autorizada.
+
+La API acepta encabezados de proxy solo de direcciones individuales configuradas y permanece en loopback. Las conexiones PostgreSQL productivas verifican certificado y nombre de servidor. El modo local continúa usando `INICIAR_LOCAL.cmd`, con demostración de solo lectura si falta `.env.native`.
 
 ## Arranque manual con Docker
 

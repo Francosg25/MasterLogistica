@@ -9,7 +9,7 @@ target_metadata = Base.metadata
 
 
 def migration_url():
-    settings = MigrationSettings()
+    settings = config.attributes.get("migration_settings") or MigrationSettings()
     value = settings.migration_database_url or settings.database_url
     return value.get_secret_value()
 

@@ -3,6 +3,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      docker_smoke:
+        description: Also validate the optional Docker deployment
+        type: boolean
+        default: false
 permissions:
   contents: read
 
@@ -22,6 +28,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd
         run: INICIAR_LOCAL.cmd --help
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Windows'
+        with:
+          node-version: '24.13.1'
+      - name: Check native Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: cmd
+        working-directory: frontend
+        run: |
+          npm.cmd ci --ignore-scripts --no-audit --no-fund
+          node scripts/check-toolchain.cjs
 
   test:
     runs-on: ubuntu-latest
@@ -60,12 +77,25 @@ jobs:
               connection.execute(text("CREATE ROLE masterlogistica_app LOGIN PASSWORD 'ci-disposable-app-password'"))
           engine.dispose()
           PY
-      - run: ruff check backend scripts
-      - run: ruff format --check backend scripts
+      - run: ruff check backend scripts deploy/linux
+      - run: ruff format --check backend scripts deploy/linux
       - run: python -m pytest -q
         working-directory: backend
 
+  native-proxy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --require-hashes -r backend/requirements.lock
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends nginx openssl
+      - run: bash -n deploy/linux/install.sh deploy/linux/activate.sh
+      - run: python scripts/smoke_native_server.py
+
   docker:
+    if: github.event_name == 'workflow_dispatch' && inputs.docker_smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

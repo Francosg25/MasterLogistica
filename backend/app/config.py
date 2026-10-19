@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+from ipaddress import ip_address
 from typing import Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -27,6 +29,8 @@ class Settings(BaseSettings):
     company_codes: list[str] = Field(default_factory=lambda: ["JE_MX"])
     business_units: dict[str, str] = Field(default_factory=dict)
     enforce_https: bool = False
+    trusted_proxy_ips: list[str] = Field(default_factory=list)
+    entra_ca_bundle: str | None = None
     jwt_leeway_seconds: int = Field(default=30, ge=0, le=120)
 
     @field_validator(
@@ -55,6 +59,18 @@ class Settings(BaseSettings):
             raise ValueError("Configure at least one company code, up to 32 characters")
         return values
 
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def explicit_proxy_addresses(cls, values):
+        for value in values:
+            try:
+                address = ip_address(value)
+            except ValueError:
+                raise ValueError("Trusted proxies must be individual IP addresses") from None
+            if address.is_unspecified or address.is_multicast:
+                raise ValueError("Trusted proxies must be individual host addresses")
+        return values
+
     @field_validator("business_units", mode="before")
     @classmethod
     def empty_business_units(cls, value):
@@ -76,13 +92,25 @@ class Settings(BaseSettings):
         if self.app_env == "production":
             if not self.entra_configured or not self.entra_allowed_client_ids:
                 raise ValueError("Production requires Entra tenant, API and allowed client IDs")
+            if self.entra_frontend_client_id not in self.entra_allowed_client_ids:
+                raise ValueError("Production requires an explicitly allowed frontend client")
             if not self.business_units:
                 raise ValueError("Production requires an approved business unit catalog")
             if not self.enforce_https:
                 raise ValueError("Production requires HTTPS enforcement")
-            if not self.allowed_hosts or "*" in self.allowed_hosts:
+            if not self.allowed_hosts or any(
+                not host or "*" in host for host in self.allowed_hosts
+            ):
                 raise ValueError("Production requires explicit allowed hosts")
-            if any(not origin.startswith("https://") for origin in self.allowed_origins):
+            if not self.allowed_origins or any(
+                urlsplit(origin).scheme != "https"
+                or not urlsplit(origin).hostname
+                or urlsplit(origin).path not in {"", "/"}
+                or urlsplit(origin).query
+                or urlsplit(origin).fragment
+                or urlsplit(origin).username is not None
+                for origin in self.allowed_origins
+            ):
                 raise ValueError("Production CORS origins must use HTTPS")
             url = make_url(self.database_url.get_secret_value())
             if url.username != "masterlogistica_app":

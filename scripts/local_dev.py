@@ -78,6 +78,29 @@ def read_json(path):
         return {}
 
 
+def frontend_dependencies_current(root):
+    """Use npm's installed metadata to avoid reinstalling a matching clean install."""
+    expected = read_json(root / "frontend/package-lock.json").get("packages")
+    actual = read_json(root / "frontend/node_modules/.package-lock.json").get(
+        "packages"
+    )
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        return False
+    for name, value in expected.items():
+        if not name:
+            continue
+        installed = actual.get(name)
+        if installed is None:
+            if value.get("optional"):
+                continue
+            return False
+        if any(
+            value.get(key) != installed.get(key) for key in ("version", "integrity")
+        ):
+            return False
+    return True
+
+
 @contextmanager
 def checkout_lock(path):
     """Release automatically on exit, including abnormal process termination."""

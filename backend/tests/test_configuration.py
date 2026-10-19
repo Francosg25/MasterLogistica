@@ -35,6 +35,7 @@ def test_production_requires_secure_configuration(settings):
     assert Settings(_env_file=None, **values).app_env == "production"
     for field, invalid in [
         ("allowed_hosts", ["*"]),
+        ("allowed_hosts", ["*.example.com"]),
         ("allowed_origins", ["http://app.example.com"]),
         ("entra_allowed_client_ids", []),
         ("migration_database_url", "postgresql+psycopg://admin@example.com/db"),

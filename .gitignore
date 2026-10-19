@@ -31,3 +31,6 @@ out-tsc/
 test-results/
 playwright-report/
 .local-dev/
+.artifacts/
+deploy/generated/
+*.env

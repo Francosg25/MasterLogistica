@@ -76,14 +76,23 @@ class NativeTests(unittest.TestCase):
         cli = self.root / "frontend/node_modules/@angular/cli/bin/ng.js"
         cli.parent.mkdir(parents=True)
         cli.write_text("// installed")
-        (self.root / "frontend/package-lock.json").write_text("{}")
+        metadata = json.dumps(
+            {"packages": {"node_modules/@angular/cli": {"version": "21.2.27"}}}
+        )
+        (self.root / "frontend/package-lock.json").write_text(metadata)
+        (self.root / "frontend/node_modules/.package-lock.json").write_text(metadata)
         args = argparse.Namespace(install=False, skip_install=False)
         with (
             patch.object(native.shutil, "which", return_value=sys.executable),
-            patch.object(self.app.core, "run") as run,
+            patch.object(self.app.core, "run", return_value=(0, "24.13.1")) as run,
         ):
             command = self.app.frontend(args)
-        run.assert_not_called()
+        self.assertEqual(run.call_count, 2)
+        run.assert_any_call([sys.executable, "-p", "process.versions.node"])
+        run.assert_any_call(
+            [sys.executable, str(self.root / "frontend/scripts/check-toolchain.cjs")],
+            stream=True,
+        )
         self.assertIn(str(cli), command)
         self.assertIn("127.0.0.1", command)
 
@@ -117,6 +126,16 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn("MIGRATION_DATABASE_URL", self.app.core.env)
         self.assertIn("Settings(_env_file=None)", command[-1])
         self.assertEqual(self.app.core.env["DATABASE_URL"], values["DATABASE_URL"])
+
+    def test_unsupported_node_fails_before_installing_dependencies(self):
+        args = argparse.Namespace(install=False, skip_install=False)
+        with (
+            patch.object(native.shutil, "which", return_value=sys.executable),
+            patch.object(self.app.core, "run", return_value=(0, "18.20.0")) as run,
+            self.assertRaisesRegex(native.LocalError, "Angular 21 requiere"),
+        ):
+            self.app.frontend(args)
+        self.assertEqual(run.call_count, 1)
 
 
 if __name__ == "__main__":
