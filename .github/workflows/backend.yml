@@ -7,6 +7,22 @@ permissions:
   contents: read
 
 jobs:
+  launcher:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s scripts/tests -v
+      - name: Check Windows command wrapper
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: INICIAR_LOCAL.cmd --help
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -58,8 +74,10 @@ jobs:
       - name: Validate Compose and start API with migrations
         run: |
           docker compose config --quiet
-          docker compose up --build -d api
+          python scripts/local_dev.py start --mode docker --no-browser --timeout 180
           curl --retry 18 --retry-delay 5 --retry-connrefused --fail http://127.0.0.1:8000/health/ready
+      - name: Stop local services without deleting data
+        run: python scripts/local_dev.py stop --mode docker
       - name: Container logs on failure
         if: failure()
         run: docker compose logs --no-color

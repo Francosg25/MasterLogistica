@@ -12,9 +12,103 @@ Aplicación de control de embarques. Incluye backend FastAPI/PostgreSQL y el pri
 - Historial: usuario, fecha, acción, referencia y valores anteriores/nuevos; filtros y registros inmutables.
 - Importación del consolidado XLSX con vista previa, equivalencias de compañías/proveedores, prevención de duplicados y USD AMOUNT completo. Pendientes: lectura directa de PDF/XML, cierre contable bloqueado y validación en PostgreSQL nativo, Docker y Microsoft Entra ID real.
 
-## Arranque con Docker
+## Inicio local con un comando
 
-Requisitos: Docker Desktop con Compose v2. Para generar la configuración inicial, Python 3.11+.
+El inicio predeterminado es **directo, sin Docker ni WSL**. Requiere Python 3.11 o posterior y Node compatible con Angular 21 (`^20.19.0`, `^22.12.0` o `^24.0.0`), instalados por el canal autorizado. Node 24.13.1 es compatible.
+
+En Windows, desde la carpeta principal, ejecuta en CMD o abre con doble clic:
+
+```bat
+INICIAR_LOCAL.cmd
+```
+
+El lanzador inicia los servicios locales y abre **http://127.0.0.1:4200/** cuando responden. Conserva la ventana abierta. Si ya funciona tu instalación de Angular, reutiliza `node_modules`; no cambia `package.json` ni el lock para resolver Rollup. Instala dependencias con el lock solamente cuando faltan, cuando detecta un cambio posterior del lock o si solicitas `--install`.
+
+Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `npm.cmd start` o sesión de DataStage que ocupe los puertos 4200 u 8000. El control local también necesita el puerto 8317 en loopback. El lanzador informa si están ocupados y no termina procesos de otras aplicaciones.
+
+### Sin base de datos: demostración
+
+Si no existe `.env.native`, se abre el modo de **demostración de solo lectura**. Selecciona **Ver demostración** en la pantalla de acceso. Utiliza datos ficticios; no permite guardar embarques, provisiones ni facturas. No necesita PostgreSQL, credenciales Microsoft ni dependencias Python del backend. Un servidor mínimo atiende la configuración de acceso y evita el error de proxy `ECONNREFUSED`.
+
+Para forzar este modo aunque exista una configuración de base de datos:
+
+```bat
+INICIAR_LOCAL.cmd --demo
+```
+
+### Con base de datos: desarrollo completo
+
+Para guardar datos necesitas una **base PostgreSQL de desarrollo autorizada** y configurar Microsoft Entra y los usuarios de la aplicación. La aplicación no sustituye PostgreSQL por SQLite ni habilita acceso operativo sin autenticación.
+
+Crea la configuración una sola vez:
+
+```bat
+copy .env.native.example .env.native
+```
+
+Edita `.env.native` con el endpoint, base y credenciales de desarrollo proporcionados por el DBA. `DATABASE_URL` corresponde al usuario de la API. Usa una base dedicada a desarrollo, nunca una base operativa para pruebas locales. Conserva `APP_ENV=development`.
+
+El DBA puede aplicar previamente las migraciones y dejar `MIGRATION_DATABASE_URL` vacía. Si proporciona una identidad separada de migración, el lanzador ejecuta `alembic upgrade head` antes de la API y retira esas credenciales del entorno del proceso de la API. Configura también los valores `ENTRA_*`, las compañías y el catálogo de BU. El aprovisionamiento de usuarios sigue el procedimiento de **Configuración de acceso y catálogos**.
+
+Después ejecuta `INICIAR_LOCAL.cmd`. En el primer arranque crea `.venv` e instala los requisitos bloqueados del backend. Si ya dispones de un intérprete con las dependencias aprobadas, puedes indicar su ruta:
+
+```bat
+INICIAR_LOCAL.cmd --python "C:\ruta\aprobada\python.exe" --skip-install
+```
+
+`--skip-install` impide instalar dependencias y comprueba que estén disponibles. Las instalaciones requieren acceso autorizado a npm y al repositorio Python, o a sus espejos corporativos. Los bloqueos de Application Control sobre binarios de Node también pueden afectar este modo; se resuelven mediante TI, sin cambiar las políticas del equipo.
+
+### Detener y revisar
+
+```bat
+DETENER_LOCAL.cmd
+VER_ESTADO.cmd
+VER_LOGS.cmd
+```
+
+También puedes detenerlo con Ctrl+C en la ventana de inicio. El cierre usa los procesos de la sesión creada desde esta carpeta; no busca ni termina procesos por nombre. No borra la base, `.env.native` ni `.env`. Los logs se guardan en `.local-dev/`, excluido de Git, y el visor oculta las credenciales de la configuración.
+
+Opciones: `--no-browser` evita abrir el navegador; `--timeout 300` amplía la espera de salud, entre 10 y 600 segundos. `--install` vuelve a instalar dependencias con los locks. Angular conserva la recarga automática al editar el frontend. En Linux se utilizan las mismas acciones:
+
+```sh
+python3 scripts/local_dev.py start --no-browser
+python3 scripts/local_dev.py status
+python3 scripts/local_dev.py stop
+```
+
+### Docker opcional
+
+Solo si Docker está autorizado y su motor Linux y Compose v2 funcionan:
+
+```bat
+INICIAR_LOCAL.cmd --mode docker
+DETENER_LOCAL.cmd --mode docker
+VER_ESTADO.cmd --mode docker
+VER_LOGS.cmd --mode docker
+```
+
+Este modo utiliza los cuatro servicios de `compose.yaml`: PostgreSQL, migración, API y web. Crea `.env` solo si falta y conserva las contraseñas existentes. Comprueba los puertos 5432, 8000 y 4200, prepara imágenes, aplica migraciones y espera a la API y la interfaz. La primera construcción puede tardar varios minutos. Los siguientes inicios reutilizan imágenes si no cambian código y configuración. `--rebuild` fuerza la reconstrucción. La interfaz de este modo está compilada; vuelve a iniciar para incorporar cambios.
+
+El lanzador opera únicamente el contexto Docker local y los contenedores de esta carpeta. Al detener usa `compose stop`: conserva el volumen PostgreSQL y sus registros. No cambia Hyper-V, firewall, permisos de `docker.sock` ni políticas de seguridad.
+
+Los problemas corporativos anteriores sí pueden reaparecer si se elige Docker:
+
+| Antecedente | Aplicación a MasterLogistica |
+| --- | --- |
+| Docker Desktop dentro de una VM Windows sin virtualización anidada | Puede impedir el arranque del motor. El inicio directo no utiliza ese motor. Docker Engine directamente en Linux no necesita WSL2 ni una VM adicional para sus contenedores Linux. |
+| Firewall o proxy bloqueando Docker Hub | Puede bloquear las imágenes también en Linux. TI debe validar registro, autenticación, descargas, proxy y certificados; los tres dominios de un ticket previo no garantizan cobertura actual. El inicio directo puede requerir npm y Python al instalar dependencias. |
+| Permisos de `docker.sock` | Afectan al modo Docker. No usar `chmod 666`: el acceso al daemon permite operaciones de alto privilegio. TI debe definir quién despliega y con qué permisos. |
+| Aprobaciones y licencia | Revisar con TI el uso corporativo de Docker Desktop y su licencia. Un despliegue con Engine en Linux cambia los componentes necesarios, pero mantiene las autorizaciones corporativas de red, servicios y acceso. |
+
+Para producción en Linux con el clúster corporativo, se debe preparar una configuración de despliegue separada: API como servicio, frontend compilado servido por el proxy web, HTTPS, Entra y conexión al endpoint PostgreSQL autorizado. Docker es una opción de empaquetado. El `compose.yaml` actual incluye una base local y no debe usarse sin adaptar para apuntar al clúster. El lanzador nativo está limitado a desarrollo y no instala servicios de producción.
+
+Referencias oficiales: [Docker Desktop en VM/VDI](https://docs.docker.com/desktop/setup/vm-vdi/), [permisos en Linux](https://docs.docker.com/engine/install/linux-postinstall/), [licencia de Desktop](https://docs.docker.com/subscription-billing/desktop-license/) y [lista de acceso de red](https://docs.docker.com/desktop/enterprise/allow-list/).
+
+Las comprobaciones del lanzador cubren migraciones, reutilización, puertos ocupados, propiedad de servicios, cierre de sesión, demostración y ocultación de credenciales. La ejecución con Windows corporativo, PostgreSQL real y Entra debe validarse en ese entorno. CI incluye pruebas del lanzador en Windows y Linux y arranque Docker real en Linux, sujeto a disponibilidad de runners.
+
+## Arranque manual con Docker
+
+Requisitos: Docker Engine en Linux o Docker Desktop autorizado en Windows, con contenedores Linux y Compose v2. Para generar la configuración inicial, Python 3.11+.
 
 Desde la carpeta del repositorio, sólo en la primera instalación:
 
@@ -48,11 +142,11 @@ npm.cmd ci
 npm.cmd start
 ```
 
-Abre **http://127.0.0.1:4200**. Las llamadas `/api` se dirigen a `127.0.0.1:8000`. La demostración funciona aunque el backend no esté iniciado. Si ya tienes el servicio `web` de Docker usando el puerto 4200, detenlo con `docker compose stop web` desde la raíz antes de iniciar Angular.
+Abre **http://127.0.0.1:4200**. Las llamadas `/api` se dirigen a `127.0.0.1:8000`. Puedes entrar en la demostración aunque el backend no esté iniciado, pero el proxy mostrará errores al consultar la configuración. Usa el lanzador predeterminado para iniciar también el servicio de configuración de la demo. Si ya tienes el servicio `web` de Docker usando el puerto 4200, detenlo con `docker compose stop web` desde la raíz antes de iniciar Angular.
 
 ## Configuración de acceso y catálogos
 
-La aplicación necesita dos registros de Entra: API y SPA. En `.env`, configura `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ENTRA_FRONTEND_CLIENT_ID` y `ENTRA_ALLOWED_CLIENT_IDS` (arreglo JSON que incluya el ID de la SPA). La API espera tokens v2 y el permiso delegado `access_as_user`.
+La aplicación necesita dos registros de Entra: API y SPA. En `.env` para Docker o `.env.native` para el inicio directo, configura `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ENTRA_FRONTEND_CLIENT_ID` y `ENTRA_ALLOWED_CLIENT_IDS` (arreglo JSON que incluya el ID de la SPA). La API espera tokens v2 y el permiso delegado `access_as_user`.
 
 Registra **http://127.0.0.1:4200/** como URI de redirección de tipo **Single-page application**. Si usas `localhost`, registra también **http://localhost:4200/**. La URL debe coincidir con la que abras. La SPA no usa secretos de cliente.
 

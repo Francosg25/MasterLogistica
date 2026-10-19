@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.native.example
 .venv/
 __pycache__/
 *.py[cod]
@@ -29,3 +30,4 @@ node_modules/
 out-tsc/
 test-results/
 playwright-report/
+.local-dev/
