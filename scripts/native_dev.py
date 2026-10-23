@@ -31,6 +31,14 @@ from local_dev import (
 CONTROL_PORT = 8317
 
 
+def backend_install_command(python, lock, *, windows):
+    command = [str(python), "-m", "pip", "install", "--require-hashes"]
+    if windows:
+        # SQLAlchemy supports pure Python; corporate Windows may reject its optional .pyd files.
+        command.extend(["--no-binary=sqlalchemy", "--no-cache-dir"])
+    return command + ["-r", str(lock)]
+
+
 def json_response(handler, status, value):
     body = json.dumps(value).encode()
     handler.send_response(status)
@@ -212,18 +220,24 @@ class Native:
                 self.core.say(
                     "Preparando dependencias Python con el lock del backend..."
                 )
-                self.core.run(
-                    [
-                        str(python),
-                        "-m",
-                        "pip",
-                        "install",
-                        "--require-hashes",
-                        "-r",
-                        str(self.root / "backend/requirements.lock"),
-                    ],
-                    stream=True,
-                )
+                previous = self.core.env.get("DISABLE_SQLALCHEMY_CEXT")
+                windows = sys.platform == "win32"
+                if windows:
+                    self.core.env["DISABLE_SQLALCHEMY_CEXT"] = "1"
+                try:
+                    self.core.run(
+                        backend_install_command(
+                            python,
+                            self.root / "backend/requirements.lock",
+                            windows=windows,
+                        ),
+                        stream=True,
+                    )
+                finally:
+                    if previous is None:
+                        self.core.env.pop("DISABLE_SQLALCHEMY_CEXT", None)
+                    else:
+                        self.core.env["DISABLE_SQLALCHEMY_CEXT"] = previous
             marker.write_text(
                 json.dumps({"lock": digest, "python": str(python)}), encoding="utf-8"
             )

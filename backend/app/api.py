@@ -209,7 +209,9 @@ def reference_catalogs(request: Request, user: Actor, session: DB):
         ),
         "master_access": {
             "can_edit": can_edit,
-            "can_create": can_edit and units_configured and (analyst_assigned or user.role == "SUPER_ADMIN"),
+            "can_create": can_edit
+            and units_configured
+            and (analyst_assigned or user.role == "SUPER_ADMIN"),
             "edit_scope": "ALL" if user.role == "SUPER_ADMIN" else "OWN" if can_edit else "NONE",
             "read_only_reason": None
             if can_edit
@@ -424,7 +426,9 @@ def master_statement(
         raise HTTPException(403, "Cannot access another owner's master")
     if owner_id:
         statement = statement.where(Shipment.owner_id == owner_id)
-    return statement.where(Shipment.operation_code == operation_code) if operation_code else statement
+    return (
+        statement.where(Shipment.operation_code == operation_code) if operation_code else statement
+    )
 
 
 @router.get("/masters/shipments", response_model=Page[ShipmentRead], tags=["Masters"])

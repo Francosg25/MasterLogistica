@@ -328,7 +328,10 @@ def owners(session: DB, user: Actor):
 
 @router.get("/references")
 def references(session: DB, user: Actor, q: Annotated[str, Query(max_length=160)] = ""):
-    statement = finance_scope(select(Shipment).where(Shipment.status != "CANCELLED", Shipment.reference_raw.is_not(None)), user)
+    statement = finance_scope(
+        select(Shipment).where(Shipment.status != "CANCELLED", Shipment.reference_raw.is_not(None)),
+        user,
+    )
     if q.strip():
         value = q.strip()
         aliases = select(ShipmentIdentifier.shipment_id).where(
@@ -340,12 +343,17 @@ def references(session: DB, user: Actor, q: Annotated[str, Query(max_length=160)
     statement = statement.outerjoin(User, User.id == Shipment.owner_id)
     return [
         dict(
-            id=x.id, reference=x.reference_raw, company_code=x.company_code,
-            owner_id=x.owner_id, owner_name=name, business_unit=x.business_unit,
+            id=x.id,
+            reference=x.reference_raw,
+            company_code=x.company_code,
+            owner_id=x.owner_id,
+            owner_name=name,
+            business_unit=x.business_unit,
         )
         for x, name in session.execute(
             statement.with_only_columns(Shipment, User.display_name)
-            .order_by(Shipment.reference_raw).limit(30)
+            .order_by(Shipment.reference_raw)
+            .limit(30)
         )
     ]
 

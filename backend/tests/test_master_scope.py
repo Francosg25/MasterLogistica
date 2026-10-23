@@ -157,10 +157,17 @@ def test_operator_without_analyst_can_edit_but_cannot_create(scoped_client):
 
 def test_operator_cannot_create_in_another_responsibles_master(scoped_client):
     client, actor, db = scoped_client
-    response = client.post("/api/v1/shipments", json={
-        "owner_id": str(uuid4()), "company_code": "MXG", "process_code": "RM",
-        "operation_code": "SI", "reference_year": 2026, "business_unit": "M01",
-        "department_code": "MAT",
-    })
+    response = client.post(
+        "/api/v1/shipments",
+        json={
+            "owner_id": str(uuid4()),
+            "company_code": "MXG",
+            "process_code": "RM",
+            "operation_code": "SI",
+            "reference_year": 2026,
+            "business_unit": "M01",
+            "department_code": "MAT",
+        },
+    )
     assert response.status_code == 403
     assert db.queries == []

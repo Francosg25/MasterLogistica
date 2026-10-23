@@ -154,7 +154,8 @@ def test_provision_exact_date_derives_its_accounting_month(concept):
     row = ProvisionCreate(
         shipment_id="50000000-0000-0000-0000-000000000001",
         supplier_id="60000000-0000-0000-0000-000000000001",
-        charge_code=concept, provision_date="2026-10-23",
+        charge_code=concept,
+        provision_date="2026-10-23",
     )
     assert row.provision_date.isoformat() == "2026-10-23"
     assert row.month_accrued.isoformat() == "2026-10-01"

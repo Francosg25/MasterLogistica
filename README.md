@@ -33,6 +33,8 @@ INICIAR_LOCAL.cmd
 
 El lanzador inicia los servicios locales y abre **http://127.0.0.1:4200/** cuando responden. Conserva la ventana abierta. Si ya funciona tu instalación de Angular, reutiliza `node_modules`; no cambia `package.json` ni el lock para resolver Rollup. Instala dependencias con el lock solamente cuando faltan, cuando detecta un cambio posterior del lock o si solicitas `--install`.
 
+Los locks de Python son universales: excluyen `uvloop` de Windows e incluyen `tzdata` con versión y hashes. El lanzador usa el Python instalado y, en Windows, solicita SQLAlchemy sin sus extensiones compiladas mediante su opción oficial de instalación. Conserva las dependencias que ya satisfacen las versiones fijadas; no fuerza su reinstalación. No hace falta instalar Python 3.11 ni regenerar los locks en la computadora del usuario.
+
 Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `npm.cmd start` o sesión de DataStage que ocupe los puertos 4200 u 8000. El control local también necesita el puerto 8317 en loopback. El lanzador informa si están ocupados y no termina procesos de otras aplicaciones.
 
 ### Desarrollo local editable (predeterminado)
@@ -53,7 +55,9 @@ Primera instalación, desde la raíz en CMD (Python 3.13 es un ejemplo compatibl
 
 ```bat
 py -3.13 -m venv .venv
-.venv\Scripts\python.exe -m pip install --require-hashes -r backend\requirements.lock
+set "DISABLE_SQLALCHEMY_CEXT=1"
+.venv\Scripts\python.exe -m pip install --require-hashes --no-binary=sqlalchemy --no-cache-dir -r backend\requirements.lock
+set "DISABLE_SQLALCHEMY_CEXT="
 cd frontend
 npm.cmd ci
 ```

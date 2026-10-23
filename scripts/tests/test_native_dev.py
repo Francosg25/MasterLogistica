@@ -174,6 +174,61 @@ class NativeTests(unittest.TestCase):
             self.assertNotIn(key, self.app.core.env)
         self.assertFalse(any("alembic" in command for command in calls))
 
+    def test_windows_install_uses_existing_python_and_preserves_a_working_install(self):
+        (self.root / "backend").mkdir()
+        (self.root / "backend/requirements.lock").write_text("synthetic")
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append((command, self.app.core.env.copy()))
+            if "-c" in command and "dotenv_values" in command[-2]:
+                return 0, "{}"
+            return 0, ""
+
+        args = argparse.Namespace(
+            python=sys.executable, install=False, skip_install=False
+        )
+        with (
+            patch.object(native.sys, "platform", "win32"),
+            patch.object(self.app.core, "run", side_effect=run),
+        ):
+            self.app.backend(args)
+        installs = [(cmd, env) for cmd, env in calls if "pip" in cmd]
+        self.assertEqual(len(installs), 1)
+        command, environment = installs[0]
+        self.assertEqual(command[0], sys.executable)
+        self.assertIn("--require-hashes", command)
+        self.assertIn("--no-binary=sqlalchemy", command)
+        self.assertEqual(environment["DISABLE_SQLALCHEMY_CEXT"], "1")
+        self.assertNotIn("--force-reinstall", command)
+        self.assertNotIn("--upgrade", command)
+        self.assertNotIn("DISABLE_SQLALCHEMY_CEXT", self.app.core.env)
+        # An unchanged lock must not reinstall dependencies on the next start.
+        calls.clear()
+        with patch.object(self.app.core, "run", side_effect=run):
+            self.app.backend(args)
+        self.assertFalse(any("pip" in cmd for cmd, env in calls))
+
+    def test_failed_windows_install_restores_environment_and_does_not_mark_success(
+        self,
+    ):
+        (self.root / "backend").mkdir()
+        (self.root / "backend/requirements.lock").write_text("synthetic")
+        self.app.core.env["DISABLE_SQLALCHEMY_CEXT"] = "previous"
+        args = argparse.Namespace(
+            python=sys.executable, install=False, skip_install=False
+        )
+        with (
+            patch.object(native.sys, "platform", "win32"),
+            patch.object(
+                self.app.core, "run", side_effect=native.LocalError("install failed")
+            ),
+            self.assertRaises(native.LocalError),
+        ):
+            self.app.backend(args)
+        self.assertEqual(self.app.core.env["DISABLE_SQLALCHEMY_CEXT"], "previous")
+        self.assertFalse((self.app.core.data / "native-python.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

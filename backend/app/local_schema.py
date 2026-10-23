@@ -164,7 +164,9 @@ def initialize_local(engine, session_factory):
             connection.exec_driver_sql(
                 "CREATE TABLE local_schema_version (version INTEGER NOT NULL)"
             )
-            connection.exec_driver_sql(f"INSERT INTO local_schema_version VALUES ({SCHEMA_VERSION})")
+            connection.exec_driver_sql(
+                f"INSERT INTO local_schema_version VALUES ({SCHEMA_VERSION})"
+            )
             for table in ("reconciliation_logs", "reconciliation_allocations"):
                 for action in ("UPDATE", "DELETE"):
                     connection.exec_driver_sql(f"""CREATE TRIGGER local_{table}_{action.lower()}
@@ -180,7 +182,9 @@ def initialize_local(engine, session_factory):
                 if "provision_date" not in {
                     c["name"] for c in inspect(connection).get_columns("provisions")
                 }:
-                    connection.exec_driver_sql("ALTER TABLE provisions ADD COLUMN provision_date DATE")
+                    connection.exec_driver_sql(
+                        "ALTER TABLE provisions ADD COLUMN provision_date DATE"
+                    )
                 connection.exec_driver_sql("UPDATE local_schema_version SET version = 2")
                 version = [2]
             if version != [SCHEMA_VERSION]:
@@ -212,11 +216,17 @@ def initialize_local(engine, session_factory):
         # These identities belong only to the isolated local development database.
         for owner_id, name, code in LOCAL_MASTERS[1:]:
             if session.scalar(select(User.id).where(User.analyst_code == code)) is None:
-                session.add(User(
-                    id=owner_id, entra_tenant_id=LOCAL_TENANT, entra_object_id=owner_id,
-                    email=f"{name.lower()}@example.com", display_name=name,
-                    role="OPERATOR", analyst_code=code,
-                ))
+                session.add(
+                    User(
+                        id=owner_id,
+                        entra_tenant_id=LOCAL_TENANT,
+                        entra_object_id=owner_id,
+                        email=f"{name.lower()}@example.com",
+                        display_name=name,
+                        role="OPERATOR",
+                        analyst_code=code,
+                    )
+                )
                 session.flush()
                 session.add(ReferenceCounter(owner_id=owner_id, last_value=0))
         # Catalog example only; never seed operational shipments, provisions or invoices.

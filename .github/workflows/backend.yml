@@ -1,7 +1,7 @@
 name: Backend validation
 on:
   push:
-    branches: [main]
+    branches: [main, codex/importacion-usd-movimientos]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -39,6 +39,13 @@ jobs:
         run: |
           npm.cmd ci --ignore-scripts --no-audit --no-fund
           node scripts/check-toolchain.cjs
+      - name: Install and import locked Windows backend dependencies
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          set "DISABLE_SQLALCHEMY_CEXT=1"
+          python -m pip install --require-hashes --no-binary=sqlalchemy --no-cache-dir -r backend/requirements.lock
+          python -c "import fastapi,uvicorn,psycopg,alembic,sqlalchemy; from sqlalchemy.util._has_cython import HAS_CYEXTENSION; assert not HAS_CYEXTENSION"
 
   test:
     runs-on: ubuntu-latest

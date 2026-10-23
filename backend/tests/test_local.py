@@ -89,11 +89,18 @@ def local_financial_environment(tmp_path):
                 ("manager", "MANAGER", None),
                 ("admin", "SUPER_ADMIN", 5),
             ]:
-                row = session.scalar(select(User).where(User.analyst_code == code)) if code else None
+                row = (
+                    session.scalar(select(User).where(User.analyst_code == code)) if code else None
+                )
                 if row is None:
                     row = User(
-                        id=uuid4(), entra_tenant_id=LOCAL_TENANT, entra_object_id=uuid4(),
-                        email=f"{name}@example.com", display_name=name, role=role, analyst_code=code,
+                        id=uuid4(),
+                        entra_tenant_id=LOCAL_TENANT,
+                        entra_object_id=uuid4(),
+                        email=f"{name}@example.com",
+                        display_name=name,
+                        role=role,
+                        analyst_code=code,
                     )
                     session.add(row)
                 else:
@@ -298,32 +305,62 @@ def test_responsible_masters_manual_company_and_exact_provision_date(tmp_path):
         owners = client.get("/api/v1/masters/owners").json()
         assert [o["display_name"] for o in owners] == ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"]
         assert list(client.get("/api/v1/references/catalogs").json()["business_units"]) == [
-            "M01", "M19", "M23", "M45", "M46"
+            "M01",
+            "M19",
+            "M23",
+            "M45",
+            "M46",
         ]
-        body = dict(company_code="MXG", process_code="RM", operation_code="SI",
-                    reference_year=2026, business_unit="M45", department_code="MAT")
+        body = dict(
+            company_code="MXG",
+            process_code="RM",
+            operation_code="SI",
+            reference_year=2026,
+            business_unit="M45",
+            department_code="MAT",
+        )
         rows = []
         for owner, operation in [(owners[0], "SI"), (owners[0], "AI"), (owners[1], "LI")]:
-            response = client.post("/api/v1/shipments", json={
-                **body, "owner_id": owner["id"], "operation_code": operation,
-            })
+            response = client.post(
+                "/api/v1/shipments",
+                json={
+                    **body,
+                    "owner_id": owner["id"],
+                    "operation_code": operation,
+                },
+            )
             assert response.status_code == 201, response.text
             rows.append(response.json())
         response = client.get("/api/v1/masters/shipments", params={"owner_id": owners[0]["id"]})
         assert {r["operation_code"] for r in response.json()["items"]} == {"SI", "AI"}
         assert response.json()["total"] == 2
-        assert client.get("/api/v1/masters/summary", params={"owner_id": owners[1]["id"]}).json()["total"] == 1
-        assert client.post("/api/v1/shipments", json={**body, "business_unit": "T01"}).status_code == 422
+        assert (
+            client.get("/api/v1/masters/summary", params={"owner_id": owners[1]["id"]}).json()[
+                "total"
+            ]
+            == 1
+        )
+        assert (
+            client.post("/api/v1/shipments", json={**body, "business_unit": "T01"}).status_code
+            == 422
+        )
         assert "MXG" in client.get("/api/v1/references/catalogs").json()["company_codes"]
         references = client.get("/api/v1/finance/references").json()
         assert len(references) == 3
         assert references[0]["owner_name"] in {"DENI", "MAG"}
         client.post("/api/v1/finance/periods?period_month=2026-10-01")
-        response = client.post("/api/v1/finance/provisions", json={
-            "shipment_id": rows[0]["id"], "supplier_id": str(LOCAL_SUPPLIER),
-            "charge_code": "STORAGE", "provision_date": "2026-10-23",
-            "amount": "125.5000", "extra_charges": "0", "currency": "USD",
-        })
+        response = client.post(
+            "/api/v1/finance/provisions",
+            json={
+                "shipment_id": rows[0]["id"],
+                "supplier_id": str(LOCAL_SUPPLIER),
+                "charge_code": "STORAGE",
+                "provision_date": "2026-10-23",
+                "amount": "125.5000",
+                "extra_charges": "0",
+                "currency": "USD",
+            },
+        )
         assert response.status_code == 201, response.text
         provision = response.json()
         assert provision["provision_date"] == "2026-10-23"
@@ -339,15 +376,30 @@ def test_local_version_one_upgrade_preserves_provisions_without_inventing_a_day(
     settings = local_settings(tmp_path / "old.db")
     app = create_app(settings)
     with local_client(app) as client:
-        shipment = client.post("/api/v1/shipments", json=dict(
-            company_code="MXT", process_code="RM", operation_code="LI",
-            reference_year=2026, business_unit="M01", department_code="MAT",
-        )).json()
+        shipment = client.post(
+            "/api/v1/shipments",
+            json=dict(
+                company_code="MXT",
+                process_code="RM",
+                operation_code="LI",
+                reference_year=2026,
+                business_unit="M01",
+                department_code="MAT",
+            ),
+        ).json()
         client.post("/api/v1/finance/periods?period_month=2026-10-01")
-        provision = client.post("/api/v1/finance/provisions", json=dict(
-            shipment_id=shipment["id"], supplier_id=str(LOCAL_SUPPLIER), charge_code="BROKER",
-            month_accrued="2026-10-01", currency="USD", amount="500", extra_charges="0",
-        )).json()
+        provision = client.post(
+            "/api/v1/finance/provisions",
+            json=dict(
+                shipment_id=shipment["id"],
+                supplier_id=str(LOCAL_SUPPLIER),
+                charge_code="BROKER",
+                month_accrued="2026-10-01",
+                currency="USD",
+                amount="500",
+                extra_charges="0",
+            ),
+        ).json()
         with app.state.engine.begin() as connection:
             connection.exec_driver_sql("ALTER TABLE provisions DROP COLUMN provision_date")
             connection.exec_driver_sql("UPDATE local_schema_version SET version = 1")
