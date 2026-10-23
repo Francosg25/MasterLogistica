@@ -50,7 +50,7 @@ export class AppComponent implements OnInit {
     { id: "home", label: "Inicio" },
     { id: "masters", label: "Masters" },
     { id: "provisions", label: "Provisiones" },
-    { id: "invoices", label: "Facturas y conciliación" },
+    { id: "invoices", label: "Facturas" },
     { id: "history", label: "Historial" },
   ];
   changeSection(section: Section) {
@@ -168,7 +168,6 @@ export class AppComponent implements OnInit {
     const owner = selection.owner_id;
     if (!this.resetMaster()) return;
     if (!owner) {
-      this.error.set("Selecciona al responsable del master.");
       return;
     }
     if (

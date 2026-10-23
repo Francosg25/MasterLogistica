@@ -203,12 +203,12 @@ export class MasterSheetComponent implements OnDestroy {
       !this.blocked.has(this.rows()[row]?.id)
     );
   }
-  private focus(): void {
+  private focus(immediate = false): void {
     // Coalesce key repeats into one layout pass. Scroll only the sheet, accounting
     // for sticky headers/reference; scrollIntoView also moves the document and
     // can leave the selected cell underneath a frozen column.
     cancelAnimationFrame(this.focusFrame);
-    this.focusFrame = requestAnimationFrame(() => {
+    const reveal = () => {
       const { row, col } = this.active();
       const host = this.element.nativeElement;
       const cell = host.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`);
@@ -232,7 +232,9 @@ export class MasterSheetComponent implements OnDestroy {
       if (target.height > bottom - top) viewport.scrollTop += target.top - top;
       else if (target.top < top) viewport.scrollTop -= top - target.top;
       else if (target.bottom > bottom) viewport.scrollTop += target.bottom - bottom;
-    });
+    };
+    if (immediate) reveal();
+    else this.focusFrame = requestAnimationFrame(reveal);
   }
   pick(row: number, col: number, extend = false): void {
     if (!this.rows()[row] || !this.columns()[col]) return;
@@ -387,17 +389,21 @@ export class MasterSheetComponent implements OnDestroy {
       event.preventDefault();
       this.editing.set(null);
       this.error.set("");
-      this.focus();
+      this.changeDetector.detectChanges();
+      this.focus(true);
     }
     if (event.key === "Enter" || event.key === "Tab") {
       event.preventDefault();
-      if (this.commit())
+      if (this.commit()) {
         this.move(
           event.key === "Enter" ? (event.shiftKey ? -1 : 1) : 0,
           event.key === "Tab" ? (event.shiftKey ? -1 : 1) : 0,
           false,
           event.key === "Tab",
         );
+        this.changeDetector.detectChanges();
+        this.focus(true);
+      }
     }
   }
   private move(dr: number, dc: number, extend = false, wrap = false): void {

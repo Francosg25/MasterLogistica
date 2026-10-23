@@ -23,32 +23,31 @@ test("Excel preview imports only ready invoices and requires refreshing changed 
       ],
     } });
   });
-  await section(page, "Facturas y conciliación");
-  await page.getByRole("button", { name: "Subir consolidado Excel" }).click();
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Cargar Excel" }).click();
   await page.getByLabel("Mes del consolidado").fill("2026-10");
   await page.getByLabel("Archivo consolidado (.xlsx)").setInputFiles({ name: "consolidado.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic upload; parser tested on backend") });
-  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeEnabled();
   previewFailure = true;
-  await page.getByRole("button", { name: "Actualizar vista previa" }).click();
+  await page.getByRole("button", { name: "Revisar archivo" }).click();
   await expect(page.getByRole("alert")).toContainText("El servicio no está disponible");
-  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeDisabled();
   previewFailure = false;
-  await page.getByRole("button", { name: "Actualizar vista previa" }).click();
-  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeEnabled();
-  await page.getByText("Vincular compañías y proveedores del Excel").click();
+  await page.getByRole("button", { name: "Revisar archivo" }).click();
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeEnabled();
+  await page.getByText("Corregir nombres del Excel").click();
   await page.getByLabel("Compañía para DEMO", { exact: true }).selectOption("DEMO");
-  await expect(page.getByRole("button", { name: "Importar 1 facturas listas" })).toBeDisabled();
-  await page.getByRole("button", { name: "Actualizar vista previa" }).click();
-  await page.getByRole("button", { name: "Revisar (1)", exact: true }).click();
-  await page.getByText("1 movimientos · Revisar").click();
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeDisabled();
+  await page.getByRole("button", { name: "Revisar archivo" }).click();
+  await page.getByLabel("Mostrar facturas del Excel", { exact: true }).selectOption("REVIEW");
   await expect(page.getByText("Importe cero: revisar reparto")).toBeVisible();
   await page.screenshot({ path: "test-results/import-preview.png", fullPage: true });
-  await page.getByRole("button", { name: "Importar 1 facturas listas" }).click();
+  await page.getByRole("button", { name: "Guardar 1 facturas" }).click();
   await expect(page.getByText("1 facturas registradas.", { exact: false })).toBeVisible();
   expect(submitted.selected).toEqual(["ready"]);
   expect(submitted.period_month).toBe("2026-10-01");
   expect(submitted.company_map).toEqual({ DEMO: "DEMO" });
-  await expect(page.getByRole("button", { name: "Importar 0 facturas listas" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Guardar 0 facturas" })).toBeDisabled();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
@@ -164,6 +163,7 @@ test("carry-forward totals and full report export", async ({ page }) => {
     "8,000.00",
   );
   await expect(page.getByText("2026-05")).toBeVisible();
+  await page.locator(".finance-tools summary").click();
   await page
     .getByRole("button", { name: "Reporte mensual", exact: true })
     .click();
@@ -201,11 +201,12 @@ test("history identifies actor and cleared fields", async ({ page }) => {
 });
 test("multi-reference invoice preserves decimal values", async ({ page }) => {
   const writes = await setup(page);
-  await section(page, "Facturas y conciliación");
+  await section(page, "Facturas");
   await page
-    .getByRole("button", { name: "+ Registrar factura", exact: true })
+    .getByRole("button", { name: "Agregar factura", exact: true })
     .click();
   await page.getByLabel("Folio de factura").fill("F-003");
+  await page.getByLabel("Periodo de registro", { exact: true }).fill("2026-11");
   await page
     .getByLabel("Proveedor de factura", { exact: true })
     .selectOption("supplier-1");
@@ -221,17 +222,19 @@ test("multi-reference invoice preserves decimal values", async ({ page }) => {
     .fill(demoReport.balances[1].reference);
   await page.getByLabel("Neto 2", { exact: true }).fill("300");
   await page
-    .getByRole("button", { name: "Registrar y conciliar", exact: true })
+    .getByRole("button", { name: "Guardar factura", exact: true })
     .click();
   await expect(page.locator(".success[role=status]")).toContainText(
-    "Factura registrada",
+    "Factura guardada",
   );
   const body = writes.find((w) => w.path === "/finance/invoices")!.body;
   expect(body.lines).toHaveLength(2);
   expect(body.lines[0].net_amount).toBe("500.1234");
-  expect(body.accounting_period).toMatch(/^\d{4}-\d{2}-01$/);
+  expect(body.accounting_period).toBe("2026-11-01");
+  await expect(page.getByLabel("Mes contable", { exact: true })).toHaveValue("2026-11");
+  expect(new URL((await page.requests()).filter(request => request.url().includes("/finance/invoices?")).at(-1)!.url()).searchParams.get("month")).toBe("2026-11-01");
 });
-test("provision draft and unsaved navigation warning", async ({ page }) => {
+test("provision is saved with automatic approval and preserves unsaved navigation warning", async ({ page }) => {
   const writes = await setup(page);
   await section(page, "Provisiones");
   await page
@@ -248,24 +251,27 @@ test("provision draft and unsaved navigation warning", async ({ page }) => {
   await page
     .getByLabel("Proveedor", { exact: true })
     .selectOption("supplier-1");
-  await page.getByLabel("Fecha de provisión", { exact: true }).fill("2026-10-23");
+  await page.getByLabel("Fecha de provisión", { exact: true }).fill("2026-11-23");
   await page.getByLabel("Concepto", { exact: true }).selectOption("BROKER");
   await page.getByLabel("Importe neto", { exact: true }).fill("500");
-  await page.getByRole("button", { name: "Guardar borrador" }).click();
+  await page.getByRole("button", { name: "Guardar provisión" }).click();
   await expect(page.locator(".success[role=status]")).toContainText(
-    "Provisión guardada en borrador",
+    "Provisión guardada y aprobada automáticamente",
   );
   expect(writes[0].body.shipment_id).toBe("shipment-1");
   expect(writes[0].body.amount).toBe("500");
-  expect(writes[0].body.provision_date).toBe("2026-10-23");
-  expect(writes[0].body.month_accrued).toBe("2026-10-01");
+  expect(writes[0].body.provision_date).toBe("2026-11-23");
+  expect(writes[0].body.month_accrued).toBe("2026-11-01");
   expect(writes[0].body.charge_code).toBe("BROKER");
+  await expect(page.getByLabel("Mes contable", { exact: true })).toHaveValue("2026-11");
+  expect(new URL((await page.requests()).filter(request => request.url().includes("/finance/balances?")).at(-1)!.url()).searchParams.get("month")).toBe("2026-11-01");
 });
 test("invoice cancellation requires reason and accounting month", async ({
   page,
 }) => {
   const writes = await setup(page);
-  await section(page, "Facturas y conciliación");
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Detalle", exact: true }).first().click();
   await page
     .getByRole("button", { name: "Cancelar factura", exact: true })
     .first()
@@ -290,9 +296,9 @@ test("manager has read-only finance and mobile contains tables", async ({
   await expect(
     page.getByRole("button", { name: "+ Nueva provisión" }),
   ).toHaveCount(0);
-  await section(page, "Facturas y conciliación");
+  await section(page, "Facturas");
   await expect(
-    page.getByRole("button", { name: "+ Registrar factura" }),
+    page.getByRole("button", { name: "Agregar factura" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Cancelar factura", exact: true }),
@@ -353,4 +359,45 @@ test("provision reference picker lists existing references and supports keyboard
   await input.press("Escape");
   await expect(page.getByRole("listbox")).toHaveCount(0);
   await page.screenshot({ path: "test-results/new-provision.png", fullPage: true });
+});
+
+test("invoice workspace starts with a compact table and shows special actions only in its detail", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await setup(page);
+  await page.route("**/api/v1/finance/invoices?**", route => route.fulfill({ json: {
+    items: demoInvoices.map((row, i) => i ? { ...row, status: "UNDER_REVIEW", applied_amount: "150", pending_amount: "150" } : row), total: demoInvoices.length,
+  } }));
+  await section(page, "Facturas");
+  await expect(page.getByRole("button", { name: "Cargar Excel", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Agregar factura", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancelar factura", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Aplicar a provisiones", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Abrir periodo", exact: true })).toHaveCount(0);
+  await expect(page.locator(".finance-tools p")).toBeHidden();
+  expect((await page.locator(".finance-table tbody tr").first().boundingBox())!.y).toBeLessThan(260);
+  await page.screenshot({ path: "docs/invoices-simple-preview.png", fullPage: true });
+  await page.getByRole("button", { name: "Detalle", exact: true }).last().click();
+  await expect(page.getByRole("button", { name: "Cancelar factura", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aplicar a provisiones", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cargar Excel", exact: true }).click();
+  await expect(page.locator(".finance-table-scroll")).toBeHidden();
+  await expect(page.getByLabel("Archivo consolidado (.xlsx)")).toBeVisible();
+});
+
+test("complete provisions saved before automatic approval activate without an approval button", async ({ page }) => {
+  await setup(page);
+  let approvals = 0;
+  const row = demoReport.balances[0];
+  await page.route("**/api/v1/finance/balances?**", route => route.fulfill({ json: { items: [{ ...row, status: approvals ? "OPEN" : "DRAFT", current_status: approvals ? "OPEN" : "DRAFT" }], total: 1, totals: demoReport.totals } }));
+  await page.route("**/api/v1/finance/provisions/*/approve", route => {
+    approvals++;
+    return route.fulfill({ json: { id: row.id, status: "OPEN", row_version: 2 } });
+  });
+  await section(page, "Provisiones");
+  await expect(page.locator(".finance-status")).toHaveText("Viva");
+  expect(approvals).toBe(1);
+  await expect(page.getByRole("button", { name: "Aprobar", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Consultar", exact: true }).click();
+  await expect(page.locator(".finance-status")).toHaveText("Viva");
+  expect(approvals).toBe(1);
 });

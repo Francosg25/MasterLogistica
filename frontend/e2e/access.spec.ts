@@ -39,7 +39,6 @@ test("production build uses real access flow and offers an isolated read-only pr
   await page
     .getByLabel("Responsable del master", { exact: true })
     .selectOption("demo-owner-1");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody tr").first()).toContainText("01/10/2026");
   await expect(

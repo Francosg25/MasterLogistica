@@ -15,8 +15,15 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field, ValidationError
 from sqlalchemy import select
 
-from app.api import DB, open_period
-from app.finance import FinanceWriter, commit, financial_json, lock_shipments, register_invoice
+from app.api import DB
+from app.finance import (
+    FinanceWriter,
+    commit,
+    ensure_period,
+    financial_json,
+    lock_shipments,
+    register_invoice,
+)
 from app.finance_schemas import InvoiceCreate
 from app.invoice_excel import normalized, read_consolidated
 from app.models import Invoice, Shipment, ShipmentIdentifier, Supplier
@@ -246,7 +253,7 @@ def preview(data: ImportRequest, session: DB, user: FinanceWriter, request: Requ
 def confirm(data: ImportRequest, session: DB, user: FinanceWriter, request: Request):
     if not data.selected or len(set(data.selected)) != len(data.selected):
         raise HTTPException(422, "Selecciona de 1 a 100 facturas distintas por lote")
-    open_period(session, data.period_month)
+    ensure_period(session, user, request, data.period_month)
     parsed, groups, payloads = prepare(data, session, request)
     selected = set(data.selected)
     candidates = [g for g in groups if g["key"] in selected]

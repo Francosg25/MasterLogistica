@@ -31,6 +31,7 @@ export class InvoiceImportComponent implements OnChanges {
   notice = signal("");
   filename = "";
   private content = "";
+  private analyzedMonth = "";
   companyMap: Record<string, string> = {};
   supplierMap: Record<string, string> = {};
   filter = signal("READY");
@@ -40,7 +41,7 @@ export class InvoiceImportComponent implements OnChanges {
   visible = computed(() => this.filtered().slice(this.offset(), this.offset() + 20));
   statuses = ["READY", "REVIEW", "DUPLICATE", "OUTSIDE"];
   pending = false;
-  ngOnChanges(changes: SimpleChanges) { if (changes['month'] && this.preview()) this.invalidate(); }
+  ngOnChanges(changes: SimpleChanges) { if (changes['month'] && this.preview() && this.month !== this.analyzedMonth) this.invalidate(); }
   dirty() { return this.pending; }
   setBusy(value: boolean) { this.busy.set(value); this.working.emit(value); }
   payload(selected: string[] = []) {
@@ -76,6 +77,7 @@ export class InvoiceImportComponent implements OnChanges {
     this.setBusy(true); this.stale.set(true); this.error.set("");
     try {
       this.preview.set(await this.api.request<Preview>("/finance/import/preview", "POST", this.payload()));
+      this.analyzedMonth = this.month;
       this.stale.set(false);
       this.offset.set(0);
     } catch (e) { this.error.set(this.message(e)); }

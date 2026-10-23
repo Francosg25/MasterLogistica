@@ -103,7 +103,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     return this.section === "provisions"
       ? "Provisiones por referencia"
       : this.section === "invoices"
-        ? "Facturas y conciliación"
+        ? "Facturas"
         : "Historial de cambios";
   }
   get month() {
@@ -168,6 +168,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     return this.invoiceForm.controls.lines;
   }
   ngOnChanges() {
+    this.expandedInvoice.set("");
     this.importOpen.set(false);
     this.formOpen.set(false);
     this.reportOpen.set(false);
@@ -273,7 +274,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     this.applied = Object.fromEntries(
       keys.map((k) => [k, v[k as keyof typeof v]]).filter(([, v]) => !!v),
     );
-    if (this.section === "provisions") this.applied["month"] = this.month;
+    if (this.section !== "history") this.applied["month"] = this.month;
     this.offset.set(0);
     this.report.set(null);
     this.reportOpen.set(false);
@@ -303,7 +304,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
           : this.section === "invoices"
             ? "invoices"
             : "history";
-      const result = await this.api.request<
+      let result = await this.api.request<
         Page<Balance & InvoiceRow & HistoryRow> & { totals?: CurrencyTotal[] }
       >(
         `/finance/${route}?${this.query({ limit: String(this.limit), offset: String(this.offset()) })}`,
@@ -312,6 +313,20 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
         controller.signal,
       );
       if (generation !== this.requestNumber) return;
+      if (this.section === "provisions" && this.canWrite) {
+        let activated = false;
+        for (const row of result.items.filter(row => row.current_status === "DRAFT" && row.currency && Number(row.total_amount) > 0)) {
+          if (generation !== this.requestNumber) return;
+          try {
+            await this.api.request(`/finance/provisions/${row.id}/approve`, "POST", { expected_version: row.row_version });
+            activated = true;
+          } catch (e) {
+            this.notice.set("Una provisión anterior sigue pendiente: " + this.message(e));
+          }
+        }
+        if (activated) result = await this.api.request(`/finance/${route}?${this.query({ limit: String(this.limit), offset: String(this.offset()) })}`, "GET", undefined, controller.signal);
+        if (generation !== this.requestNumber) return;
+      }
       this.total.set(result.total);
       if (this.section === "provisions") {
         this.balances.set(result.items);
@@ -453,14 +468,6 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       this.busy.set(false);
     }
   }
-  async openPeriod() {
-    if (!this.filters.controls.month.value) return;
-    await this.write(
-      () =>
-        this.api.request("/finance/periods?period_month=" + this.month, "POST"),
-      "Periodo disponible para registrar movimientos.",
-    );
-  }
   async saveProvision() {
     if (this.provisionForm.invalid) {
       this.provisionForm.markAllAsTouched();
@@ -484,18 +491,12 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
         shipment_id: reference.id,
         month_accrued: v.provision_date.slice(0, 7) + "-01",
       });
+      this.filters.controls.month.setValue(v.provision_date.slice(0, 7));
+      this.applied["month"] = this.month;
+      this.offset.set(0);
       this.provisionForm.markAsPristine();
       this.formOpen.set(false);
-    }, "Provisión guardada en borrador. Apruébala para incluirla en el saldo vivo.");
-  }
-  async approve(row: Balance) {
-    await this.write(
-      () =>
-        this.api.request(`/finance/provisions/${row.id}/approve`, "POST", {
-          expected_version: row.row_version,
-        }),
-      "Provisión aprobada. El saldo pendiente se arrastra automáticamente.",
-    );
+    }, "Provisión guardada y aprobada automáticamente.");
   }
   async saveInvoice() {
     if (this.invoiceForm.invalid) {
@@ -504,15 +505,22 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     }
     await this.write(async () => {
       const v = this.invoiceForm.getRawValue();
-      const row = await this.api.request<InvoiceRow>(
+      await this.api.request<InvoiceRow>(
         "/finance/invoices",
         "POST",
         { ...v, accounting_period: v.accounting_period + "-01" },
       );
+      this.filters.controls.month.setValue(v.accounting_period);
+      this.applied["month"] = this.month;
+      this.offset.set(0);
       this.invoiceForm.markAsPristine();
       this.formOpen.set(false);
-      this.expandedInvoice.set(row.id);
-    }, "Factura registrada y conciliada con las provisiones disponibles. Revisa el saldo por conciliar en su detalle.");
+      this.expandedInvoice.set("");
+    }, "Factura guardada. Su importe se aplicó a las provisiones disponibles.");
+  }
+  async invoiceImported() {
+    if (this.importer?.month) this.filters.controls.month.setValue(this.importer.month);
+    await this.apply();
   }
   async reconcile(row: InvoiceRow) {
     await this.write(

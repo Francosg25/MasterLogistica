@@ -1,34 +1,27 @@
-<section class="finance-workspace">
-  <div class="workspace-heading">
+<section class="finance-workspace" [class.invoice-workspace]="section === 'invoices'" [class.finance-capture]="formOpen() || importOpen() || cancelTarget()">
+  <div class="workspace-heading finance-heading">
     <div>
       <h1>{{ title }}</h1>
-      <p class="hint">
-        {{
-          section === "history"
-            ? "Quién hizo cada cambio, cuándo y qué valores modificó."
-            : section === "provisions"
-              ? "Cada saldo conserva su referencia y mes de origen hasta quedar liquidado."
-              : "Registra facturas, aplica provisiones y consulta diferencias por referencia."
-        }}
-      </p>
+      <p class="hint">{{ section === 'history' ? 'Quién cambió cada dato y cuándo.' : section === 'provisions' ? 'Las provisiones se aprueban automáticamente al guardarlas.' : 'Carga el Excel y revisa cuánto se aplicó a cada provisión.' }}</p>
     </div>
-    @if (canWrite && section !== "history") {
-      <button
-        class="button primary"
-        (click)="openForm()"
-        [disabled]="busy() || formOpen() || importOpen()"
-      >
-        {{
-          section === "provisions" ? "+ Nueva provisión" : "+ Registrar factura"
-        }}
-      </button>
-    }
+    <div class="finance-buttons">
+      @if (canWrite && section === 'provisions') {
+        <button class="button primary" (click)="openForm()" [disabled]="busy() || formOpen()">+ Nueva provisión</button>
+      }
+      @if (canWrite && section === 'invoices') {
+        <button class="button primary" (click)="importOpen.set(true)" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()">Cargar Excel</button>
+        <button class="button secondary" (click)="openForm()" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()">Agregar factura</button>
+      }
+      @if (section !== 'history') {
+        <details class="finance-tools"><summary>Más opciones</summary>
+          <button class="button subtle" (click)="showReport()" [disabled]="loading() || busy()">Reporte mensual</button>
+          <p>Las facturas se aplican por referencia, empresa, proveedor, concepto y moneda. El Excel usa USD AMOUNT; la captura manual usa el importe neto.</p>
+        </details>
+      }
+    </div>
   </div>
-  @if (section === "invoices" && canWrite) {
-    <div class="import-entry"><button class="button primary" (click)="importOpen.set(true)" [disabled]="busy() || formOpen() || importOpen()">Subir consolidado Excel</button><span class="hint">Base de conciliación: USD AMOUNT completo.</span></div>
-    @if (importOpen()) {
-      <invoice-import [suppliers]="suppliers" [companies]="catalogs.company_codes" [month]="filters.controls.month.value" (working)="busy.set($event)" (closed)="importOpen.set(false)" (imported)="apply()" />
-    }
+  @if (section === 'invoices' && importOpen()) {
+    <invoice-import [suppliers]="suppliers" [companies]="catalogs.company_codes" [month]="filters.controls.month.value" (working)="busy.set($event)" (closed)="importOpen.set(false)" (imported)="invoiceImported()" />
   }
   @if (demo) {
     <p class="notice">
@@ -99,7 +92,7 @@
               : ["UNDER_REVIEW", "APPROVED", "CANCELLED"];
             track code
           ) {
-            <option [value]="code">{{ labels[code] }}</option>
+            <option [value]="code">{{ section === "invoices" && code === "APPROVED" ? "Aplicada" : section === "invoices" && code === "UNDER_REVIEW" ? "Pendiente" : labels[code] }}</option>
           }
         </select></label
       >
@@ -111,32 +104,7 @@
     >
       Consultar
     </button>
-    @if (canWrite && section !== "history") {
-      <button
-        type="button"
-        class="button subtle"
-        (click)="openPeriod()"
-        [disabled]="busy()"
-      >
-        Abrir periodo
-      </button>
-    }
   </form>
-  @if (section !== "history") {
-    <div class="finance-rule">
-      <span
-        >Excel: <strong>USD AMOUNT completo</strong>. Captura manual: importe neto.
-        Coincidencia por referencia, empresa, proveedor, concepto y moneda. USD
-        y MXN se muestran separados.</span
-      ><button
-        class="button secondary"
-        (click)="showReport()"
-        [disabled]="loading() || busy()"
-      >
-        Reporte mensual
-      </button>
-    </div>
-  }
   @if (section === "provisions" && totals().length) {
     <div class="finance-summary">
       @for (total of totals(); track total.currency) {
@@ -173,7 +141,7 @@
           {{
             section === "provisions"
               ? "Nueva provisión"
-              : "Registrar factura y conciliar"
+              : "Agregar factura"
           }}
         </h2>
         <button class="button subtle" [disabled]="busy()" (click)="closeForm()">
@@ -239,14 +207,7 @@
                   formControlName="charge_code"
                   required
                 >@for (concept of concepts; track concept) {<option [value]="concept">{{ concept }}</option>}</select></label>
-              <label
-                >Línea de costo<input
-                  formControlName="line_no"
-                  type="number"
-                  min="1"
-                  step="1"
-                  required
-              /></label>
+
               <label
                 >Fecha de provisión<input
                   formControlName="provision_date"
@@ -269,6 +230,9 @@
                   title="Usa punto decimal y hasta cuatro decimales"
                   required
               /></label>
+
+            </div>
+            <details class="finance-extra"><summary>Más datos: cargos extra o línea de costo</summary><div class="finance-form-grid">
               <label
                 >Cargos extra netos<input
                   formControlName="extra_charges"
@@ -278,19 +242,24 @@
                   maxlength="19"
                   title="Usa punto decimal y hasta cuatro decimales"
                   required
+              /></label>              <label
+                >Línea de costo<input
+                  formControlName="line_no"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
               /></label>
-            </div>
+            </div></details>
             <p class="hint">
-              El mes de la fecha seleccionada debe estar abierto. Usa una línea distinta para cada
-              costo adicional de la misma referencia, proveedor y concepto.
-              Primero se guarda un borrador; después se aprueba.
+              Usa una línea distinta para cada costo adicional de la misma referencia, proveedor y concepto. Se aprueba automáticamente al guardar.
             </p>
             <button
               class="button primary"
               type="submit"
               [disabled]="provisionForm.invalid || busy()"
             >
-              Guardar borrador
+              Guardar provisión
             </button>
           </fieldset>
         </form>
@@ -414,14 +383,11 @@
                 type="submit"
                 [disabled]="invoiceForm.invalid || busy()"
               >
-                Registrar y conciliar
+                Guardar factura
               </button>
             </div>
             <p class="hint">
-              Aplica el neto a las provisiones aprobadas más antiguas. Si no hay
-              saldo compatible, el importe queda por conciliar. Los impuestos se
-              conservan por separado. El folio no puede repetirse para la misma
-              empresa y proveedor.
+              Al guardar, el importe se aplica automáticamente a las provisiones disponibles. Si queda una diferencia, aparecerá como pendiente.
             </p>
           </fieldset>
         </form>
@@ -498,9 +464,6 @@
               <th class="number">Provisión aplicada</th>
               <th class="number">Saldo final</th>
               <th>Estado</th>
-              @if (canWrite) {
-                <th>Acción</th>
-              }
             </tr>
           </thead>
           <tbody>
@@ -533,19 +496,6 @@
                     >{{ labels[row.status] }}</span
                   >
                 </td>
-                @if (canWrite) {
-                  <td>
-                    @if (row.current_status === "DRAFT") {
-                      <button
-                        class="button secondary"
-                        [disabled]="busy()"
-                        (click)="approve(row)"
-                      >
-                        Aprobar
-                      </button>
-                    }
-                  </td>
-                }
               </tr>
             }
           </tbody>
@@ -555,12 +505,11 @@
           <thead>
             <tr>
               <th>Factura / proveedor</th>
-              <th>Registro</th>
+              <th>Fecha</th>
               <th>Moneda</th>
-              <th class="number">Importe conciliable</th>
-              <th class="number">Impuestos</th>
+              <th class="number">Importe</th>
               <th class="number">Aplicado</th>
-              <th class="number">Sin provisión / excedente</th>
+              <th class="number">Pendiente</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -574,17 +523,16 @@
                     >{{ row.supplier_name }} · {{ row.company_code }}</small
                   >
                 </td>
-                <td>{{ row.accounting_period.slice(0, 7) }}</td>
+                <td>{{ row.issue_date.split('-').reverse().join('/') }}</td>
                 <td>{{ row.currency }}</td>
                 <td class="number">{{ money(row.net_amount) }}</td>
-                <td class="number">{{ row.amount_basis === 'USD_AMOUNT' ? 'Incluidos en origen' : money(row.tax_amount) }}</td>
                 <td class="number">{{ money(row.applied_amount) }}</td>
                 <td class="number">{{ money(row.pending_amount) }}</td>
                 <td>
                   <span
                     class="finance-status"
                     [class.settled]="row.status === 'APPROVED'"
-                    >{{ labels[row.status] }}</span
+                    >{{ row.status === "APPROVED" ? "Aplicada" : row.status === "UNDER_REVIEW" ? "Pendiente" : labels[row.status] }}</span
                   >
                 </td>
                 <td>
@@ -599,30 +547,12 @@
                     >
                       Detalle
                     </button>
-                    @if (canWrite && row.status !== "CANCELLED") {
-                      @if (row.status !== "APPROVED") {
-                        <button
-                          class="button secondary"
-                          (click)="reconcile(row)"
-                          [disabled]="busy()"
-                        >
-                          Conciliar
-                        </button>
-                      }
-                      <button
-                        class="button subtle"
-                        (click)="startCancel(row)"
-                        [disabled]="busy()"
-                      >
-                        Cancelar factura
-                      </button>
-                    }
                   </div>
                 </td>
               </tr>
               @if (expandedInvoice() === row.id) {
                 <tr>
-                  <td colspan="9">
+                  <td colspan="8">
                     <div class="invoice-detail">
                       <h3>Referencias de {{ row.invoice_number }}</h3>
                       @if (row.amount_basis === 'USD_AMOUNT') {<p>Base de conciliación: USD AMOUNT completo. Importes originales conservados en el registro de importación.</p><p>{{ row.source_data?.filename }} · {{ row.source_data?.sheet }} · Filas {{ row.source_data?.row_numbers?.join(', ') }}</p>}
@@ -635,6 +565,28 @@
                           {{ money(line.pending_amount) }}
                         </p>
                       }
+                      <p>El importe se aplica automáticamente a las provisiones disponibles. Lo que falta por aplicar aparece como pendiente.</p>
+                      <p>Impuestos: {{ row.amount_basis === 'USD_AMOUNT' ? 'Incluidos en el importe original del Excel' : money(row.tax_amount) + ' ' + row.currency }}</p>
+                      <div class="finance-buttons">
+                    @if (canWrite && row.status !== "CANCELLED") {
+                      @if (row.status !== "APPROVED") {
+                        <button
+                          class="button secondary"
+                          (click)="reconcile(row)"
+                          [disabled]="busy()"
+                        >
+                          Aplicar a provisiones
+                        </button>
+                      }
+                      <button
+                        class="button subtle"
+                        (click)="startCancel(row)"
+                        [disabled]="busy()"
+                      >
+                        Cancelar factura
+                      </button>
+                    }
+                      </div>
                     </div>
                   </td>
                 </tr>

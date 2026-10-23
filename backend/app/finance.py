@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import case, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -73,6 +75,21 @@ def month_check(value):
     if value.day != 1:
         raise HTTPException(422, "Selecciona un mes contable válido")
     return value
+
+
+def ensure_period(session, user, request, month):
+    """Create new months with the capture, preserving existing accounting closures."""
+    month_check(month)
+    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
+    created = session.scalar(
+        insert_row(AccountingPeriod)
+        .values(period_month=month, status="OPEN")
+        .on_conflict_do_nothing(index_elements=[AccountingPeriod.period_month])
+        .returning(AccountingPeriod.period_month)
+    )
+    if created:
+        audit_event(session, request, user, "PERIOD_CREATED", after={"period_month": month})
+    return open_period(session, month)
 
 
 def financial_json(value):
@@ -372,7 +389,7 @@ def create_period(period_month: date, session: DB, user: FinanceWriter, request:
 
 @router.post("/provisions", response_model=ProvisionRead, status_code=201)
 def create_provision(data: ProvisionCreate, session: DB, user: FinanceWriter, request: Request):
-    open_period(session, data.month_accrued)
+    ensure_period(session, user, request, data.month_accrued)
     shipments = lock_shipments(session, [data.shipment_id])
     if not shipments:
         raise HTTPException(404, "Referencia no encontrada")
@@ -386,7 +403,13 @@ def create_provision(data: ProvisionCreate, session: DB, user: FinanceWriter, re
         or data.amount + data.extra_charges <= 0
     ):
         raise HTTPException(422, "Captura moneda e importe neto positivo")
-    row = Provision(id=uuid4(), **data.model_dump(), status="DRAFT")
+    row = Provision(
+        id=uuid4(),
+        **data.model_dump(),
+        status="OPEN",
+        approved_at=datetime.now(UTC),
+        approved_by_id=user.id,
+    )
     session.add(row)
     try:
         session.flush()
@@ -399,10 +422,25 @@ def create_provision(data: ProvisionCreate, session: DB, user: FinanceWriter, re
         session,
         request,
         user,
-        "PROVISION_DRAFT_CREATED",
+        "PROVISION_CREATED",
         shipment_id=row.shipment_id,
         provision_id=row.id,
         after=data.model_dump(mode="json"),
+    )
+    audit_event(
+        session,
+        request,
+        user,
+        "PROVISION_APPROVED",
+        shipment_id=row.shipment_id,
+        provision_id=row.id,
+        after={
+            "status": "OPEN",
+            "automatic": True,
+            "total_amount": row.total_amount,
+            "currency": row.currency,
+            "month_accrued": row.month_accrued,
+        },
     )
     commit(session)
     session.refresh(row)
@@ -420,6 +458,8 @@ def approve(
     lock_shipments(session, [row.shipment_id])
     session.refresh(row, with_for_update=True)
     version_matches(row, data.expected_version)
+    if row.status in {"OPEN", "PARTIALLY_MATCHED", "CLOSED"}:
+        return row
     if (
         row.status != "DRAFT"
         or row.total_amount is None
@@ -454,7 +494,7 @@ def create_invoice(data: InvoiceCreate, session: DB, user: FinanceWriter, reques
 
 
 def register_invoice(data, session, user, request, *, source_data=None, persist=True):
-    open_period(session, data.accounting_period)
+    ensure_period(session, user, request, data.accounting_period)
     supplier_valid(session, data.supplier_id)
     try:
         normalized = normalize_identifier(data.invoice_number)
@@ -567,9 +607,13 @@ def invoices(
     offset: Offset = 0,
     q: str = "",
     status: str | None = None,
+    month: date | None = None,
 ):
     finance_reader(user)
     statement = select(Invoice)
+    if month:
+        month_check(month)
+        statement = statement.where(Invoice.accounting_period == month)
     if q.strip():
         refs = (
             select(InvoiceLine.invoice_id)

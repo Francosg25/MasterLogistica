@@ -12,7 +12,6 @@ test("local configuration creates and edits real records without corporate login
   await expect(page.getByRole("heading", { name: "Acceso al sistema" })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await page.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
@@ -44,7 +43,6 @@ test("local configuration creates and edits real records without corporate login
   await expect(reopened.locator(".local-banner")).toBeVisible();
   await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
-  await reopened.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(reopened.locator('td[data-row="0"][data-field="origin"]')).toHaveText("Origen guardado en SQLite");
   await expect(reopened.locator('td[data-row="0"][data-field="eta"]')).toHaveText("27/10/2026");
   await reopened.locator(".reference-link").first().click();
@@ -61,7 +59,6 @@ test("local responsible masters keep mixed operations separate and save exact pr
   const owner = page.getByLabel("Responsable del master", { exact: true });
   await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "DENI", "MAG", "NAT", "ANDREA", "ALEXA"]);
   await owner.selectOption({ label: "MAG" });
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   let reference = "";
   for (const operation of ["AI", "SI"]) {
     await page.getByRole("button", { name: "Nuevo embarque" }).click();
@@ -82,7 +79,6 @@ test("local responsible masters keep mixed operations separate and save exact pr
   await navigation.getByRole("button", { name: "Provisiones", exact: true }).click();
   await page.getByLabel("Mes contable").fill("2026-10");
   await page.getByRole("button", { name: "Consultar", exact: true }).click();
-  await page.getByRole("button", { name: "Abrir periodo", exact: true }).click();
   await page.getByRole("button", { name: "+ Nueva provisión", exact: true }).click();
   const referenceInput = page.getByRole("combobox", { name: "Referencia del master" });
   await referenceInput.fill(reference);
@@ -94,9 +90,37 @@ test("local responsible masters keep mixed operations separate and save exact pr
   await page.getByLabel("Fecha de provisión").fill("2026-10-23");
   await page.getByLabel("Importe neto", { exact: true }).fill("500");
   await page.screenshot({ path: "test-results/local/provision-date.png", fullPage: true });
-  await page.getByRole("button", { name: "Guardar borrador", exact: true }).click();
+  await page.getByRole("button", { name: "Guardar provisión", exact: true }).click();
   await expect(page.locator(".finance-table tbody")).toContainText("23/10/2026");
   await expect(page.locator(".finance-table tbody")).toContainText("STORAGE");
+  await expect(page.locator(".finance-status")).toHaveText("Viva");
+  await expect(page.getByRole("button", { name: "Aprobar", exact: true })).toHaveCount(0);
+});
+
+test("saving an invoice applies an automatically approved provision without extra steps", async ({ page }) => {
+  await page.goto("/");
+  const balances = await (await page.request.get("/api/v1/finance/balances?month=2026-10-01")).json();
+  const provision = balances.items.find((row: any) => row.charge_code === "STORAGE");
+  expect(provision.current_status).toBe("OPEN");
+  const shipment = await (await page.request.get(`/api/v1/shipments/${provision.shipment_id}`)).json();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Facturas", exact: true }).click();
+  await page.getByRole("button", { name: "Agregar factura", exact: true }).click();
+  await page.getByLabel("Folio de factura", { exact: true }).fill("FACTURA-AUTO-LOCAL");
+  await page.getByLabel("Proveedor de factura", { exact: true }).selectOption(provision.supplier_id);
+  await page.getByRole("combobox", { name: "Empresa de factura", exact: true }).selectOption(shipment.company_code);
+  await page.getByLabel("Fecha de factura", { exact: true }).fill("2026-10-23");
+  await page.getByLabel("Referencia 1", { exact: true }).fill(provision.reference);
+  await page.getByLabel("Concepto 1", { exact: true }).fill("STORAGE");
+  await page.getByLabel("Neto 1", { exact: true }).fill("500");
+  await page.getByRole("button", { name: "Guardar factura", exact: true }).click();
+  await expect(page.locator(".finance-status")).toHaveText("Aplicada");
+  const invoices = await (await page.request.get("/api/v1/finance/invoices?month=2026-10-01")).json();
+  const invoice = invoices.items.find((row: any) => row.invoice_number === "FACTURA-AUTO-LOCAL");
+  expect(Number(invoice.applied_amount)).toBe(500);
+  expect(Number(invoice.pending_amount)).toBe(0);
+  await page.screenshot({ path: "test-results/local/invoices-simple.png", fullPage: true });
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Provisiones", exact: true }).click();
+  await expect(page.locator(".finance-status")).toHaveText("Liquidada");
 });
 
 test("all identification cells and the detail form persist real corrections on the same shipment", async ({ page, browser }) => {
@@ -104,7 +128,6 @@ test("all identification cells and the detail form persist real corrections on t
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   const owner = "f0000000-0000-0000-0000-000000000002";
   await page.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   const before = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items[0];
   for (const [field, value] of [["reference_raw", "REFERENCIA MANUAL DE PRUEBA"], ["business_unit", "M19"], ["operation_code", "R1"], ["company_code", "MXT"]]) {
     await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
@@ -130,7 +153,6 @@ test("all identification cells and the detail form persist real corrections on t
   await reopened.goto("http://127.0.0.1:4200/");
   await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
-  await reopened.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(reopened.locator('td[data-field="reference_raw"] .cell-text').first()).toHaveText("REFERENCIA CORREGIDA EN DETALLE");
   await expect(reopened.locator('td[data-field="business_unit"]').first()).toHaveText("M19");
   await expect(reopened.locator('td[data-field="company_code"]').first()).toHaveText("MXT");

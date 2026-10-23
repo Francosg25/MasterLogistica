@@ -281,7 +281,7 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 ## Vista de demostración
 
-La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. No carga registros hasta abrir el master de un responsable. La demostración sigue siendo de solo lectura.
+La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. El master se carga automáticamente al seleccionar al responsable. La demostración sigue siendo de solo lectura.
 
 ## Edición del master
 
@@ -302,15 +302,14 @@ Los registros modificados permanecen visibles hasta actualizar o volver a aplica
 
 ## Provisiones, facturas e historial
 
-El menú principal incorpora **Provisiones**, **Facturas y conciliación** e **Historial**. La demostración incluye ejemplos financieros ficticios de octubre de 2026 y continúa siendo de solo lectura.
+El menú principal incorpora **Provisiones**, **Facturas** e **Historial**. La demostración incluye ejemplos financieros ficticios de octubre de 2026 y continúa siendo de solo lectura.
 
 ### Flujo financiero
 
-1. Finanzas o Administración selecciona un mes y pulsa **Abrir periodo**. Esto crea un periodo abierto; no cierra ni reemplaza otros meses.
-2. En **Provisiones**, busca o selecciona una referencia existente en la lista con responsable, BU y empresa (también admite flechas y Enter). Captura proveedor, concepto **FREIGHT**, **BROKER** o **STORAGE**, línea de costo, **fecha exacta**, moneda, importe neto y cargos extra. El mes de origen se deriva de la fecha y debe estar abierto. Guarda el borrador y pulsa **Aprobar**. Los borradores no afectan los saldos.
-3. En **Facturas y conciliación**, registra folio, proveedor, empresa, moneda, fecha, periodo y una o varias líneas por referencia. **Registrar y conciliar** aplica automáticamente los importes compatibles. También puedes usar **Subir consolidado Excel**, descrito abajo. La captura manual sigue disponible; no se interpretan archivos PDF/XML.
-4. Si una factura llegó antes que su provisión, queda pendiente. Después de aprobar la provisión, selecciona el mes de aplicación y pulsa **Conciliar** en la factura.
-5. **Reporte mensual** muestra saldos, movimientos y facturas pendientes. **Descargar CSV para Excel** exporta todas las filas del alcance, independientemente de la paginación.
+1. En **Provisiones**, pulsa **Nueva provisión**, selecciona una referencia, proveedor, concepto **FREIGHT**, **BROKER** o **STORAGE**, fecha, moneda e importe. **Guardar provisión** la aprueba automáticamente y la incorpora al saldo. Los cargos extra y la línea de costo están en **Más datos**. Los borradores completos anteriores se activan al consultar la tabla con acceso de Finanzas o Administración.
+2. En **Facturas**, usa **Cargar Excel** para elegir el consolidado, revisar las filas y guardar las facturas listas. El importe se aplica a sus provisiones automáticamente. **Agregar factura** permite la captura manual.
+3. La tabla muestra importe, aplicado y pendiente. **Detalle** abre las referencias, los impuestos y las acciones especiales de la factura. **Más opciones** contiene el reporte mensual y la explicación de las coincidencias.
+4. Los meses nuevos se preparan automáticamente al guardar la primera provisión o factura. Los meses cerrados conservan su cierre. **Historial** muestra quién registró, aprobó, modificó o canceló cada movimiento.
 
 | Provisión | Neto facturado | Resultado |
 | --- | --- | --- |
@@ -352,22 +351,22 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 
 ### Verificación de este bloque
 
-- Build Angular de producción correcto y **34 pruebas de navegador** verificadas, incluyendo importación con vista previa, equivalencias, detalle por referencia, inicio y vista ampliada.
+- Compilación Angular de producción correcta, **262 pruebas de backend sin integración externa** y **50 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **4 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
-![Provisiones y conciliación con datos ficticios](frontend/docs/finance-preview.png)
+![Facturas simplificadas con datos ficticios](frontend/docs/invoices-simple-preview.png)
 
 ![Historial con datos ficticios](frontend/docs/history-preview.png)
 
 ### Importar el consolidado de facturación
 
-1. En **Facturas y conciliación**, abre **Subir consolidado Excel** y elige un mes.
+1. En **Facturas**, abre **Cargar Excel** y elige un mes.
 2. Selecciona un `.xlsx` de hasta 10 MB con la hoja `CONSOLIDADO <año>`. Se lee esa hoja; las hojas auxiliares no se importan.
 3. El mes se obtiene de `MOUTH` y el año del nombre de la hoja. Las facturas de otros meses se muestran aparte. La fecha de factura se conserva independientemente del periodo del gasto.
-4. Si una compañía o proveedor no coincide con el catálogo, selecciona su equivalencia y actualiza la vista previa. No se crean proveedores ni embarques automáticamente.
-5. Revisa las pestañas **Listas**, **Revisar**, **Ya registradas** y **Otros meses**. Solo las listas se pueden importar. Abre primero el periodo contable si no existe.
-6. **Importar facturas listas** registra y concilia por lotes de hasta 100 facturas. Cada lote es atómico. Si falla un lote, los anteriores confirmados permanecen guardados; la vista previa reconoce sus facturas al reintentar.
+4. Si una compañía o proveedor no coincide con el catálogo, abre **Corregir nombres del Excel**, selecciona su equivalencia y pulsa **Revisar archivo**. No se crean proveedores ni embarques automáticamente.
+5. Usa **Mostrar** para consultar **Listas**, **Revisar**, **Ya registradas** u **Otros meses**. Solo las listas se pueden guardar. El periodo contable se prepara automáticamente si es nuevo.
+6. **Guardar N facturas** registra y aplica los importes por lotes de hasta 100 facturas. Cada lote es atómico. Si falla un lote, los anteriores confirmados permanecen guardados; la vista previa reconoce sus facturas al reintentar.
 
 La identidad de factura usa compañía, proveedor y folio normalizado. El concepto se toma del primer `TYPE` (Freight, Broker, Storage u Other); se respeta cada concepto sin sumarlos entre sí. La referencia debe coincidir de manera única con un embarque o alias registrado. Un movimiento `PAQUETERIA` sin referencia concreta necesita corregirse o vincularse antes de importar.
 

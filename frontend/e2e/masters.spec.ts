@@ -10,7 +10,7 @@ test("home navigation and expanded master preserve the sheet", async ({ page }) 
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Inicio", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Tu espacio de trabajo." })).toBeVisible();
   await page.screenshot({ path: "test-results/home.png", fullPage: true });
-  await page.locator(".home-grid").getByRole("button", { name: /Abrir masters/ }).click();
+  await page.locator(".home-grid").getByRole("button", { name: /Ver masters/ }).click();
   const normal = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
   await page.getByRole("button", { name: "Ampliar master" }).click();
   await expect(page.getByRole("navigation", { name: "Secciones" })).toBeHidden();
@@ -209,9 +209,6 @@ async function mock(
     await page
       .getByLabel("Responsable del master", { exact: true })
       .selectOption("owner-1");
-    await page
-      .getByRole("button", { name: "Abrir master", exact: true })
-      .click();
     if (!options.collapsed) await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
   }
   return requests;
@@ -242,17 +239,18 @@ test("each responsible master contains its operations without mixing owners", as
   const selector = page.getByLabel("Responsable del master", { exact: true });
   await expect(selector.locator("option")).toHaveCount(6);
   await selector.selectOption("owner-1");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Abrir master", exact: true })).toHaveCount(0);
   await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody")).toContainText("RM1-0001SI26");
   await expect(page.locator("tbody")).toContainText("RM1-0002AI26");
   await expect(page.locator("tbody")).not.toContainText("RM5-");
   await selector.selectOption("owner-5");
-  await expect(page.locator("tbody tr")).toHaveCount(0);
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody")).toContainText("RM5-0002AI26");
   await expect(page.locator("tbody")).not.toContainText("RM1-");
+  await selector.selectOption("");
+  await expect(page.getByRole("heading", { name: "Selecciona un master para comenzar" })).toBeVisible();
+  await expect(page.locator("tbody tr")).toHaveCount(0);
 });
 test("operator can select only their own master", async ({ page }) => {
   const requests = await mock(page, { mixed: true, noMaster: true });
@@ -261,7 +259,6 @@ test("operator can select only their own master", async ({ page }) => {
   await expect(selector.locator("option")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeDisabled();
   await selector.selectOption("owner-1");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody")).not.toContainText("RM2-");
 });

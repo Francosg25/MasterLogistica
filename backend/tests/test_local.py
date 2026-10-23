@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import Request
@@ -331,6 +331,108 @@ def local_financial_environment(tmp_path):
             runtime_engine=app.state.engine,
             app=app,
         )
+
+
+def test_local_saving_provision_opens_month_and_approves_once(local_financial_environment):
+    from app.models import ReconciliationLog
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    shipment = create_shipment(e)
+    payload = dict(
+        shipment_id=shipment["id"],
+        supplier_id=str(e["supplier_id"]),
+        charge_code="FREIGHT",
+        provision_date="2026-11-05",
+        amount="500",
+        extra_charges="0",
+        currency="USD",
+    )
+    row = finance_cases.api(e, "post", "/provisions", payload, expected=201)
+    assert row["status"] == "OPEN"
+    with e["app"].state.session_factory() as session:
+        stored = session.get(Provision, UUID(row["id"]))
+        assert stored.approved_at is not None
+        assert stored.approved_by_id == e["users"]["finance"]["id"]
+        assert session.get(AccountingPeriod, date(2026, 11, 1)).status == "OPEN"
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ReconciliationLog)
+                .where(
+                    ReconciliationLog.provision_id == stored.id,
+                    ReconciliationLog.event_type == "PROVISION_APPROVED",
+                )
+            )
+            == 1
+        )
+    finance_cases.api(
+        e, "post", f"/provisions/{row['id']}/approve", {"expected_version": row["row_version"]}
+    )
+    with e["app"].state.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ReconciliationLog)
+                .where(
+                    ReconciliationLog.provision_id == UUID(row["id"]),
+                    ReconciliationLog.event_type == "PROVISION_APPROVED",
+                )
+            )
+            == 1
+        )
+    balance = finance_cases.balances(e, "2026-11-01")["items"][0]
+    assert balance["status"] == "OPEN" and Decimal(balance["closing_amount"]) == 500
+
+
+def test_local_automatic_period_creation_rolls_back_invalid_provision_and_keeps_closed_month(
+    local_financial_environment,
+):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    shipment = create_shipment(e)
+    payload = dict(
+        shipment_id=shipment["id"],
+        supplier_id=str(e["supplier_id"]),
+        charge_code="FREIGHT",
+        provision_date="2026-12-05",
+        amount="0",
+        extra_charges="0",
+        currency="USD",
+    )
+    finance_cases.api(e, "post", "/provisions", payload, expected=422)
+    with e["app"].state.session_factory() as session:
+        assert session.get(AccountingPeriod, date(2026, 12, 1)) is None
+    with e["admin_engine"].begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE accounting_periods SET status='CLOSING', cutoff_at=CURRENT_TIMESTAMP WHERE period_month='2026-10-01'"
+            )
+        )
+    finance_cases.api(
+        e,
+        "post",
+        "/provisions",
+        {**payload, "provision_date": "2026-10-05", "amount": "500"},
+        expected=409,
+    )
+
+
+def test_local_invoice_month_filter_and_automatic_month_creation(local_financial_environment):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    shipment = create_shipment(e)
+    october = finance_cases.invoice(e, shipment, "100")
+    november = finance_cases.invoice(e, shipment, "200", month="2026-11-01", number="F-NOV")
+    assert [
+        item["id"] for item in finance_cases.api(e, "get", "/invoices?month=2026-10-01")["items"]
+    ] == [october["id"]]
+    assert [
+        item["id"] for item in finance_cases.api(e, "get", "/invoices?month=2026-11-01")["items"]
+    ] == [november["id"]]
+    finance_cases.api(e, "get", "/invoices?month=2026-11-02", expected=422)
 
 
 FINANCIAL_CASES = [
