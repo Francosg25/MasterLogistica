@@ -12,6 +12,8 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 - Inicio con accesos a Masters, Provisiones, Facturas e Historial. Masters por tipo de operación, sin selector de responsable, con vista ampliada y 50 filas por página. Se conserva la propiedad y autorización de cada registro.
 - Detalle: edición con control de concurrencia, pedimentos, BL, contenedores, guías y seguimiento de incidencias.
 - Demostración: disponible sin credenciales, con datos ficticios y sólo lectura. No consulta ni modifica registros operativos.
+- Práctica de masters: edición de ejemplos ficticios, pegado desde Excel y guardado en el navegador, sin conexión a la API. Se abre con **Practicar con el master** y se puede restablecer.
+- Hoja ampliada: ocupa el espacio disponible en escritorio, con texto y filas más grandes, tamaño 100/115/130 %, filtros plegables y navegación que desplaza solo la cuadrícula.
 - Finanzas: provisiones por referencia, aprobación, conciliación de facturas con varias referencias, arrastre mensual, cancelación con reversión y reporte CSV.
 - Historial: usuario, fecha, acción, referencia y valores anteriores/nuevos; filtros y registros inmutables.
 - Importación del consolidado XLSX con vista previa, equivalencias de compañías/proveedores, prevención de duplicados y USD AMOUNT completo. Pendientes: lectura directa de PDF/XML, cierre contable bloqueado y validación en PostgreSQL nativo, Docker y Microsoft Entra ID real.
@@ -35,6 +37,10 @@ Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `n
 ### Sin base de datos: demostración
 
 Si no existe `.env.native`, se abre el modo de **demostración de solo lectura**. Selecciona **Ver demostración** en la pantalla de acceso. Utiliza datos ficticios; no permite guardar embarques, provisiones ni facturas. No necesita PostgreSQL, credenciales Microsoft ni dependencias Python del backend. Un servidor mínimo atiende la configuración de acceso y evita el error de proxy `ECONNREFUSED`.
+
+Para probar la edición, selecciona **Practicar con el master**. Abre un master ficticio con suficientes filas para navegar y paginar. Puedes editar celdas, pegar rangos de Excel, deshacer y pulsar **Guardar cambios**. Los cambios de práctica se conservan en el almacenamiento de ese navegador y dirección, incluso después de recargar; **Restablecer práctica** recupera los ejemplos. No son operaciones reales, no se sincronizan con otro equipo y se pierden al borrar los datos del sitio. Los detalles, documentos y finanzas de la demostración continúan en consulta. La práctica no habilita usuarios, no cambia roles y no envía escrituras al backend.
+
+El mensaje **Solo lectura** explica su causa: demostración o perfil de consulta. En el sistema conectado, Operaciones puede editar sus registros y Administración los registros autorizados; Gerencia y Finanzas consultan el master operativo. El servidor comunica estas capacidades en `references/catalogs.master_access` y mantiene las comprobaciones en cada escritura. Para editar datos reales sigue siendo necesaria la base PostgreSQL de desarrollo y una cuenta Microsoft aprovisionada con el perfil correspondiente.
 
 Para forzar este modo aunque exista una configuración de base de datos:
 
@@ -200,6 +206,8 @@ Los códigos de analista 1–5 identifican a los integrantes de logística en el
 
 ## Verificación
 
+Actualización de Masters: **201 pruebas de backend aprobadas**, **39 de integración pendientes** de PostgreSQL aislado, compilación Angular de producción y **42 casos de navegador comprobados**. Incluye navegación rápida, encabezados/referencia fija, tamaño de la hoja, vista ampliada sin perder cambios, permisos del servidor, práctica persistente, almacenamiento lleno/corrupto y apertura del detalle con teclado. La suite general de 41 casos pasó completa; tras añadir el acceso con Enter se verificaron ese caso y las regresiones de navegación y guardado. Las pruebas de navegador usan datos ficticios y API simulada; no certifican Entra ni la base corporativa.
+
 Frontend:
 
 ```powershell
@@ -231,7 +239,10 @@ La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipogra
 
 ## Edición del master
 
+- **Mostrar filtros** despliega búsqueda y filtros sin reducir permanentemente la hoja. **Tamaño** cambia texto, altura de filas y ancho de columnas a 100/115/130 % y conserva esa preferencia. **Ampliar master** aprovecha la ventana sin descartar cambios.
 - Doble clic, Enter, F2 o **Editar celda** abre la celda seleccionada. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
+- Mantener una flecha mueve la selección y desplaza únicamente el interior de la hoja. Encabezados y referencia fija no ocultan la celda activa. Inicio/Fin van al extremo de la fila; Ctrl+Inicio/Ctrl+Fin a los extremos de la página cargada; RePág/AvPág desplazan la selección una pantalla dentro de esa página.
+- En la columna Referencia, Enter abre el detalle del embarque. Referencia y BU continúan protegidas frente a edición y pegado.
 - Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa` o `aaaa-mm-dd`. Los estados y proveedores se validan contra sus catálogos. Un rango inválido se rechaza completo.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.

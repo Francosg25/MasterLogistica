@@ -13,6 +13,12 @@ export interface AuthConfig {
   scope: string | null;
 }
 export interface Catalogs {
+  master_access?: {
+    can_edit: boolean;
+    can_create: boolean;
+    edit_scope: "ALL" | "OWN" | "NONE";
+    read_only_reason: string | null;
+  };
   version: string;
   process_codes: string[];
   operation_codes: string[];

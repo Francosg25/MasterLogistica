@@ -53,6 +53,8 @@ async function mock(
     count?: number;
     mixed?: boolean;
     noMaster?: boolean;
+    collapsed?: boolean;
+    accessDenied?: boolean;
   } = {},
 ) {
   let rows = options.empty
@@ -103,7 +105,9 @@ async function mock(
         role: options.role ?? "OPERATOR",
         analyst_code: 1,
       });
-    if (path === "/references/catalogs") return json(demoCatalogs);
+    if (path === "/references/catalogs") return json({ ...demoCatalogs,
+      ...(options.accessDenied ? { master_access: { can_edit: false, can_create: false, edit_scope: "NONE", read_only_reason: "La edición operativa no está habilitada para esta sesión." } } : {}),
+    });
     if (path === "/masters/owners")
       return json(
         Array.from(
@@ -206,6 +210,7 @@ async function mock(
     await page
       .getByRole("button", { name: "Abrir master", exact: true })
       .click();
+    if (!options.collapsed) await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
   }
   return requests;
 }
@@ -673,4 +678,88 @@ test("cell actions support touch editing, Escape and save without leaving the ed
     .poll(() => requests.filter((r) => r.method === "PATCH").length)
     .toBe(1);
   await expect(cell(page, 0, "sender")).toHaveText("Proveedor final");
+});
+
+test("rapid arrow navigation scrolls within the grid and clears frozen headers", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mock(page, { count: 60, collapsed: true });
+  const sheet = page.locator(".sheet-scroll");
+  const size = await sheet.boundingBox();
+  expect(size!.height).toBeGreaterThan(340);
+  await cell(page, 0, "status").click();
+  for (let i = 0; i < 45; i++) await page.keyboard.down("ArrowDown");
+  await page.keyboard.up("ArrowDown");
+  await expect(cell(page, 45, "status")).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(cell(page, 45, "comments")).toBeFocused();
+  const visible = await cell(page, 45, "comments").evaluate(element => {
+    const viewport = element.closest(".sheet-scroll")!;
+    const box = viewport.getBoundingClientRect(), cell = element.getBoundingClientRect();
+    return cell.left >= viewport.querySelector("tbody .frozen")!.getBoundingClientRect().right &&
+      cell.right <= box.left + viewport.clientWidth + 1 && cell.top >= box.top + 60 &&
+      cell.bottom <= box.top + viewport.clientHeight + 1;
+  });
+  expect(visible).toBeTruthy();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 45, "status")).toBeFocused();
+  const left = await cell(page, 45, "status").boundingBox();
+  const frozen = await cell(page, 45, "reference_raw").boundingBox();
+  expect(left!.x).toBeGreaterThanOrEqual(frozen!.x + frozen!.width - 1);
+  await page.keyboard.press("Control+Home");
+  await expect(cell(page, 0, "reference_raw")).toBeFocused();
+  await page.screenshot({ path: "test-results/master-large.png", fullPage: true });
+});
+
+test("zoom and expanded layout retain pending edits and keep keyboard navigation usable", async ({ page }) => {
+  await mock(page, { collapsed: true });
+  await pasteCells(page, 0, "origin", "Edición conservada");
+  await page.getByLabel("Tamaño del master").selectOption("130");
+  await expect(cell(page, 0, "origin")).toBeFocused();
+  expect(await cell(page, 0, "origin").evaluate(e => parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThan(18);
+  await page.getByRole("button", { name: "Ampliar master", exact: true }).click();
+  await expect(cell(page, 0, "origin")).toHaveText("Edición conservada");
+  await cell(page, 0, "origin").click();
+  await page.keyboard.press("PageDown");
+  await expect(cell(page, 7, "origin")).toBeFocused();
+  await page.keyboard.press("PageUp");
+  await expect(cell(page, 0, "origin")).toBeFocused();
+  await page.screenshot({ path: "test-results/master-zoom.png", fullPage: true });
+});
+
+test("master explains server permissions instead of enabling editing from the displayed role", async ({ page }) => {
+  const requests = await mock(page, { accessDenied: true, collapsed: true });
+  await expect(page.locator(".sheet-access-reason")).toContainText("no está habilitada");
+  await cell(page, 0, "sender").dblclick();
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Guardar cambios" })).toHaveCount(0);
+  expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
+});
+
+test("wide cells at mobile zoom do not oscillate at the navigation boundary", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mock(page, { collapsed: true });
+  await page.getByLabel("Tamaño del master").selectOption("130");
+  await cell(page, 0, "status").click();
+  await page.keyboard.press("End");
+  await expect(cell(page, 0, "comments")).toBeFocused();
+  const left = await page.locator(".sheet-scroll").evaluate(e => e.scrollLeft);
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 0, "comments")).toBeFocused();
+  await expect.poll(() => page.locator(".sheet-scroll").evaluate(e => e.scrollLeft)).toBe(left);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("reference detail is accessible from the keyboard without trapping arrow navigation", async ({ page }) => {
+  await mock(page, { collapsed: true });
+  await cell(page, 0, "status").click();
+  await page.keyboard.press("ArrowLeft");
+  await expect(cell(page, 0, "reference_raw")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 0, "status")).toBeFocused();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog").getByLabel("Comentarios", { exact: true })).toBeEnabled();
 });

@@ -417,13 +417,13 @@ master-sheet {
   border-spacing: 0;
   width: max-content;
   min-width: 100%;
-  font-size: 12px;
+  font-size: var(--sheet-font-size, 14px);
 }
 .spreadsheet th,
 .spreadsheet td {
   border-right: 1px solid #e3e7e4;
   border-bottom: 1px solid #e3e7e4;
-  height: 35px;
+  height: var(--sheet-row-height, 40px);
   padding: 7px 10px;
   white-space: nowrap;
   overflow: hidden;
@@ -1342,4 +1342,47 @@ textarea {
   .finance-entry .workspace-heading {
     gap: 12px;
   }
+}
+
+/* Masters use the available window; only the grid scrolls on desktop. */
+.filters[hidden] { display: none; }
+.filter-toggle { margin-left: auto; }
+.sheet-zoom { flex-direction: row; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); white-space: nowrap; }
+.sheet-zoom select { width: 80px; }
+.practice-label { color: var(--green); font-size: 12px; font-weight: 500; }
+.sheet-access-reason { padding: 8px 12px; font-size: 12px; line-height: 1.4; color: #5b654f; background: #f7f9f2; border-top: 1px solid var(--border); }
+.demo-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.demo-banner > span { flex: 1 1 260px; }
+.demo-banner .button { min-height: 28px; padding: 3px 8px; font-size: 12px; }
+.sheet-scroll { overscroll-behavior: contain; scroll-behavior: auto; overflow-anchor: none; }
+.spreadsheet .cell-input { font-size: inherit; }
+.spreadsheet .reference-link { font-size: inherit; }
+.spreadsheet td .status { font-size: .86em; }
+.spreadsheet .cell-text { line-height: 1.4; }
+@media (min-width: 761px) and (min-height: 650px) {
+  .master-workspace { height: 100dvh; display: flex; flex-direction: column; }
+  .master-workspace > .topbar, .master-workspace > .workspace-nav { flex-shrink: 0; }
+  .master-workspace .main-content { flex: 1; min-height: 0; padding: 10px 16px 12px; display: flex; flex-direction: column; }
+  .master-workspace .main-content > :not(.masters-panel) { flex-shrink: 0; }
+  .master-workspace .workspace-heading { margin-bottom: 8px; }
+  .master-workspace .workspace-heading h1 { margin-right: auto; }
+  .master-workspace .master-selector { margin-bottom: 8px; }
+  .master-workspace .master-selector label { flex-direction: row; align-items: center; width: auto; gap: 10px; }
+  .master-workspace .master-selector select { width: 280px; }
+  .master-workspace .masters-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .master-workspace .active-master { padding: 4px 12px; min-height: 36px; }
+  .master-workspace .masters-panel > :not(master-sheet) { flex-shrink: 0; }
+  .master-workspace master-sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .master-workspace master-sheet > :not(.sheet-scroll) { flex-shrink: 0; }
+  .master-workspace .sheet-scroll { flex: 1; min-height: 100px; max-height: none; }
+  .master-workspace .sheet-actions { padding: 6px 10px; gap: 6px; }
+  .master-workspace .table-footer { min-height: 40px; }
+  .master-workspace .demo-banner { margin-bottom: 8px; padding: 6px 10px; }
+  .master-workspace .filters { padding: 8px 12px; }
+  .sheet-focus .main-content { padding: 8px; }
+}
+@media (max-width: 760px), (max-height: 649px) {
+  .sheet-scroll { height: 55dvh; max-height: none; }
+  .sheet-zoom { margin-left: 0; }
+  .sheet-access-reason { font-size: 11px; }
 }

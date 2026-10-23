@@ -30,7 +30,7 @@ class EmptySession:
 
 @pytest.fixture
 def scoped_client(settings, rsa_key):
-    actor = SimpleNamespace(id=uuid4(), role="OPERATOR")
+    actor = SimpleNamespace(id=uuid4(), role="OPERATOR", analyst_code=1)
     db = EmptySession()
     app = create_app(settings, lambda token: rsa_key.public_key())
     app.dependency_overrides[current_user] = lambda: actor
@@ -117,3 +117,29 @@ def test_readonly_operational_roles_cannot_write_through_api(scoped_client, role
     actor.role = role
     assert client.request(method, "/api/v1" + path, json={}).status_code == 403
     assert db.queries == []
+
+
+@pytest.mark.parametrize(
+    "role,can_edit,scope",
+    [("OPERATOR", True, "OWN"), ("SUPER_ADMIN", True, "ALL"),
+     ("MANAGER", False, "NONE"), ("FINANCE", False, "NONE")],
+)
+def test_catalog_explains_master_access_from_authenticated_role(scoped_client, role, can_edit, scope):
+    client, actor, db = scoped_client
+    actor.role = role
+    response = client.get("/api/v1/references/catalogs", params={"role": "SUPER_ADMIN"})
+    assert response.status_code == 200
+    access = response.json()["master_access"]
+    assert access["can_edit"] is can_edit
+    assert access["can_create"] is can_edit
+    assert access["edit_scope"] == scope
+    assert bool(access["read_only_reason"]) is (not can_edit)
+    assert db.queries == []
+
+
+def test_operator_without_analyst_can_edit_but_cannot_create(scoped_client):
+    client, actor, _ = scoped_client
+    actor.analyst_code = None
+    access = client.get("/api/v1/references/catalogs").json()["master_access"]
+    assert access["can_edit"] is True
+    assert access["can_create"] is False

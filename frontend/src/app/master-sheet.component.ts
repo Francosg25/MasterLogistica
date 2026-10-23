@@ -2,6 +2,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  OnDestroy,
   computed,
   inject,
   input,
@@ -10,6 +11,7 @@ import {
 } from "@angular/core";
 import { ApiError, ApiService } from "./api.service";
 import { Shipment, STATUS, Supplier } from "./types";
+import { MasterPracticeService } from "./master-practice.service";
 
 interface Column {
   key: keyof Shipment;
@@ -29,11 +31,14 @@ interface Position {
   standalone: true,
   templateUrl: "./master-sheet.component.html",
 })
-export class MasterSheetComponent {
+export class MasterSheetComponent implements OnDestroy {
   private api = inject(ApiService);
+  private practiceStore = inject(MasterPracticeService);
   private element: ElementRef<HTMLElement> = inject(ElementRef);
   rows = input.required<Shipment[]>();
   readOnly = input(true);
+  readOnlyReason = input("Tu perfil permite consultar esta hoja. La edición requiere permisos de Operaciones o Administración.");
+  practice = input(false);
   offset = input(0);
   suppliers = input<Supplier[]>([]);
   operation = input("");
@@ -51,18 +56,37 @@ export class MasterSheetComponent {
   editing = signal<Position | null>(null);
   editValue = "";
   private history: Changes[] = [];
+  private focusFrame = 0;
+  zoom = signal(this.loadZoom());
+  readonly zoomLevels = [100, 115, 130];
+  private loadZoom(): number {
+    try {
+      const value = Number(localStorage.getItem("masterlogistica.sheet-zoom"));
+      return [100, 115, 130].includes(value) ? value : 100;
+    } catch { return 100; }
+  }
+  setZoom(value: string): void {
+    const zoom = Number(value);
+    if (!this.zoomLevels.includes(zoom)) return;
+    this.zoom.set(zoom);
+    try { localStorage.setItem("masterlogistica.sheet-zoom", value); } catch { /* Preference is optional. */ }
+    this.focus();
+  }
+  tableWidth = computed(() => 44 + this.columns().reduce((sum, column) => sum + column.width * this.zoom() / 100, 0));
+  ngOnDestroy(): void { cancelAnimationFrame(this.focusFrame); }
   readonly status = STATUS;
   readonly statusCodes = Object.keys(STATUS);
+  private supplierNames = computed(() => new Map(this.suppliers().map(s => [s.id, s.legal_name])));
   readonly columns = computed<Column[]>(() => [
     { key: "reference_raw", label: "Referencia", width: 265, kind: "locked" },
     { key: "status", label: "Estado", width: 144, kind: "status" },
     { key: "business_unit", label: "BU", width: 75, kind: "locked" },
-    { key: "ship_date", label: "Fecha de embarque", width: 155, kind: "date" },
+    { key: "ship_date", label: "Fecha de embarque", width: 175, kind: "date" },
     { key: "eta", label: "ETA", width: 135, kind: "date" },
     {
       key: "delivery_date",
       label: "Fecha de entrega",
-      width: 150,
+      width: 175,
       kind: "date",
     },
     {
@@ -145,7 +169,7 @@ export class MasterSheetComponent {
     const value = this.value(row, column);
     if (column.kind === "status") return STATUS[value] ?? value;
     if (column.kind === "supplier")
-      return this.suppliers().find((s) => s.id === value)?.legal_name ?? value;
+      return this.supplierNames().get(value) ?? value;
     if (column.kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(value))
       return value.split("-").reverse().join("/");
     return value;
@@ -173,27 +197,58 @@ export class MasterSheetComponent {
     return (
       !this.readOnly() &&
       !this.saving() &&
+      !!this.rows()[row] &&
+      !!this.columns()[col] &&
       this.columns()[col]?.kind !== "locked" &&
       !this.blocked.has(this.rows()[row]?.id)
     );
   }
   private focus(): void {
-    const { row, col } = this.active();
-    this.element.nativeElement
-      .querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`)
-      ?.focus({ preventScroll: true });
-    this.element.nativeElement
-      .querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`)
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    // Coalesce key repeats into one layout pass. Scroll only the sheet, accounting
+    // for sticky headers/reference; scrollIntoView also moves the document and
+    // can leave the selected cell underneath a frozen column.
+    cancelAnimationFrame(this.focusFrame);
+    this.focusFrame = requestAnimationFrame(() => {
+      const { row, col } = this.active();
+      const host = this.element.nativeElement;
+      const cell = host.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`);
+      const viewport = host.querySelector<HTMLElement>(".sheet-scroll");
+      if (!cell || !viewport || this.editing()) return;
+      cell.focus({ preventScroll: true });
+      const box = viewport.getBoundingClientRect();
+      const target = cell.getBoundingClientRect();
+      const headers = host.querySelector("thead")!.getBoundingClientRect().height;
+      const frozen = host.querySelector<HTMLElement>("tbody .frozen")!;
+      const pinned = getComputedStyle(frozen).position === "sticky";
+      const left = box.left + 44 + (pinned && col > 0 ? frozen.offsetWidth : 0) + 2;
+      const right = box.left + viewport.clientWidth - 2;
+      const top = box.top + headers + 2;
+      const bottom = box.top + viewport.clientHeight - 2;
+      if (!(pinned && col === 0)) {
+        if (target.width > right - left) viewport.scrollLeft += target.left - left;
+        else if (target.left < left) viewport.scrollLeft -= left - target.left;
+        else if (target.right > right) viewport.scrollLeft += target.right - right;
+      }
+      if (target.height > bottom - top) viewport.scrollTop += target.top - top;
+      else if (target.top < top) viewport.scrollTop -= top - target.top;
+      else if (target.bottom > bottom) viewport.scrollTop += target.bottom - bottom;
+    });
   }
   pick(row: number, col: number, extend = false): void {
+    if (!this.rows()[row] || !this.columns()[col]) return;
     if (!this.commit()) return;
     this.active.set({ row, col });
     if (!extend) this.anchor.set({ row, col });
     this.focus();
   }
   begin(row: number, col: number, initial?: string): void {
-    if (!this.editable(row, col) || !this.commit()) return;
+    if (!this.editable(row, col)) {
+      this.notice.set(this.readOnly() ? this.readOnlyReason() :
+        this.columns()[col]?.kind === "locked" ? "Referencia y BU forman parte de la identidad del embarque y están protegidas." :
+        "Esta fila está bloqueada. Revisa el aviso y recárgala antes de editar.");
+      return;
+    }
+    if (!this.commit()) return;
     this.active.set({ row, col });
     this.anchor.set({ row, col });
     this.editValue =
@@ -352,7 +407,8 @@ export class MasterSheetComponent {
     );
   }
   key(event: KeyboardEvent): void {
-    if (event.target instanceof HTMLButtonElement) return;
+    if (!this.rows().length || this.editing()) return;
+    if (event.target instanceof HTMLButtonElement && !event.target.closest("td")) return;
     const command = event.ctrlKey || event.metaKey;
     if (command && event.key.toLowerCase() === "s") {
       event.preventDefault();
@@ -370,6 +426,20 @@ export class MasterSheetComponent {
       ArrowLeft: [0, -1],
       ArrowRight: [0, 1],
     };
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      this.pick(command ? (event.key === "Home" ? 0 : this.rows().length - 1) : this.active().row,
+        event.key === "Home" ? 0 : this.columns().length - 1, event.shiftKey);
+      return;
+    }
+    if (event.key === "PageUp" || event.key === "PageDown") {
+      event.preventDefault();
+      const viewport = this.element.nativeElement.querySelector<HTMLElement>(".sheet-scroll");
+      const cell = this.element.nativeElement.querySelector<HTMLElement>("td");
+      const step = Math.max(1, Math.floor(((viewport?.clientHeight ?? 300) - 64) / (cell?.offsetHeight ?? 40)) - 1);
+      this.move(step * (event.key === "PageUp" ? -1 : 1), 0, event.shiftKey);
+      return;
+    }
     if (arrows[event.key]) {
       event.preventDefault();
       this.move(arrows[event.key][0], arrows[event.key][1], event.shiftKey);
@@ -382,6 +452,10 @@ export class MasterSheetComponent {
     }
     if (["Enter", "F2"].includes(event.key)) {
       event.preventDefault();
+      if (event.key === "Enter" && this.activeColumn().key === "reference_raw") {
+        this.opened.emit(this.rows()[this.active().row]);
+        return;
+      }
       this.begin(this.active().row, this.active().col);
       return;
     }
@@ -553,7 +627,7 @@ export class MasterSheetComponent {
       if (this.blocked.has(id)) continue;
       const original = this.rows().find((row) => row.id === id)!;
       try {
-        const row = await this.api.request<Shipment>(
+        const row = this.practice() ? this.practiceStore.save(original, patch) : await this.api.request<Shipment>(
           `/shipments/${id}`,
           "PATCH",
           { ...patch, expected_version: original.row_version },
@@ -587,7 +661,7 @@ export class MasterSheetComponent {
     this.saving.set(false);
     if (saved)
       this.notice.set(
-        `${saved} ${saved === 1 ? "fila guardada" : "filas guardadas"}.${this.dirtyCount() ? ` Quedan ${this.dirtyCount()} pendientes.` : ""}`,
+        `${saved} ${saved === 1 ? "fila guardada" : "filas guardadas"}${this.practice() ? " en este navegador" : ""}.${this.dirtyCount() ? ` Quedan ${this.dirtyCount()} pendientes.` : ""}`,
       );
   }
   async reloadRow(row: Shipment): Promise<void> {

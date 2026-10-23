@@ -14,6 +14,7 @@ import { ReferenceActivityComponent } from "./reference-activity.component";
 import { AuthService } from "./auth.service";
 import { ShipmentEditorComponent } from "./shipment-editor.component";
 import { MasterSheetComponent } from "./master-sheet.component";
+import { MasterPracticeService } from "./master-practice.service";
 import {
   Catalogs,
   Identifier,
@@ -61,9 +62,12 @@ export class AppComponent implements OnInit {
   @ViewChild(MasterSheetComponent) sheet?: MasterSheetComponent;
   readonly auth = inject(AuthService);
   private api = inject(ApiService);
+  private practiceStore = inject(MasterPracticeService);
   phase = signal<"loading" | "login" | "workspace">("loading");
   user = signal<User | null>(null);
   demo = signal(false);
+  practice = signal(false);
+  filtersVisible = signal(false);
   catalog = signal<Catalogs | null>(null);
   suppliers = signal<Supplier[]>([]);
   owners = signal<Owner[]>([]);
@@ -102,8 +106,15 @@ export class AppComponent implements OnInit {
   canWrite = computed(
     () =>
       !this.demo() &&
-      ["OPERATOR", "SUPER_ADMIN"].includes(this.user()?.role ?? ""),
+      ["OPERATOR", "SUPER_ADMIN"].includes(this.user()?.role ?? "") &&
+      this.catalog()?.master_access?.can_edit !== false,
   );
+  canEditSheet = computed(() => this.canWrite() || (this.demo() && this.practice()));
+  readOnlyReason = computed(() => {
+    if (this.demo()) return "Estás en una demostración con datos ficticios. Activa la práctica para editar una copia en este navegador. Para guardar operaciones reales, inicia sesión con Microsoft y conecta la base de desarrollo.";
+    return this.catalog()?.master_access?.read_only_reason ??
+      `Tu perfil de ${this.roleName()} permite consultar los masters. La edición operativa corresponde a Operaciones y Administración.`;
+  });
   masterOwner = signal("");
   masterOperation = signal("");
   masterReady = computed(
@@ -173,6 +184,7 @@ export class AppComponent implements OnInit {
   canCreate = computed(
     () =>
       this.canWrite() &&
+      this.catalog()?.master_access?.can_create !== false &&
       this.masterReady() &&
       this.user()?.analyst_code != null &&
       !!this.catalog()?.business_units_configured,
@@ -231,6 +243,7 @@ export class AppComponent implements OnInit {
     if (this.sheet && !this.sheet.canLeave()) return;
     if (this.demo()) {
       this.demo.set(false);
+      this.practice.set(false);
       this.user.set(null);
       this.catalog.set(null);
       this.rows.set([]);
@@ -271,9 +284,10 @@ export class AppComponent implements OnInit {
     });
     this.phase.set("workspace");
   }
-  async preview(): Promise<void> {
+  async preview(practice = false): Promise<void> {
     const data = await import("./demo");
     this.demo.set(true);
+    this.practice.set(false);
     this.user.set(data.demoUser);
     this.catalog.set(data.demoCatalogs);
     this.owners.set(data.demoOwners);
@@ -288,6 +302,30 @@ export class AppComponent implements OnInit {
     this.resetMaster();
     this.masterSelection.reset();
     this.phase.set("workspace");
+    if (practice) await this.enablePractice();
+  }
+  async enablePractice(): Promise<void> {
+    if (!this.demo() || (this.sheet && !this.sheet.canLeave())) return;
+    this.section.set("masters");
+    try {
+      this.demoRows = this.practiceStore.start(this.demoRows);
+      this.practice.set(true);
+      if (this.masterReady()) await this.refresh();
+      else {
+        this.masterSelection.patchValue({ operation_code: "SI" });
+        await this.chooseMaster();
+      }
+    } catch (error) { this.error.set(this.message(error)); }
+  }
+  async resetPractice(): Promise<void> {
+    if (!this.demo() || (this.sheet && !this.sheet.canLeave())) return;
+    if (!window.confirm("¿Restablecer los datos ficticios? Se borrarán solo los cambios de práctica de este navegador.")) return;
+    try {
+      const data = await import("./demo");
+      this.practiceStore.reset();
+      this.demoRows = data.masterDemoShipments;
+      await this.enablePractice();
+    } catch (error) { this.error.set(this.message(error)); }
   }
   async apply(): Promise<void> {
     if (!this.masterReady()) return;
@@ -333,6 +371,7 @@ export class AppComponent implements OnInit {
     this.summary.set(null);
     try {
       if (this.demo()) {
+        if (this.practice()) this.demoRows = this.practiceStore.refresh();
         const rows = this.demoRows.filter((row) =>
           Object.entries(this.applied).every(([key, value]) => {
             if (key === "q")
@@ -442,6 +481,7 @@ export class AppComponent implements OnInit {
     this.detailRequest++;
   }
   updateSheetRow(row: Shipment): void {
+    if (this.demo() && this.practice()) this.demoRows = this.practiceStore.rows;
     const previous = this.rows().find((item) => item.id === row.id);
     if (
       !previous ||

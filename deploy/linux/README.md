@@ -12,6 +12,8 @@ INICIAR_LOCAL.cmd
 
 Conserva esa ventana abierta. Sin `.env.native` utiliza la demostración de solo lectura. Para guardar datos, copia `.env.native.example` a `.env.native` y completa PostgreSQL de desarrollo, Entra y los catálogos; el DBA debe preparar los roles y el esquema o proporcionar la identidad de migración. Después usa el mismo comando. `DETENER_LOCAL.cmd`, `VER_ESTADO.cmd` y `VER_LOGS.cmd` controlan esa sesión. `--demo` fuerza la demostración.
 
+La pantalla de acceso también ofrece **Practicar con el master**: permite editar ejemplos y guardarlos solo en el navegador, sin PostgreSQL ni Entra. Es una copia ficticia para probar la tabla, independiente de los datos operativos. El guardado real continúa requiriendo la configuración y los permisos anteriores.
+
 El inicio reutiliza Angular ya instalado y comprueba la versión de Node. Para usar un Python autorizado con las dependencias ya disponibles: `INICIAR_LOCAL.cmd --python "C:\ruta\python.exe" --skip-install`. Esto no modifica Application Control ni las políticas del equipo. Con los paquetes disponibles, el arranque local no descarga imágenes ni requiere Docker/WSL.
 
 ## 1. Preparar una entrega

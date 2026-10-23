@@ -27,11 +27,14 @@
       <button class="button secondary full" (click)="preview()">
         Ver demostración
       </button>
-      <p class="hint">Datos ficticios · Solo lectura</p>
+      <button class="button primary full" (click)="preview(true)">
+        Practicar con el master
+      </button>
+      <p class="hint">La práctica permite editar datos ficticios y guardarlos solo en este navegador.</p>
     </section>
   </main>
 } @else {
-  <div class="workspace" [class.sheet-focus]="focusedSheet() && section() === 'masters'">
+  <div class="workspace" [class.master-workspace]="section() === 'masters'" [class.sheet-focus]="focusedSheet() && section() === 'masters'">
     <header class="topbar">
       <div class="wordmark">
         <span class="brand-mark">M</span><strong>MasterLogistica</strong
@@ -65,7 +68,11 @@
     <main class="main-content" id="main">
       @if (demo()) {
         <div class="demo-banner">
-          Demostración · Datos ficticios · Solo lectura
+          <span>{{ practice() && section() === 'masters' ? 'Práctica · Datos ficticios · Guardado en este navegador' : 'Demostración · Datos ficticios · Solo lectura' }}</span>
+          @if (!practice()) {
+            <button class="button secondary" (click)="enablePractice()">Habilitar práctica</button>
+          }
+          <button class="button subtle" (click)="resetPractice()" [disabled]="sheet?.saving()">Restablecer práctica</button>
         </div>
       }
       @if (section() === "home") {
@@ -119,7 +126,7 @@
             </button>
             @if (masterReady()) {
               <span class="access-label">{{
-                canWrite() ? "Edición habilitada" : "Solo lectura"
+                practice() ? "Práctica editable" : canWrite() ? "Edición habilitada" : "Solo lectura"
               }}</span>
             }
           </form>
@@ -167,8 +174,9 @@
               ><span>{{
                 operations[masterOperation()] || masterOperation()
               }}</span>
+              <button class="button subtle filter-toggle" (click)="filtersVisible.set(!filtersVisible())" [attr.aria-expanded]="filtersVisible()" aria-controls="master-filters">{{ filtersVisible() ? 'Ocultar filtros' : 'Mostrar filtros' }}</button>
             </div>
-            <form class="filters" [formGroup]="filters" (ngSubmit)="apply()">
+            <form id="master-filters" class="filters" [hidden]="!filtersVisible()" [formGroup]="filters" (ngSubmit)="apply()">
               <div class="filter-main">
                 <label class="search-label"
                   ><span class="sr-only">Buscar</span
@@ -278,7 +286,9 @@
             } @else if (rows().length) {
               <master-sheet
                 [rows]="rows()"
-                [readOnly]="!canWrite()"
+                [readOnly]="!canEditSheet()"
+                [readOnlyReason]="readOnlyReason()"
+                [practice]="practice()"
                 [suppliers]="suppliers()"
                 [offset]="offset()"
                 [operation]="masterOperation()"

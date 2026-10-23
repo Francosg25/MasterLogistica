@@ -132,8 +132,12 @@ def operational_user(user: User = Depends(current_user)) -> User:
     return user
 
 
+def can_edit_masters(user: User) -> bool:
+    return user.role in {"OPERATOR", "SUPER_ADMIN"}
+
+
 def master_writer(user: User = Depends(current_user)) -> User:
-    if user.role not in {"OPERATOR", "SUPER_ADMIN"}:
+    if not can_edit_masters(user):
         raise HTTPException(403, "This role cannot modify operational masters")
     return user
 

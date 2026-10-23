@@ -34,11 +34,20 @@
           : "Sin cambios pendientes"
     }}</span>
   </div>
+  @if (practice()) { <span class="practice-label">Práctica · Guardado local</span> }
+  <label class="sheet-zoom">Tamaño
+    <select aria-label="Tamaño del master" [value]="zoom()" (change)="setZoom($any($event.target).value)">
+      @for (size of zoomLevels; track size) { <option [value]="size">{{ size }}%</option> }
+    </select>
+  </label>
   <button class="button secondary" (click)="activity.emit(rows()[active().row])" [disabled]="saving() || !rows()[active().row]">Movimientos de referencia</button>
   <button class="button subtle" (click)="exportPage()" [disabled]="saving()">
     Exportar página CSV
   </button>
 </div>
+@if (readOnly()) {
+  <p class="sheet-access-reason">{{ readOnlyReason() }}</p>
+}
 @if (error()) {
   <p class="error sheet-message" role="alert">{{ error() }}</p>
 }
@@ -79,6 +88,8 @@
 </div>
 <div
   class="sheet-scroll"
+  [style.--sheet-font-size]="14 * zoom() / 100 + 'px'"
+  [style.--sheet-row-height]="40 * zoom() / 100 + 'px'"
   role="region"
   aria-label="Hoja del master"
   (copy)="copy($event)"
@@ -86,6 +97,7 @@
 >
   <table
     class="spreadsheet"
+    [style.width.px]="tableWidth()"
     role="grid"
     aria-label="Embarques del master"
     [attr.aria-readonly]="readOnly()"
@@ -94,7 +106,7 @@
     <colgroup>
       <col style="width: 44px" />
       @for (column of columns(); track column.key) {
-        <col [style.width.px]="column.width" />
+        <col [style.width.px]="column.width * zoom() / 100" />
       }
     </colgroup>
     <thead>
@@ -137,6 +149,7 @@
               [attr.data-field]="column.key"
               [attr.tabindex]="isActive(r, c) ? 0 : -1"
               [attr.aria-label]="column.label + ', fila ' + (offset() + r + 1)"
+              [attr.aria-description]="c === 0 ? 'Pulsa Enter para abrir el detalle del embarque.' : null"
               [attr.aria-selected]="isSelected(r, c)"
               [attr.aria-readonly]="!editable(r, c)"
               [class.frozen]="c === 0"
@@ -192,6 +205,7 @@
               } @else if (c === 0) {
                 <button
                   class="reference-link"
+                  tabindex="-1"
                   (click)="$event.stopPropagation(); opened.emit(row)"
                   [disabled]="saving()"
                   [title]="'Abrir detalle y documentos de ' + row.reference_raw"

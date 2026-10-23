@@ -9,7 +9,14 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.auth import admin_user, consolidated, current_user, master_writer, operational_user
+from app.auth import (
+    admin_user,
+    can_edit_masters,
+    consolidated,
+    current_user,
+    master_writer,
+    operational_user,
+)
 from app.db import get_session
 from app.models import (
     AccountingPeriod,
@@ -167,6 +174,9 @@ def me(user: Actor):
 
 @router.get("/references/catalogs", tags=["References"])
 def reference_catalogs(request: Request, user: Actor):
+    can_edit = can_edit_masters(user)
+    units_configured = bool(request.app.state.settings.business_units)
+    analyst_assigned = getattr(user, "analyst_code", None) is not None
     return {
         "version": VERSION,
         "process_codes": sorted(PROCESSES),
@@ -176,6 +186,18 @@ def reference_catalogs(request: Request, user: Actor):
         "business_units_configured": bool(request.app.state.settings.business_units),
         "sequence_digits": 4,
         "company_codes": request.app.state.settings.company_codes,
+        "master_access": {
+            "can_edit": can_edit,
+            "can_create": can_edit and units_configured and analyst_assigned,
+            "edit_scope": "ALL" if user.role == "SUPER_ADMIN" else "OWN" if can_edit else "NONE",
+            "read_only_reason": None if can_edit else (
+                "Tu perfil de Gerencia permite consultar los masters. "
+                "La edición corresponde a Operaciones y Administración."
+                if user.role == "MANAGER" else
+                "Tu perfil de Finanzas permite consultar los masters. "
+                "La edición operativa corresponde a Operaciones y Administración."
+            ),
+        },
     }
 
 
