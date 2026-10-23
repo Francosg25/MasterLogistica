@@ -57,7 +57,7 @@ class NativeTests(unittest.TestCase):
         self.app.state.write_text(json.dumps({"token": self.app.token}))
         with patch.object(native, "CONTROL_PORT", server.server_port):
             status = native.control_request(self.app.state, "status")
-            self.assertEqual(status, {"mode": "demo", "ready": False})
+            self.assertEqual(status, {"mode": "database", "ready": False})
             self.assertTrue(native.control_request(self.app.state, "stop")["stopping"])
         self.assertTrue(self.app.stop.is_set())
 
@@ -136,6 +136,43 @@ class NativeTests(unittest.TestCase):
         ):
             self.app.frontend(args)
         self.assertEqual(run.call_count, 1)
+
+    def test_default_backend_uses_sqlite_without_inheriting_corporate_settings(self):
+        (self.root / "backend").mkdir()
+        (self.root / "backend/requirements.lock").write_text("synthetic")
+        self.app.core.env.update(
+            {
+                "DATABASE_URL": "postgresql+psycopg://localhost/company",
+                "AUTH_MODE": "entra",
+                "ENTRA_TENANT_ID": "corporate",
+                "MIGRATION_DATABASE_URL": "secret",
+                "TRUSTED_PROXY_IPS": '["10.0.0.1"]',
+            }
+        )
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return (
+                (0, "{}")
+                if "-c" in command and "dotenv_values" in command[-2]
+                else (0, "")
+            )
+
+        args = argparse.Namespace(
+            python=sys.executable, install=False, skip_install=True
+        )
+        with patch.object(self.app.core, "run", side_effect=run):
+            self.app.backend(args)
+        self.assertEqual(self.app.core.env["AUTH_MODE"], "development")
+        for key in (
+            "DATABASE_URL",
+            "MIGRATION_DATABASE_URL",
+            "ENTRA_TENANT_ID",
+            "TRUSTED_PROXY_IPS",
+        ):
+            self.assertNotIn(key, self.app.core.env)
+        self.assertFalse(any("alembic" in command for command in calls))
 
 
 if __name__ == "__main__":

@@ -72,6 +72,12 @@ Offset = Annotated[int, Query(ge=0, le=1000000)]
 ADMIN_LOCK = 638917240
 
 
+def lock_administration(session):
+    # Local SQLite transactions already hold BEGIN IMMEDIATE's database write lock.
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_LOCK})
+
+
 def owned(statement, user):
     return statement if consolidated(user) else statement.where(Shipment.owner_id == user.id)
 
@@ -155,9 +161,19 @@ def open_period(session, month):
 @router.get("/auth/config", tags=["Authentication"])
 def auth_config(request: Request):
     s = request.app.state.settings
+    if s.auth_mode == "development":
+        return {
+            "enabled": False,
+            "auth_mode": "development",
+            "storage": "sqlite",
+            "authority": None,
+            "frontend_client_id": None,
+            "scope": None,
+        }
     enabled = s.entra_configured and s.entra_frontend_client_id in s.entra_allowed_client_ids
     return {
         "enabled": enabled,
+        "auth_mode": "entra",
         "authority": s.authority if enabled else None,
         "api_client_id": str(s.entra_api_client_id) if enabled else None,
         "frontend_client_id": str(s.entra_frontend_client_id)
@@ -190,11 +206,13 @@ def reference_catalogs(request: Request, user: Actor):
             "can_edit": can_edit,
             "can_create": can_edit and units_configured and analyst_assigned,
             "edit_scope": "ALL" if user.role == "SUPER_ADMIN" else "OWN" if can_edit else "NONE",
-            "read_only_reason": None if can_edit else (
+            "read_only_reason": None
+            if can_edit
+            else (
                 "Tu perfil de Gerencia permite consultar los masters. "
                 "La edición corresponde a Operaciones y Administración."
-                if user.role == "MANAGER" else
-                "Tu perfil de Finanzas permite consultar los masters. "
+                if user.role == "MANAGER"
+                else "Tu perfil de Finanzas permite consultar los masters. "
                 "La edición operativa corresponde a Operaciones y Administración."
             ),
         },
@@ -224,7 +242,7 @@ def users(session: DB, user: Admin, limit: Limit = 50, offset: Offset = 0):
 @router.post("/users", response_model=UserRead, status_code=201, tags=["Administration"])
 def create_user(data: UserCreate, request: Request, session: DB, user: Admin):
     tenant_id = request.app.state.settings.entra_tenant_id
-    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_LOCK})
+    lock_administration(session)
     row = User(entra_tenant_id=tenant_id, **data.model_dump(exclude={"last_reference_sequence"}))
     session.add(row)
     # Flush inside record_change catches uniqueness failures. Counter references a preassigned UUID.
@@ -238,7 +256,7 @@ def create_user(data: UserCreate, request: Request, session: DB, user: Admin):
 
 @router.patch("/users/{user_id}", response_model=UserRead, tags=["Administration"])
 def patch_user(user_id: UUID, data: UserPatch, request: Request, session: DB, user: Admin):
-    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_LOCK})
+    lock_administration(session)
     row = session.get(User, user_id)
     if row is None:
         raise HTTPException(404, "User not found")

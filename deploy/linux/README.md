@@ -10,11 +10,13 @@ Desde la raíz del proyecto, después de cerrar cualquier sesión anterior que o
 INICIAR_LOCAL.cmd
 ```
 
-Conserva esa ventana abierta. Sin `.env.native` utiliza la demostración de solo lectura. Para guardar datos, copia `.env.native.example` a `.env.native` y completa PostgreSQL de desarrollo, Entra y los catálogos; el DBA debe preparar los roles y el esquema o proporcionar la identidad de migración. Después usa el mismo comando. `DETENER_LOCAL.cmd`, `VER_ESTADO.cmd` y `VER_LOGS.cmd` controlan esa sesión. `--demo` fuerza la demostración.
+Conserva esa ventana abierta. Por defecto inicia la API real y Angular, crea `.data/masterlogistica.db` y permite editar con el usuario **Desarrollo local**. Los registros persisten al reiniciar. No requiere `.env.native`, un servidor de base de datos ni Entra. La plantilla `.env.native.example` permite cambiar catálogos o usar otra ruta SQLite absoluta.
 
-La pantalla de acceso también ofrece **Practicar con el master**: permite editar ejemplos y guardarlos solo en el navegador, sin PostgreSQL ni Entra. Es una copia ficticia para probar la tabla, independiente de los datos operativos. El guardado real continúa requiriendo la configuración y los permisos anteriores.
+Si ya existe `.env.native` con PostgreSQL/Entra, se conserva y sigue usando esa base de desarrollo; para elegir SQLite, guarda ese archivo como respaldo y usa la nueva plantilla. No se transfieren datos entre motores automáticamente. `DETENER_LOCAL.cmd`, `VER_ESTADO.cmd` y `VER_LOGS.cmd` controlan la sesión; `--demo` abre los ejemplos ficticios separados de la base local. Para respaldar SQLite, detén la aplicación y copia su archivo.
 
-El inicio reutiliza Angular ya instalado y comprueba la versión de Node. Para usar un Python autorizado con las dependencias ya disponibles: `INICIAR_LOCAL.cmd --python "C:\ruta\python.exe" --skip-install`. Esto no modifica Application Control ni las políticas del equipo. Con los paquetes disponibles, el arranque local no descarga imágenes ni requiere Docker/WSL.
+El inicio reutiliza Angular ya instalado y comprueba Node. Para un Python autorizado con los paquetes disponibles: `INICIAR_LOCAL.cmd --python "C:\ruta\python.exe" --skip-install`. También puedes iniciar `uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers` desde `backend` y `npm.cmd start` desde `frontend`, con el Python de `.venv`. No hay proceso worker. Consulta la [guía de inicio local](../../README.md#inicio-local-con-un-comando).
+
+El modo SQLite solo admite loopback, sin proxy ni acceso desde otros equipos. **El servidor corporativo utiliza PostgreSQL y Entra**, con el perfil productivo que sigue. El paquete no incluye bases personales ni secretos. Esta separación simplifica el desarrollo local y mantiene el despliegue Linux sin Docker.
 
 ## 1. Preparar una entrega
 
@@ -150,6 +152,8 @@ Los logs de la API omiten tokens, cuerpos de petición y URLs de conexión. Las 
 
 ## Validación de esta configuración
 
-Verificado en el entorno de trabajo: 196 pruebas de backend, 28 pruebas de lanzadores/configuración, 34 pruebas de navegador, inicio/cierre nativo con Angular, configuración systemd y proxy real Nginx/Uvicorn con HTTPS y certificado de prueba verificado. El proxy conserva la autenticación y muestra indisponibilidad si falta la base. La entrega se construye siempre con Angular de producción y verifica su manifiesto.
+Validación de esta actualización: 239 pruebas de backend (38 específicas del modo local SQLite), 29 pruebas de lanzadores/configuración, 42 casos existentes de navegador y una prueba completa con API/Angular reales. El inicio/cierre nativo conserva la base local. La entrega productiva se construyó y excluye SQLite y secretos; su manifiesto permite comprobar integridad.
+
+El perfil productivo mantiene el smoke de Nginx/Uvicorn HTTPS en CI. En esta actualización no se ejecutó ese smoke aquí por faltar Nginx, ni las 39 pruebas de PostgreSQL nativo por faltar la base aislada. La configuración productiva exige PostgreSQL/Entra y rechaza la identidad local. Para el piloto sigue siendo necesaria la validación en el entorno autorizado.
 
 Rollup queda fijado en 4.63.4 con dependencias opcionales Windows/Linux. Angular CLI se actualizó a 21.2.27 dentro de Angular 21; `npm audit` informó cero vulnerabilidades en esta revisión. Estas comprobaciones no sustituyen validar Application Control en el equipo corporativo ni Entra y el clúster reales. Las 39 pruebas de integración que requieren PostgreSQL externo están preparadas en CI y no se ejecutaron en este entorno de trabajo.

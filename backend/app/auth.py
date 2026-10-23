@@ -103,6 +103,16 @@ def current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: Session = Depends(get_session),
 ) -> User:
+    if request.app.state.settings.auth_mode == "development":
+        from app.local_access import local_request_allowed
+        from app.local_schema import LOCAL_USER
+
+        if not local_request_allowed(request.scope, request.app.state.settings.allowed_origins):
+            raise HTTPException(403, "Local identity requires a direct loopback connection")
+        user = session.get(User, LOCAL_USER)
+        if user is None or not user.is_active:
+            raise HTTPException(403, "Local development user is not available")
+        return user
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             401, "Bearer access token required", headers={"WWW-Authenticate": "Bearer"}

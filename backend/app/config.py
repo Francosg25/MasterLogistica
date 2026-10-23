@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import re
 from ipaddress import ip_address
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
+
+
+def local_database_url():
+    path = Path(__file__).resolve().parents[2] / ".data" / "masterlogistica.db"
+    return SecretStr(
+        URL.create("sqlite+pysqlite", database=str(path)).render_as_string(hide_password=False)
+    )
 
 
 class Settings(BaseSettings):
@@ -17,7 +25,8 @@ class Settings(BaseSettings):
     )
 
     app_env: Literal["development", "test", "production"] = "development"
-    database_url: SecretStr
+    database_url: SecretStr = Field(default_factory=local_database_url)
+    auth_mode: Literal["development", "entra"] | None = None
     migration_database_url: SecretStr | None = None
     entra_tenant_id: UUID | None = None
     entra_api_client_id: UUID | None = None
@@ -42,14 +51,14 @@ class Settings(BaseSettings):
 
     @field_validator("database_url", "migration_database_url")
     @classmethod
-    def postgres_only(cls, value):
+    def supported_database(cls, value):
         if value is not None:
             try:
                 url = make_url(value.get_secret_value())
             except Exception:
-                raise ValueError("Database URL must be a valid PostgreSQL URL") from None
-            if url.drivername != "postgresql+psycopg":
-                raise ValueError("Use the postgresql+psycopg database driver")
+                raise ValueError("Database URL must be a valid database URL") from None
+            if url.drivername not in {"postgresql+psycopg", "sqlite+pysqlite"}:
+                raise ValueError("Use postgresql+psycopg or local sqlite+pysqlite")
         return value
 
     @field_validator("company_codes")
@@ -89,7 +98,57 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_controls(self):
+        url = make_url(self.database_url.get_secret_value())
+        if self.auth_mode is None:
+            self.auth_mode = "development" if url.drivername == "sqlite+pysqlite" else "entra"
+        if self.auth_mode == "development":
+            if self.app_env not in {"development", "test"} or url.drivername != "sqlite+pysqlite":
+                raise ValueError("Development identity requires local SQLite outside production")
+            if (
+                url.host
+                or url.username
+                or url.password
+                or url.query
+                or not url.database
+                or not Path(url.database).is_absolute()
+            ):
+                raise ValueError(
+                    "Local SQLite requires an absolute file path without URL parameters"
+                )
+            if (
+                self.migration_database_url is not None
+                or self.trusted_proxy_ips
+                or self.enforce_https
+            ):
+                raise ValueError(
+                    "Local development cannot use migration credentials or a trusted proxy"
+                )
+            if not self.allowed_hosts or any(
+                host not in {"localhost", "127.0.0.1", "::1", "[::1]"}
+                for host in self.allowed_hosts
+            ):
+                raise ValueError("Local development hosts must be loopback only")
+            if any(
+                urlsplit(origin).scheme != "http"
+                or urlsplit(origin).hostname not in {"localhost", "127.0.0.1", "::1"}
+                or urlsplit(origin).path not in {"", "/"}
+                or urlsplit(origin).query
+                or urlsplit(origin).fragment
+                or urlsplit(origin).username
+                for origin in self.allowed_origins
+            ):
+                raise ValueError("Local development origins must use HTTP on loopback")
+            if "allowed_origins" not in self.model_fields_set:
+                self.allowed_origins = ["http://127.0.0.1:4200", "http://localhost:4200"]
+            if "company_codes" not in self.model_fields_set:
+                self.company_codes = ["LOCAL"]
+            if "business_units" not in self.model_fields_set:
+                self.business_units = {"T01": "Unidad local A", "T02": "Unidad local B"}
+        elif url.drivername != "postgresql+psycopg":
+            raise ValueError("Corporate identity requires PostgreSQL; SQLite is development only")
         if self.app_env == "production":
+            if self.auth_mode != "entra":
+                raise ValueError("Production requires Entra authentication")
             if not self.entra_configured or not self.entra_allowed_client_ids:
                 raise ValueError("Production requires Entra tenant, API and allowed client IDs")
             if self.entra_frontend_client_id not in self.entra_allowed_client_ids:
@@ -157,7 +216,14 @@ class MigrationSettings(BaseSettings):
     @field_validator("database_url", "migration_database_url")
     @classmethod
     def postgres_only(cls, value):
-        return Settings.postgres_only(value)
+        if value is not None:
+            try:
+                url = make_url(value.get_secret_value())
+            except Exception:
+                raise ValueError("Invalid PostgreSQL migration URL") from None
+            if url.drivername != "postgresql+psycopg":
+                raise ValueError("Corporate migrations require PostgreSQL")
+        return value
 
     @model_validator(mode="after")
     def restricted_job(self):

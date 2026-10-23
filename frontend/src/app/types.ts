@@ -7,6 +7,8 @@ export interface User {
   analyst_code: number | null;
 }
 export interface AuthConfig {
+  auth_mode?: "development" | "entra";
+  storage?: "sqlite";
   enabled: boolean;
   authority: string | null;
   frontend_client_id: string | null;

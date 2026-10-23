@@ -48,7 +48,7 @@
           (click)="logout()"
           [disabled]="sheet?.saving()"
         >
-          {{ demo() ? "Salir de demo" : "Salir" }}
+          {{ demo() ? "Salir de demo" : auth.local ? "Reiniciar sesión local" : "Salir" }}
         </button>
       </div>
     </header>
@@ -66,6 +66,9 @@
       }
     </nav>
     <main class="main-content" id="main">
+      @if (auth.local && !demo()) {
+        <div class="local-banner">Desarrollo local · Guardado en la base de esta computadora (SQLite)</div>
+      }
       @if (demo()) {
         <div class="demo-banner">
           <span>{{ practice() && section() === 'masters' ? 'Práctica · Datos ficticios · Guardado en este navegador' : 'Demostración · Datos ficticios · Solo lectura' }}</span>

@@ -1,6 +1,6 @@
 # MasterLogistica
 
-Aplicación de control de embarques. Incluye backend FastAPI/PostgreSQL y el primer bloque de Masters en Angular 21: acceso Microsoft, consulta, filtros, alta, edición y documentos por operación.
+Aplicación de control de embarques. Incluye backend FastAPI con SQLite local y PostgreSQL corporativo y el primer bloque de Masters en Angular 21: acceso Microsoft, consulta, filtros, alta, edición y documentos por operación.
 
 Preparación de producción: [guía de despliegue corporativo](docs/DESPLIEGUE_EMPRESA.md), con alternativas Linux, solicitud ITPM, licencias, red de entrada/salida y diagnóstico desde las estaciones de usuarios.
 
@@ -11,6 +11,7 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 - Referencias: nomenclatura versionada y catálogo de BU configurable.
 - Inicio con accesos a Masters, Provisiones, Facturas e Historial. Masters por tipo de operación, sin selector de responsable, con vista ampliada y 50 filas por página. Se conserva la propiedad y autorización de cada registro.
 - Detalle: edición con control de concurrencia, pedimentos, BL, contenedores, guías y seguimiento de incidencias.
+- Desarrollo local: API real, base SQLite persistente y usuario local con permisos de edición; sin Docker, servidor de base de datos ni cuenta Microsoft.
 - Demostración: disponible sin credenciales, con datos ficticios y sólo lectura. No consulta ni modifica registros operativos.
 - Práctica de masters: edición de ejemplos ficticios, pegado desde Excel y guardado en el navegador, sin conexión a la API. Se abre con **Practicar con el master** y se puede restablecer.
 - Hoja ampliada: ocupa el espacio disponible en escritorio, con texto y filas más grandes, tamaño 100/115/130 %, filtros plegables y navegación que desplaza solo la cuadrícula.
@@ -34,41 +35,78 @@ El lanzador inicia los servicios locales y abre **http://127.0.0.1:4200/** cuand
 
 Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `npm.cmd start` o sesión de DataStage que ocupe los puertos 4200 u 8000. El control local también necesita el puerto 8317 en loopback. El lanzador informa si están ocupados y no termina procesos de otras aplicaciones.
 
-### Sin base de datos: demostración
+### Desarrollo local editable (predeterminado)
 
-Si no existe `.env.native`, se abre el modo de **demostración de solo lectura**. Selecciona **Ver demostración** en la pantalla de acceso. Utiliza datos ficticios; no permite guardar embarques, provisiones ni facturas. No necesita PostgreSQL, credenciales Microsoft ni dependencias Python del backend. Un servidor mínimo atiende la configuración de acceso y evita el error de proxy `ECONNREFUSED`.
+Sin configuración adicional, el lanzador prepara `.venv`, inicia **la API real y Angular** y crea automáticamente **`.data/masterlogistica.db`** en la raíz del proyecto. Entras como **Desarrollo local**, con permisos para crear y editar embarques, documentos, provisiones y facturas. Los cambios se guardan en ese archivo y continúan después de cerrar el navegador, detener la aplicación o reiniciar el equipo. La misma API aplica validaciones, control de versiones y auditoría.
 
-Para probar la edición, selecciona **Practicar con el master**. Abre un master ficticio con suficientes filas para navegar y paginar. Puedes editar celdas, pegar rangos de Excel, deshacer y pulsar **Guardar cambios**. Los cambios de práctica se conservan en el almacenamiento de ese navegador y dirección, incluso después de recargar; **Restablecer práctica** recupera los ejemplos. No son operaciones reales, no se sincronizan con otro equipo y se pierden al borrar los datos del sitio. Los detalles, documentos y finanzas de la demostración continúan en consulta. La práctica no habilita usuarios, no cambia roles y no envía escrituras al backend.
+Se crean la compañía `LOCAL`, las BU ficticias `T01`/`T02` y un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
 
-El mensaje **Solo lectura** explica su causa: demostración o perfil de consulta. En el sistema conectado, Operaciones puede editar sus registros y Administración los registros autorizados; Gerencia y Finanzas consultan el master operativo. El servidor comunica estas capacidades en `references/catalogs.master_access` y mantiene las comprobaciones en cada escritura. Para editar datos reales sigue siendo necesaria la base PostgreSQL de desarrollo y una cuenta Microsoft aprovisionada con el perfil correspondiente.
+`.env.native` es opcional. Si quieres cambiar catálogos o la ubicación del archivo, copia `.env.native.example` a `.env.native` y edita sus valores. Si ya tenías una `.env.native` con PostgreSQL/Entra, se conserva y sigue utilizando esa conexión: para elegir SQLite, renómbrala como respaldo y usa la nueva plantilla. No se migra ni borra la base anterior.
 
-Para forzar este modo aunque exista una configuración de base de datos:
+Para respaldar tus datos, detén la aplicación y copia `.data/masterlogistica.db` a una ubicación segura. Es una base personal: no abras el mismo archivo simultáneamente desde varias computadoras ni lo uses como base compartida por regiones. SQLite, configuración y logs están excluidos de Git y del paquete productivo.
 
-```bat
-INICIAR_LOCAL.cmd --demo
-```
+El modo local solo admite solicitudes desde loopback y rechaza proxies y orígenes externos. `APP_ENV=production` exige PostgreSQL y Microsoft Entra: la identidad local no se puede activar en producción.
 
-### Con base de datos: desarrollo completo
+### Arranque manual, similar a DataStage
 
-Para guardar datos necesitas una **base PostgreSQL de desarrollo autorizada** y configurar Microsoft Entra y los usuarios de la aplicación. La aplicación no sustituye PostgreSQL por SQLite ni habilita acceso operativo sin autenticación.
-
-Crea la configuración una sola vez:
+Primera instalación, desde la raíz en CMD (Python 3.13 es un ejemplo compatible):
 
 ```bat
-copy .env.native.example .env.native
+py -3.13 -m venv .venv
+.venv\Scripts\python.exe -m pip install --require-hashes -r backend\requirements.lock
+cd frontend
+npm.cmd ci
 ```
 
-Edita `.env.native` con el endpoint, base y credenciales de desarrollo proporcionados por el DBA. `DATABASE_URL` corresponde al usuario de la API. Usa una base dedicada a desarrollo, nunca una base operativa para pruebas locales. Conserva `APP_ENV=development`.
+Después, en una terminal situada en `MasterLogistica\backend`:
 
-El DBA puede aplicar previamente las migraciones y dejar `MIGRATION_DATABASE_URL` vacía. Si proporciona una identidad separada de migración, el lanzador ejecuta `alembic upgrade head` antes de la API y retira esas credenciales del entorno del proceso de la API. Configura también los valores `ENTRA_*`, las compañías y el catálogo de BU. El aprovisionamiento de usuarios sigue el procedimiento de **Configuración de acceso y catálogos**.
+```bat
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers
+```
 
-Después ejecuta `INICIAR_LOCAL.cmd`. En el primer arranque crea `.venv` e instala los requisitos bloqueados del backend. Si ya dispones de un intérprete con las dependencias aprobadas, puedes indicar su ruta:
+En otra terminal situada en `MasterLogistica\frontend`:
+
+```bat
+npm.cmd start
+```
+
+Abre **http://127.0.0.1:4200/**. Conserva ambas terminales abiertas. **MasterLogistica no necesita `app.worker`**: actualmente sus operaciones se ejecutan en la API. Si usas el lanzador, este abre ambos procesos por ti. El arranque manual toma las variables del entorno y un posible `backend/.env`; sin ellas usa SQLite local. El lanzador toma exclusivamente `.env.native` para la configuración de la aplicación y descarta conexiones corporativas heredadas del entorno.
+
+Para un Python autorizado que ya contenga las dependencias:
 
 ```bat
 INICIAR_LOCAL.cmd --python "C:\ruta\aprobada\python.exe" --skip-install
 ```
 
-`--skip-install` impide instalar dependencias y comprueba que estén disponibles. Las instalaciones requieren acceso autorizado a npm y al repositorio Python, o a sus espejos corporativos. Los bloqueos de Application Control sobre binarios de Node también pueden afectar este modo; se resuelven mediante TI, sin cambiar las políticas del equipo.
+Las instalaciones iniciales requieren acceso a npm y al repositorio Python o a sus espejos corporativos. `--skip-install` comprueba los paquetes y evita instalarlos. Los bloqueos de Application Control deben resolverse mediante TI.
+
+### PostgreSQL de desarrollo (opcional)
+
+Si necesitas comprobar el motor corporativo antes del despliegue, usa una base de desarrollo autorizada y define en `.env.native`:
+
+```dotenv
+APP_ENV=development
+AUTH_MODE=entra
+DATABASE_URL=postgresql+psycopg://masterlogistica_app:PASSWORD@HOST:5432/DEVELOPMENT_DATABASE
+ENTRA_TENANT_ID=ID-DEL-TENANT
+ENTRA_API_CLIENT_ID=ID-DE-LA-API
+ENTRA_FRONTEND_CLIENT_ID=ID-DE-LA-SPA
+ENTRA_ALLOWED_CLIENT_IDS=["ID-DE-LA-SPA"]
+COMPANY_CODES=["JE_MX"]
+BUSINESS_UNITS={"T01":"Descripcion aprobada"}
+```
+
+Completa los identificadores y credenciales reales por el canal autorizado. El DBA prepara el esquema o proporciona `MIGRATION_DATABASE_URL` con un rol separado. El lanzador aplica Alembic si recibe esa identidad y la retira antes de iniciar la API. Aprovisiona los usuarios como indica **Configuración de acceso y catálogos**. Nunca uses una base operativa para pruebas locales.
+
+SQLite permite desarrollar sin instalar un servidor de base de datos. El despliegue corporativo conserva PostgreSQL; SQL Server requeriría adaptar y validar sus migraciones y consultas, y no es necesario para simplificar este inicio.
+
+### Demostración opcional
+
+```bat
+INICIAR_LOCAL.cmd --demo
+```
+
+Abre la pantalla de acceso con **Ver demostración** y **Practicar con el master**. La demostración es de solo lectura y la práctica guarda ejemplos únicamente en el navegador. Ambas siguen separadas de la API y de la base SQLite. Para trabajar con datos locales persistentes, inicia sin `--demo`.
 
 ### Detener y revisar
 
@@ -128,7 +166,7 @@ Desde Windows, `PREPARAR_ENTREGA.cmd` construye Angular en producción y prepara
 
 `deploy/linux/configure.py` genera la configuración a partir del nombre DNS asignado. TI completa endpoint/credenciales PostgreSQL, CA, certificado HTTPS y Entra. La instalación conserva los secretos existentes; la activación comprueba las conexiones, aplica Alembic con el rol migrador y espera la disponibilidad de la API. `scripts/check_deployment.py` permite comprobar HTTPS y configuración pública Entra desde una estación autorizada.
 
-La API acepta encabezados de proxy solo de direcciones individuales configuradas y permanece en loopback. Las conexiones PostgreSQL productivas verifican certificado y nombre de servidor. El modo local continúa usando `INICIAR_LOCAL.cmd`, con demostración de solo lectura si falta `.env.native`.
+La API acepta encabezados de proxy solo de direcciones individuales configuradas y permanece en loopback. Las conexiones PostgreSQL productivas verifican certificado y nombre de servidor. El modo local usa `INICIAR_LOCAL.cmd` con SQLite editable como opción predeterminada; producción utiliza exclusivamente PostgreSQL y Entra.
 
 ## Arranque manual con Docker
 
@@ -170,7 +208,7 @@ Abre **http://127.0.0.1:4200**. Las llamadas `/api` se dirigen a `127.0.0.1:8000
 
 ## Configuración de acceso y catálogos
 
-La aplicación necesita dos registros de Entra: API y SPA. En `.env` para Docker o `.env.native` para el inicio directo, configura `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ENTRA_FRONTEND_CLIENT_ID` y `ENTRA_ALLOWED_CLIENT_IDS` (arreglo JSON que incluya el ID de la SPA). La API espera tokens v2 y el permiso delegado `access_as_user`.
+El perfil corporativo (`AUTH_MODE=entra`) necesita dos registros de Entra: API y SPA. En `.env` para Docker o `.env.native` para el inicio directo, configura `ENTRA_TENANT_ID`, `ENTRA_API_CLIENT_ID`, `ENTRA_FRONTEND_CLIENT_ID` y `ENTRA_ALLOWED_CLIENT_IDS` (arreglo JSON que incluya el ID de la SPA). La API espera tokens v2 y el permiso delegado `access_as_user`.
 
 Registra **http://127.0.0.1:4200/** como URI de redirección de tipo **Single-page application**. Si usas `localhost`, registra también **http://localhost:4200/**. La URL debe coincidir con la que abras. La SPA no usa secretos de cliente.
 
@@ -206,7 +244,11 @@ Los códigos de analista 1–5 identifican a los integrantes de logística en el
 
 ## Verificación
 
-Actualización de Masters: **201 pruebas de backend aprobadas**, **39 de integración pendientes** de PostgreSQL aislado, compilación Angular de producción y **42 casos de navegador comprobados**. Incluye navegación rápida, encabezados/referencia fija, tamaño de la hoja, vista ampliada sin perder cambios, permisos del servidor, práctica persistente, almacenamiento lleno/corrupto y apertura del detalle con teclado. La suite general de 41 casos pasó completa; tras añadir el acceso con Enter se verificaron ese caso y las regresiones de navegación y guardado. Las pruebas de navegador usan datos ficticios y API simulada; no certifican Entra ni la base corporativa.
+Configuración local editable: **239 pruebas de backend aprobadas**, incluidas **38 pruebas locales sobre SQLite**, y **29 pruebas de lanzadores/configuración**. Compilación Angular de producción y **42 casos existentes de navegador** aprobados; además, una prueba completa usa Uvicorn + Angular reales para crear, editar y recuperar los datos desde otra sesión de navegador, sin API simulada. El inicio/cierre del lanzador nativo también se comprobó con la base persistente.
+
+La entrega Linux se construyó y se revisó que excluyera bases SQLite y secretos. **39 pruebas específicas de PostgreSQL nativo** quedan pendientes de la base aislada configurada en CI. Estas pruebas locales no certifican Entra, el clúster ni las políticas del Windows corporativo.
+
+Para repetir la prueba completa de inicio local, con las dependencias de backend y frontend instaladas, ejecuta desde `frontend`: `npx playwright test --config playwright.local.config.ts`. Usa una base temporal y requiere los puertos 4200/8000 libres. `LOCAL_TEST_PYTHON` permite indicar el Python que tiene los paquetes del backend; por defecto usa `python`.
 
 Frontend:
 
@@ -217,7 +259,7 @@ npx.cmd playwright install chromium
 npm.cmd test
 ```
 
-Verificación de la interfaz de hoja de cálculo: **31 pruebas de navegador aprobadas** y build de producción correcto. La ejecución local general del backend registró **166 pruebas aprobadas y 31 pruebas de integración pendientes de PostgreSQL nativo**. Los casos financieros también se comprobaron por separado en PGlite, con los límites descritos abajo.
+Los casos de hoja de cálculo incluyen edición, pegado, conflictos, navegación rápida y permisos. Los casos financieros se ejecutan también sobre SQLite local; la validación específica del motor PostgreSQL se mantiene separada.
 
 Las pruebas de Masters usan un punto de entrada exclusivo de pruebas y respuestas simuladas. La prueba de acceso comprueba el bundle de producción y la demostración con el proveedor de autenticación real, sin iniciar sesión contra Microsoft. El build normal y el Dockerfile no incluyen el proveedor de pruebas.
 
@@ -302,7 +344,7 @@ docker compose run --rm migrate
 docker compose up -d api web
 ```
 
-Sin Docker, detén el backend y el frontend, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend`, utilizando la configuración existente de `MIGRATION_DATABASE_URL` y el intérprete del backend. Después reinicia ambos servicios; desde `frontend`, usa `npm.cmd start`. Recarga el navegador con Ctrl+F5.
+Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. Este primer esquema local se prepara automáticamente. Una futura actualización del esquema local debe incluir su procedimiento de migración; una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
 
 ### Verificación de este bloque
 

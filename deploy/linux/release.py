@@ -24,7 +24,9 @@ def verify(root):
             raise ValueError("La entrega esta incompleta.")
     actual = set()
     for path in root.rglob("*"):
-        if any(part in {".venv", "__pycache__"} for part in path.relative_to(root).parts):
+        if any(
+            part in {".venv", "__pycache__"} for part in path.relative_to(root).parts
+        ):
             continue
         if path.is_symlink():
             raise ValueError("La entrega no debe contener enlaces simbolicos.")

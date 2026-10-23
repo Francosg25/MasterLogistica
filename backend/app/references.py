@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models import ReferenceCounter, User
@@ -117,7 +118,8 @@ def generate_reference(
     if not business_units or business_unit not in business_units:
         raise ValueError("Business unit must belong to the configured approved catalog")
     # UPSERT locks the owner's counter until the transaction commits; rollback consumes no number.
-    statement = insert(ReferenceCounter).values(owner_id=user.id, last_value=1)
+    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
+    statement = insert_row(ReferenceCounter).values(owner_id=user.id, last_value=1)
     statement = statement.on_conflict_do_update(
         index_elements=[ReferenceCounter.owner_id],
         set_={"last_value": ReferenceCounter.last_value + 1},

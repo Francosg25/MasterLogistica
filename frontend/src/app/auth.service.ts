@@ -16,6 +16,7 @@ export class AuthService {
     if (!response.ok)
       throw new Error("No se pudo conectar con el servicio de acceso.");
     this.config = (await response.json()) as AuthConfig;
+    if (this.config.auth_mode === "development") return true;
     const { enabled, authority, frontend_client_id, scope } = this.config;
     if (!enabled || !authority || !frontend_client_id || !scope) return false;
     this.scope = scope;
@@ -44,6 +45,9 @@ export class AuthService {
   get configured(): boolean {
     return !!this.client;
   }
+  get local(): boolean {
+    return this.config?.auth_mode === "development";
+  }
   async login(): Promise<void> {
     if (!this.client)
       throw new Error("Microsoft Entra ID aún no está configurado.");
@@ -52,7 +56,8 @@ export class AuthService {
       prompt: "select_account",
     });
   }
-  async token(): Promise<string> {
+  async token(): Promise<string | null> {
+    if (this.local) return null;
     const account = this.client?.getActiveAccount();
     if (!this.client || !account)
       throw new Error("Inicia sesión para continuar.");
@@ -72,6 +77,10 @@ export class AuthService {
     }
   }
   async logout(): Promise<void> {
+    if (this.local) {
+      window.location.reload();
+      return;
+    }
     await this.client?.logoutRedirect({
       account: this.client.getActiveAccount(),
     });

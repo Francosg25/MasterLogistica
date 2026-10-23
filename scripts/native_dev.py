@@ -100,7 +100,7 @@ class Native:
         self.servers = []
         self.stop = threading.Event()
         self.token = secrets.token_urlsafe(32)
-        self.mode = "demo"
+        self.mode = "database"
         self.is_ready = False
 
     def frontend(self, args):
@@ -240,15 +240,20 @@ class Native:
             ]
         )
         values = {
-            key: value for key, value in json.loads(raw).items() if value is not None
+            key: value
+            for key, value in json.loads(raw).items()
+            if value not in (None, "")
         }
         if values.get("APP_ENV", "development") != "development":
             raise LocalError(
                 "El lanzador nativo solo admite APP_ENV=development en .env.native."
             )
-        if not values.get("DATABASE_URL", "").startswith("postgresql+psycopg://"):
+        database = values.get("DATABASE_URL", "")
+        if database and not database.startswith(
+            ("postgresql+psycopg://", "sqlite+pysqlite:///")
+        ):
             raise LocalError(
-                "Configura PostgreSQL en DATABASE_URL dentro de .env.native."
+                "DATABASE_URL debe usar SQLite local o PostgreSQL con psycopg."
             )
         self.core.secrets.extend(
             value
@@ -256,15 +261,28 @@ class Native:
             if "PASSWORD" in key or key.endswith("DATABASE_URL")
         )
         # Never inherit a production connection or migration identity from the terminal.
-        for key in (
+        protected = {
             "DATABASE_URL",
             "MIGRATION_DATABASE_URL",
             "APP_ENV",
+            "AUTH_MODE",
+            "ENTRA_TENANT_ID",
+            "ENTRA_API_CLIENT_ID",
+            "ENTRA_FRONTEND_CLIENT_ID",
+            "ENTRA_ALLOWED_CLIENT_IDS",
+            "ENTRA_REQUIRED_SCOPE",
+            "ENTRA_CA_BUNDLE",
+            "TRUSTED_PROXY_IPS",
+            "COMPANY_CODES",
+            "BUSINESS_UNITS",
             "ENFORCE_HTTPS",
             "ALLOWED_HOSTS",
             "ALLOWED_ORIGINS",
-        ):
-            self.core.env.pop(key, None)
+            "JWT_LEEWAY_SECONDS",
+        }
+        for key in list(self.core.env):
+            if key.upper() in protected:
+                self.core.env.pop(key)
         self.core.env.update(values)
         self.core.env.update(
             {
@@ -275,7 +293,20 @@ class Native:
             }
         )
         self.core.env["PYTHONPATH"] = str(self.root / "backend")
-        if values.get("MIGRATION_DATABASE_URL"):
+        local = not database or database.startswith("sqlite+pysqlite:///")
+        if local:
+            if (
+                values.get("MIGRATION_DATABASE_URL")
+                or values.get("AUTH_MODE", "development") != "development"
+            ):
+                raise LocalError(
+                    "SQLite local usa AUTH_MODE=development y no lleva credenciales de migracion."
+                )
+            self.core.env["AUTH_MODE"] = "development"
+            self.core.say(
+                "Base SQLite local persistente; se prepara automaticamente al iniciar la API."
+            )
+        elif values.get("MIGRATION_DATABASE_URL"):
             self.core.say(
                 "Aplicando migraciones a la base de desarrollo configurada..."
             )
@@ -372,15 +403,11 @@ class Native:
                     raise LocalError(
                         f"El puerto {port} esta ocupado. Deten tu sesion anterior con Ctrl+C; no se cerraran procesos ajenos."
                     )
-            self.mode = (
-                "database"
-                if (self.root / ".env.native").exists() and not args.demo
-                else "demo"
-            )
+            self.mode = "demo" if args.demo else "database"
             self.core.say(f"Inicio directo sin Docker. Modo: {self.mode}.")
             if self.mode == "demo":
                 self.core.say(
-                    "Datos ficticios de solo lectura. Para guardar datos se necesita PostgreSQL y .env.native."
+                    "Demostracion opcional. Inicia sin --demo para crear y guardar datos en SQLite local."
                 )
             angular = self.frontend(args)
             api = self.backend(args) if self.mode == "database" else None
@@ -409,7 +436,7 @@ class Native:
                         webbrowser.open(URL)
                 if not self.is_ready and time.monotonic() > deadline:
                     raise LocalError(
-                        "No termino el arranque. Revisa VER_LOGS.cmd y la conexion PostgreSQL si usas datos reales."
+                        "No termino el arranque. Revisa VER_LOGS.cmd para identificar el proceso que fallo."
                     )
                 self.stop.wait(0.5)
 
@@ -458,6 +485,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=120)
     args = parser.parse_args(argv)
     native = Native()
+    signal.signal(signal.SIGTERM, lambda *_: native.stop.set())
     try:
         if args.action == "start":
             native.start(args)

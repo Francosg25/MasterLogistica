@@ -1,8 +1,7 @@
-"""MasterLogistica: propuesta de esquema PostgreSQL con SQLAlchemy 2.x.
+"""Shared SQLAlchemy entities and invariants for MasterLogistica.
 
-Modelo core de Fase 1 incorporado al backend de Fase 2.
-Las invariantes financieras entre varias filas pertenecen a fases posteriores.
-El esquema se versiona mediante Alembic; no se crea automáticamente al arrancar.
+PostgreSQL production schema is versioned by Alembic. The local development
+schema is initialized separately with SQLite-compatible types and constraints.
 """
 
 from __future__ import annotations
@@ -13,16 +12,15 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Computed,
     Date,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
     MetaData,
-    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -30,8 +28,13 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB as PostgresJSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
+
+from app.storage_types import ExactNumeric as Numeric
+from app.storage_types import UTCDateTime as DateTime
+
+JSONB = JSON().with_variant(PostgresJSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):

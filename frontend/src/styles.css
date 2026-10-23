@@ -1352,6 +1352,7 @@ textarea {
 .practice-label { color: var(--green); font-size: 12px; font-weight: 500; }
 .sheet-access-reason { padding: 8px 12px; font-size: 12px; line-height: 1.4; color: #5b654f; background: #f7f9f2; border-top: 1px solid var(--border); }
 .demo-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.local-banner { padding: 7px 10px; margin-bottom: 8px; color: #235b39; background: #edf5ef; font-size: 12px; border: 1px solid #d4e5d9; }
 .demo-banner > span { flex: 1 1 260px; }
 .demo-banner .button { min-height: 28px; padding: 3px 8px; font-size: 12px; }
 .sheet-scroll { overscroll-behavior: contain; scroll-behavior: auto; overflow-anchor: none; }

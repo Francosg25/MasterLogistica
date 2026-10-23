@@ -31,6 +31,8 @@ MasterLogistica es una aplicación interna de logística para gestionar embarque
 | Nginx o proxy corporativo | HTTPS, frontend compilado y enrutamiento a la API |
 | Microsoft Entra | Identidad corporativa y validación de tokens |
 
+El desarrollo personal utiliza SQLite en un archivo local y no necesita Docker ni una cuenta Microsoft. Ese archivo no se utiliza como base compartida ni se transfiere automáticamente a producción.
+
 El clúster debe ofrecer **PostgreSQL compatible con las migraciones de la aplicación**. Confirmar motor, versión y capacidades con el DBA. Un clúster SQL Server requeriría una adaptación del código y del esquema; cambiar solamente la cadena de conexión no basta. La referencia de desarrollo actual es PostgreSQL 17.
 
 ## Alternativas de ejecución

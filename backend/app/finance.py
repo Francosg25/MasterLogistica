@@ -890,7 +890,7 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
         session.execute(
             select(
                 ReconciliationLog.invoice_id,
-                func.min(ReconciliationLog.after_values["period_month"].astext),
+                func.min(ReconciliationLog.after_values["period_month"].as_string()),
             )
             .where(ReconciliationLog.event_type == "INVOICE_CANCELLED")
             .group_by(ReconciliationLog.invoice_id)

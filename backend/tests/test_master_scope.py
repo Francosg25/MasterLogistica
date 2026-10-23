@@ -121,10 +121,16 @@ def test_readonly_operational_roles_cannot_write_through_api(scoped_client, role
 
 @pytest.mark.parametrize(
     "role,can_edit,scope",
-    [("OPERATOR", True, "OWN"), ("SUPER_ADMIN", True, "ALL"),
-     ("MANAGER", False, "NONE"), ("FINANCE", False, "NONE")],
+    [
+        ("OPERATOR", True, "OWN"),
+        ("SUPER_ADMIN", True, "ALL"),
+        ("MANAGER", False, "NONE"),
+        ("FINANCE", False, "NONE"),
+    ],
 )
-def test_catalog_explains_master_access_from_authenticated_role(scoped_client, role, can_edit, scope):
+def test_catalog_explains_master_access_from_authenticated_role(
+    scoped_client, role, can_edit, scope
+):
     client, actor, db = scoped_client
     actor.role = role
     response = client.get("/api/v1/references/catalogs", params={"role": "SUPER_ADMIN"})
