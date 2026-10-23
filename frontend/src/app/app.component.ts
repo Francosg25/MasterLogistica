@@ -116,13 +116,11 @@ export class AppComponent implements OnInit {
       `Tu perfil de ${this.roleName()} permite consultar los masters. La edición operativa corresponde a Operaciones y Administración.`;
   });
   masterOwner = signal("");
-  masterOperation = signal("");
   masterReady = computed(
-    () => !!this.masterOperation(),
+    () => !!this.masterOwner(),
   );
   masterSelection = new FormBuilder().nonNullable.group({
     owner_id: [""],
-    operation_code: [""],
   });
   logisticsOwners = computed(() =>
     this.owners().filter(
@@ -141,7 +139,6 @@ export class AppComponent implements OnInit {
     if (this.sheet && !this.sheet.canLeave()) {
       this.masterSelection.patchValue({
         owner_id: this.masterOwner(),
-        operation_code: this.masterOperation(),
       });
       return false;
     }
@@ -149,7 +146,6 @@ export class AppComponent implements OnInit {
     this.listRequest++;
     this.detailRequest++;
     this.masterOwner.set("");
-    this.masterOperation.set("");
     this.rows.set([]);
     this.summary.set(null);
     this.total.set(0);
@@ -167,18 +163,17 @@ export class AppComponent implements OnInit {
   }
   async chooseMaster(): Promise<void> {
     const selection = this.masterSelection.getRawValue();
-    const owner = this.consolidated() ? "" : this.user()?.id;
+    const owner = selection.owner_id;
     if (!this.resetMaster()) return;
-    if (!selection.operation_code) {
-      this.error.set("Selecciona un tipo de operación.");
+    if (!owner) {
+      this.error.set("Selecciona al responsable del master.");
       return;
     }
     if (
-      !this.catalog()?.operation_codes.includes(selection.operation_code)
+      !this.logisticsOwners().some(item => item.id === owner)
     )
       return;
     this.masterOwner.set(owner ?? "");
-    this.masterOperation.set(selection.operation_code);
     await this.apply();
   }
   canCreate = computed(
@@ -186,7 +181,7 @@ export class AppComponent implements OnInit {
       this.canWrite() &&
       this.catalog()?.master_access?.can_create !== false &&
       this.masterReady() &&
-      this.user()?.analyst_code != null &&
+      (this.user()?.role === "SUPER_ADMIN" || this.masterOwner() === this.user()?.id) &&
       !!this.catalog()?.business_units_configured,
   );
   consolidated = computed(() =>
@@ -208,6 +203,7 @@ export class AppComponent implements OnInit {
     status: [""],
     business_unit: [""],
     company_code: [""],
+    operation_code: [""],
     ship_date_from: [""],
     ship_date_to: [""],
   });
@@ -280,7 +276,6 @@ export class AppComponent implements OnInit {
     this.resetMaster();
     this.masterSelection.reset({
       owner_id: this.consolidated() ? "" : this.user()!.id,
-      operation_code: "",
     });
     this.phase.set("workspace");
   }
@@ -312,7 +307,7 @@ export class AppComponent implements OnInit {
       this.practice.set(true);
       if (this.masterReady()) await this.refresh();
       else {
-        this.masterSelection.patchValue({ operation_code: "SI" });
+        this.masterSelection.patchValue({ owner_id: this.logisticsOwners()[0]?.id ?? "" });
         await this.chooseMaster();
       }
     } catch (error) { this.error.set(this.message(error)); }
@@ -346,7 +341,6 @@ export class AppComponent implements OnInit {
         .filter(([, value]) => value !== ""),
     );
     if (this.masterOwner()) this.applied["owner_id"] = this.masterOwner();
-    this.applied["operation_code"] = this.masterOperation();
     this.offset.set(0);
     await this.refresh();
   }
@@ -462,8 +456,7 @@ export class AppComponent implements OnInit {
         : await this.api.request<Shipment>(`/shipments/${row.id}`);
       if (request !== this.detailRequest) return;
       if (
-        (!!this.masterOwner() && fresh.owner_id !== this.masterOwner()) ||
-        fresh.operation_code !== this.masterOperation()
+        fresh.owner_id !== this.masterOwner()
       )
         throw new Error("El registro no pertenece al master seleccionado.");
       this.selected.set(fresh);
@@ -485,8 +478,7 @@ export class AppComponent implements OnInit {
     const previous = this.rows().find((item) => item.id === row.id);
     if (
       !previous ||
-      (!!this.masterOwner() && row.owner_id !== this.masterOwner()) ||
-      row.operation_code !== this.masterOperation()
+      row.owner_id !== this.masterOwner()
     )
       return;
     this.rows.update((items) =>
@@ -535,21 +527,25 @@ export class AppComponent implements OnInit {
     const previous = this.selected();
     if (
       !previous &&
-      (!this.canCreate() || data["operation_code"] !== this.masterOperation())
+      (!this.canCreate() || !this.catalog()?.operation_codes.includes(String(data["operation_code"])))
     ) {
       this.editorError.set(
-        "La operación debe coincidir con el master seleccionado.",
+        "Selecciona un tipo de operación válido para el nuevo embarque.",
       );
       this.saving.set(false);
       return;
     }
     try {
+      if (!previous) data["owner_id"] = this.masterOwner();
       const row = await this.api.request<Shipment>(
         previous ? `/shipments/${previous.id}` : "/shipments",
         previous ? "PATCH" : "POST",
         data,
       );
       this.selected.set(row);
+      if (!this.catalog()!.company_codes.includes(row.company_code)) {
+        this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
+      }
       this.editor?.form.markAsPristine();
       this.notice.set(
         previous

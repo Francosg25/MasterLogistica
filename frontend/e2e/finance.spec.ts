@@ -18,7 +18,7 @@ test("Excel preview imports only ready invoices and requires refreshing changed 
       counts: { READY: confirmed ? 0 : 1, REVIEW: 1, DUPLICATE: confirmed ? 1 : 0, OUTSIDE: 1 },
       companies: ["DEMO"], suppliers: ["TRANSPORTES DEMO"],
       groups: [
-        { key: "ready", invoice_number: "EXCEL-001", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: confirmed ? "DUPLICATE" : "READY", usd_amount: "500", issues: [], rows: [{ row: 2, reference: "RM1-0001LI26-T01-MAT", charge_code: "FREIGHT", usd_amount: "500" }] },
+        { key: "ready", invoice_number: "EXCEL-001", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: confirmed ? "DUPLICATE" : "READY", usd_amount: "500", issues: [], rows: [{ row: 2, reference: "RM1-0001LI26-M01-MAT", charge_code: "FREIGHT", usd_amount: "500" }] },
         { key: "review", invoice_number: "EXCEL-002", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: "REVIEW", usd_amount: "0", issues: ["Importe cero: revisar reparto"], rows: [{ row: 3, reference: "PAQUETERIA", charge_code: "FREIGHT", usd_amount: "0" }] },
       ],
     } });
@@ -248,6 +248,8 @@ test("provision draft and unsaved navigation warning", async ({ page }) => {
   await page
     .getByLabel("Proveedor", { exact: true })
     .selectOption("supplier-1");
+  await page.getByLabel("Fecha de provisión", { exact: true }).fill("2026-10-23");
+  await page.getByLabel("Concepto", { exact: true }).selectOption("BROKER");
   await page.getByLabel("Importe neto", { exact: true }).fill("500");
   await page.getByRole("button", { name: "Guardar borrador" }).click();
   await expect(page.locator(".success[role=status]")).toContainText(
@@ -255,6 +257,9 @@ test("provision draft and unsaved navigation warning", async ({ page }) => {
   );
   expect(writes[0].body.shipment_id).toBe("shipment-1");
   expect(writes[0].body.amount).toBe("500");
+  expect(writes[0].body.provision_date).toBe("2026-10-23");
+  expect(writes[0].body.month_accrued).toBe("2026-10-01");
+  expect(writes[0].body.charge_code).toBe("BROKER");
 });
 test("invoice cancellation requires reason and accounting month", async ({
   page,
@@ -327,4 +332,25 @@ test("production demo finance never calls operational endpoints", async ({
     "Finanzas · Demostración",
   );
   expect(paths).toEqual(["/api/v1/auth/config"]);
+});
+
+
+test("provision reference picker lists existing references and supports keyboard selection", async ({ page }) => {
+  await setup(page);
+  await section(page, "Provisiones");
+  await page.getByRole("button", { name: "+ Nueva provisión", exact: true }).click();
+  const input = page.getByRole("combobox", { name: "Referencia del master" });
+  await input.focus();
+  await expect(page.getByRole("listbox", { name: "Referencias disponibles" })).toBeVisible();
+  await expect(page.getByRole("option", { name: new RegExp(demoReport.balances[0].reference) })).toBeVisible();
+  await input.press("ArrowDown");
+  await input.press("Enter");
+  await expect(input).toHaveValue(demoReport.balances[0].reference);
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(page.getByLabel("Concepto", { exact: true }).locator("option")).toHaveText(["FREIGHT", "BROKER", "STORAGE"]);
+  await expect(page.getByLabel("Fecha de provisión")).toHaveAttribute("type", "date");
+  await input.fill("SIN-COINCIDENCIAS");
+  await input.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await page.screenshot({ path: "test-results/new-provision.png", fullPage: true });
 });

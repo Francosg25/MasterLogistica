@@ -116,6 +116,7 @@ class PeriodRead(PeriodCreate):
 
 
 class ShipmentCreate(Schema):
+    owner_id: UUID | None = None
     company_code: Annotated[str, Field(min_length=1, max_length=32)]
     process_code: Process
     operation_code: Operation
@@ -211,9 +212,10 @@ class IdentifierRead(Schema):
 class ProvisionCreate(Schema):
     shipment_id: UUID
     supplier_id: UUID
-    charge_code: Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Z0-9_-]+$")]
+    charge_code: Literal["FREIGHT", "BROKER", "STORAGE"]
     line_no: Annotated[int, Field(ge=1, le=2147483647)] = 1
-    month_accrued: date
+    provision_date: date | None = None
+    month_accrued: date | None = None
     amount: Money | None = None
     extra_charges: Money | None = None
     currency: Literal["USD", "MXN"] | None = None
@@ -221,6 +223,13 @@ class ProvisionCreate(Schema):
 
     @model_validator(mode="after")
     def financial_values(self):
+        if self.provision_date is not None:
+            month = self.provision_date.replace(day=1)
+            if self.month_accrued is not None and self.month_accrued != month:
+                raise ValueError("La fecha de provisión debe pertenecer al mes de origen")
+            self.month_accrued = month
+        if self.month_accrued is None:
+            raise ValueError("Captura la fecha de provisión")
         if self.month_accrued.day != 1:
             raise ValueError("Month accrued must be the first day of the month")
         validate_total(self.amount, self.extra_charges)
@@ -246,6 +255,7 @@ class ProvisionRead(VersionedRead):
     charge_code: str
     line_no: int
     month_accrued: date
+    provision_date: date | None
     status: str
     amount: Decimal | None
     extra_charges: Decimal | None

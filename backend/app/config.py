@@ -11,6 +11,8 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
+from app.catalogs import BUSINESS_UNIT_CODES
+
 
 def local_database_url():
     path = Path(__file__).resolve().parents[2] / ".data" / "masterlogistica.db"
@@ -36,7 +38,9 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:4200"])
     allowed_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
     company_codes: list[str] = Field(default_factory=lambda: ["JE_MX"])
-    business_units: dict[str, str] = Field(default_factory=dict)
+    business_units: dict[str, str] = Field(
+        default_factory=lambda: {code: code for code in BUSINESS_UNIT_CODES}
+    )
     enforce_https: bool = False
     trusted_proxy_ips: list[str] = Field(default_factory=list)
     entra_ca_bundle: str | None = None
@@ -94,7 +98,7 @@ class Settings(BaseSettings):
             not description.strip() or len(description) > 250 for description in values.values()
         ):
             raise ValueError("Business unit descriptions must contain 1 to 250 characters")
-        return {code: description.strip() for code, description in values.items()}
+        return {code: values.get(code, code).strip() for code in BUSINESS_UNIT_CODES}
 
     @model_validator(mode="after")
     def production_controls(self):
@@ -142,8 +146,6 @@ class Settings(BaseSettings):
                 self.allowed_origins = ["http://127.0.0.1:4200", "http://localhost:4200"]
             if "company_codes" not in self.model_fields_set:
                 self.company_codes = ["LOCAL"]
-            if "business_units" not in self.model_fields_set:
-                self.business_units = {"T01": "Unidad local A", "T02": "Unidad local B"}
         elif url.drivername != "postgresql+psycopg":
             raise ValueError("Corporate identity requires PostgreSQL; SQLite is development only")
         if self.app_env == "production":

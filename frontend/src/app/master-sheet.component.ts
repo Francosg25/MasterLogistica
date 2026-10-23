@@ -10,7 +10,7 @@ import {
   signal,
 } from "@angular/core";
 import { ApiError, ApiService } from "./api.service";
-import { Shipment, STATUS, Supplier } from "./types";
+import { Shipment, STATUS, Supplier, OPERATIONS } from "./types";
 import { MasterPracticeService } from "./master-practice.service";
 
 interface Column {
@@ -41,7 +41,7 @@ export class MasterSheetComponent implements OnDestroy {
   practice = input(false);
   offset = input(0);
   suppliers = input<Supplier[]>([]);
-  operation = input("");
+  masterName = input("");
   opened = output<Shipment>();
   activity = output<Shipment>();
   updated = output<Shipment>();
@@ -81,6 +81,8 @@ export class MasterSheetComponent implements OnDestroy {
     { key: "reference_raw", label: "Referencia", width: 265, kind: "locked" },
     { key: "status", label: "Estado", width: 144, kind: "status" },
     { key: "business_unit", label: "BU", width: 75, kind: "locked" },
+    { key: "operation_code", label: "Tipo de operación", width: 190, kind: "locked" },
+    { key: "company_code", label: "Empresa", width: 130, kind: "locked" },
     { key: "ship_date", label: "Fecha de embarque", width: 175, kind: "date" },
     { key: "eta", label: "ETA", width: 135, kind: "date" },
     {
@@ -118,7 +120,7 @@ export class MasterSheetComponent implements OnDestroy {
       width: 200,
       kind: "supplier",
     },
-    ...(["SI", "SE"].includes(this.operation())
+    ...(this.rows().some(row => ["SI", "SE"].includes(row.operation_code ?? ""))
       ? [
           {
             key: "shipping_line_id",
@@ -168,6 +170,7 @@ export class MasterSheetComponent implements OnDestroy {
   display(row: Shipment, column: Column): string {
     const value = this.value(row, column);
     if (column.kind === "status") return STATUS[value] ?? value;
+    if (column.key === "operation_code") return OPERATIONS[value] ?? value;
     if (column.kind === "supplier")
       return this.supplierNames().get(value) ?? value;
     if (column.kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(value))
@@ -729,7 +732,7 @@ export class MasterSheetComponent implements OnDestroy {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `master-${this.operation()}-pagina-${this.offset() + 1}.csv`;
+    link.download = `master-${this.masterName()}-pagina-${this.offset() + 1}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

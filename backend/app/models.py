@@ -269,6 +269,7 @@ class Provision(IdentityMixin, VersionedMixin, Base):
     supplier_id: Mapped[UUID] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"))
     charge_code: Mapped[str] = mapped_column(String(40))
     line_no: Mapped[int] = mapped_column(Integer)
+    provision_date: Mapped[date | None] = mapped_column(Date)
     month_accrued: Mapped[date] = mapped_column(
         ForeignKey("accounting_periods.period_month", ondelete="RESTRICT")
     )

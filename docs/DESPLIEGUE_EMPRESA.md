@@ -149,7 +149,7 @@ El clúster protege la disponibilidad de la base; también se necesitan soporte 
 2. Confirmar compatibilidad PostgreSQL y recibir endpoint, CA, roles y base de desarrollo/piloto separados de la base operativa.
 3. Construir y validar la versión por el canal autorizado. Entregar frontend compilado y backend/imagen, inventario de dependencias y versión exacta.
 4. Preparar DNS, HTTPS, servicios y secretos. Configurar proxy y acceso al clúster. Obtener un respaldo y el procedimiento de reversión antes de migrar una instalación con datos.
-5. Ejecutar `alembic upgrade head` con la identidad de migración; la versión actual incluye `0005_invoice_excel`. Iniciar API y frontend con sus identidades de operación.
+5. Ejecutar `alembic upgrade head` con la identidad de migración; la versión actual incluye `0006_provision_date` (y `0005_invoice_excel` para la evidencia de importación). Iniciar API y frontend con sus identidades de operación.
 6. Verificar salud, Entra, permisos por rol, captura/importación e historial con datos de prueba; comprobar acceso desde los segmentos de usuarios y recuperación después de reiniciar servicios.
 7. Acordar ventana de puesta en servicio, responsables y soporte. Una reversión de código debe comprobar compatibilidad con el esquema; no borrar datos ni ejecutar una degradación automática del esquema.
 

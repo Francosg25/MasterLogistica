@@ -4,7 +4,7 @@ import { EVENTS, FIELDS, FINANCE_STATUS, HistoryRow } from "./finance.types";
 
 interface Activity {
   reference: string;
-  provisions: { id: string; supplier: string; concept: string; month: string; currency: string; total: string; balance: string | null; status: string }[];
+  provisions: { id: string; supplier: string; concept: string; month: string; provision_date?: string | null; currency: string; total: string; balance: string | null; status: string }[];
   invoices: { id: string; invoice_number: string; supplier: string; concept: string; month: string; currency: string; amount: string; applied: string; status: string; amount_basis: string }[];
   history: { items: HistoryRow[]; total: number };
 }

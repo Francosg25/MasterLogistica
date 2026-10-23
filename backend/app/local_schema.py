@@ -13,10 +13,17 @@ from sqlalchemy import CheckConstraint, DefaultClause, MetaData, inspect, select
 from app.models import Base, ReferenceCounter, Supplier, User
 from app.storage_types import ExactNumeric
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 LOCAL_TENANT = UUID("f0000000-0000-0000-0000-000000000001")
 LOCAL_USER = UUID("f0000000-0000-0000-0000-000000000002")
 LOCAL_SUPPLIER = UUID("f0000000-0000-0000-0000-000000000003")
+LOCAL_MASTERS = (
+    (LOCAL_USER, "DENI", 1),
+    (UUID("f0000000-0000-0000-0000-000000000012"), "MAG", 2),
+    (UUID("f0000000-0000-0000-0000-000000000013"), "NAT", 3),
+    (UUID("f0000000-0000-0000-0000-000000000014"), "ANDREA", 4),
+    (UUID("f0000000-0000-0000-0000-000000000015"), "ALEXA", 5),
+)
 MAX_MONEY = 10**18 - 1
 
 
@@ -157,7 +164,7 @@ def initialize_local(engine, session_factory):
             connection.exec_driver_sql(
                 "CREATE TABLE local_schema_version (version INTEGER NOT NULL)"
             )
-            connection.exec_driver_sql("INSERT INTO local_schema_version VALUES (1)")
+            connection.exec_driver_sql(f"INSERT INTO local_schema_version VALUES ({SCHEMA_VERSION})")
             for table in ("reconciliation_logs", "reconciliation_allocations"):
                 for action in ("UPDATE", "DELETE"):
                     connection.exec_driver_sql(f"""CREATE TRIGGER local_{table}_{action.lower()}
@@ -168,6 +175,14 @@ def initialize_local(engine, session_factory):
                 .scalars()
                 .all()
             )
+            if version == [1]:
+                # Additive upgrade preserves every existing row and its accounting month.
+                if "provision_date" not in {
+                    c["name"] for c in inspect(connection).get_columns("provisions")
+                }:
+                    connection.exec_driver_sql("ALTER TABLE provisions ADD COLUMN provision_date DATE")
+                connection.exec_driver_sql("UPDATE local_schema_version SET version = 2")
+                version = [2]
             if version != [SCHEMA_VERSION]:
                 raise ValueError(
                     "La versión de la base local requiere una actualización explícita; conserva el archivo."
@@ -185,13 +200,25 @@ def initialize_local(engine, session_factory):
                     entra_tenant_id=LOCAL_TENANT,
                     entra_object_id=LOCAL_USER,
                     email="local@example.com",
-                    display_name="Desarrollo local",
+                    display_name="DENI",
                     role="SUPER_ADMIN",
                     analyst_code=1,
                 )
             )
             session.flush()
             session.add(ReferenceCounter(owner_id=LOCAL_USER, last_value=0))
+        elif user.display_name == "Desarrollo local":
+            user.display_name = "DENI"
+        # These identities belong only to the isolated local development database.
+        for owner_id, name, code in LOCAL_MASTERS[1:]:
+            if session.scalar(select(User.id).where(User.analyst_code == code)) is None:
+                session.add(User(
+                    id=owner_id, entra_tenant_id=LOCAL_TENANT, entra_object_id=owner_id,
+                    email=f"{name.lower()}@example.com", display_name=name,
+                    role="OPERATOR", analyst_code=code,
+                ))
+                session.flush()
+                session.add(ReferenceCounter(owner_id=owner_id, last_value=0))
         # Catalog example only; never seed operational shipments, provisions or invoices.
         if session.scalar(select(Supplier.id).where(Supplier.id == LOCAL_SUPPLIER)) is None:
             session.add(

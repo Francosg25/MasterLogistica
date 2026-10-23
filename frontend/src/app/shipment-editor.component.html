@@ -32,8 +32,7 @@
   </header>
   <div class="editor-content">
     <p class="master-context">
-      Master de {{ masterOwnerName() }} ·
-      {{ operations[masterOperation()] || masterOperation() }}
+      Master de {{ masterOwnerName() }}
     </p>
     @if (readOnly()) {
       <div class="notice">
@@ -86,14 +85,12 @@
         } @else {
           <div class="form-grid">
             <label
-              >Empresa *<select
+              >Empresa *<input
                 aria-label="Empresa *"
                 formControlName="company_code"
-              >
-                @for (code of catalogs().company_codes; track code) {
-                  <option [value]="code">{{ code }}</option>
-                }
-              </select></label
+                maxlength="32"
+                placeholder="Captura la empresa como aparece en el master"
+              /><small>Captura manual de la empresa del movimiento.</small></label
             >
             <label
               >Proceso *<select
@@ -108,11 +105,14 @@
               </select></label
             >
             <label
-              >Tipo de operación<input
-                aria-label="Tipo de operación"
-                [value]="operations[masterOperation()] || masterOperation()"
-                readonly
-            /></label>
+              >Tipo de operación *<select
+                aria-label="Tipo de operación *"
+                formControlName="operation_code"
+              ><option value="">Selecciona una operación</option>
+                @for (code of catalogs().operation_codes; track code) {
+                  <option [value]="code">{{ code }} · {{ operations[code] || code }}</option>
+                }
+              </select></label>
             <label
               >Año de operación *<input
                 type="number"
@@ -129,7 +129,7 @@
                 <option value="">Selecciona una BU</option>
                 @for (code of unitCodes(); track code) {
                   <option [value]="code">
-                    {{ code }} · {{ catalogs().business_units[code] }}
+                    {{ code }}
                   </option>
                 }
               </select></label

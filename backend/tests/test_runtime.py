@@ -45,7 +45,7 @@ def production_file(tmp_path, settings):
         "ALLOWED_HOSTS": '["logistica.test"]',
         "ALLOWED_ORIGINS": '["https://logistica.test"]',
         "ENFORCE_HTTPS": "true",
-        "BUSINESS_UNITS": '{"T01":"Test unit"}',
+        "BUSINESS_UNITS": '{"M01":"Test unit"}',
         "TRUSTED_PROXY_IPS": '["127.0.0.1"]',
         "ENTRA_CA_BUNDLE": ca.as_posix(),
     }

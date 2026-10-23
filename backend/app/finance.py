@@ -327,13 +327,26 @@ def owners(session: DB, user: Actor):
 
 
 @router.get("/references")
-def references(session: DB, user: Actor, q: Annotated[str, Query(min_length=2, max_length=160)]):
-    statement = finance_scope(
-        select(Shipment).where(Shipment.reference_raw.icontains(q.strip(), autoescape=True)), user
-    )
+def references(session: DB, user: Actor, q: Annotated[str, Query(max_length=160)] = ""):
+    statement = finance_scope(select(Shipment).where(Shipment.status != "CANCELLED", Shipment.reference_raw.is_not(None)), user)
+    if q.strip():
+        value = q.strip()
+        aliases = select(ShipmentIdentifier.shipment_id).where(
+            ShipmentIdentifier.raw_value.icontains(value, autoescape=True)
+        )
+        statement = statement.where(
+            or_(Shipment.reference_raw.icontains(value, autoescape=True), Shipment.id.in_(aliases))
+        )
+    statement = statement.outerjoin(User, User.id == Shipment.owner_id)
     return [
-        dict(id=x.id, reference=x.reference_raw, company_code=x.company_code, owner_id=x.owner_id)
-        for x in session.scalars(statement.order_by(Shipment.reference_raw).limit(30))
+        dict(
+            id=x.id, reference=x.reference_raw, company_code=x.company_code,
+            owner_id=x.owner_id, owner_name=name, business_unit=x.business_unit,
+        )
+        for x, name in session.execute(
+            statement.with_only_columns(Shipment, User.display_name)
+            .order_by(Shipment.reference_raw).limit(30)
+        )
     ]
 
 
@@ -435,8 +448,6 @@ def create_invoice(data: InvoiceCreate, session: DB, user: FinanceWriter, reques
 
 
 def register_invoice(data, session, user, request, *, source_data=None, persist=True):
-    if data.company_code not in request.app.state.settings.company_codes:
-        raise HTTPException(422, "Empresa no configurada")
     open_period(session, data.accounting_period)
     supplier_valid(session, data.supplier_id)
     try:
@@ -759,6 +770,7 @@ def balance_rows(session, user, month, q="", owner_id=None, operation_code=None)
                 line_no=p.line_no,
                 currency=p.currency,
                 month_accrued=p.month_accrued,
+                provision_date=p.provision_date,
                 period_month=month,
                 total_amount=total,
                 opening_amount=opening,
@@ -984,6 +996,7 @@ def report_csv(
             "Estado",
             "Usuario",
             "Base de conciliacion",
+            "Fecha provision",
         ]
     )
     for b in data["balances"]:
@@ -1009,6 +1022,7 @@ def report_csv(
                     b["status"],
                     b["owner_name"],
                     "",
+                    b["provision_date"] or "",
                 ]
             ]
         )
@@ -1035,6 +1049,7 @@ def report_csv(
                     "",
                     m.get("actor_name", ""),
                     m.get("amount_basis", "NET"),
+                    "",
                 ]
             ]
         )
@@ -1164,6 +1179,7 @@ def reference_activity(shipment_id: UUID, session: DB, user: Actor):
                     supplier=supplier,
                     concept=p.charge_code,
                     month=p.month_accrued,
+                    provision_date=p.provision_date,
                     currency=p.currency,
                     total=p.total_amount,
                     balance=p.total_amount - released(session, p.id)

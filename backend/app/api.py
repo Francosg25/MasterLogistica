@@ -189,10 +189,13 @@ def me(user: Actor):
 
 
 @router.get("/references/catalogs", tags=["References"])
-def reference_catalogs(request: Request, user: Actor):
+def reference_catalogs(request: Request, user: Actor, session: DB):
     can_edit = can_edit_masters(user)
     units_configured = bool(request.app.state.settings.business_units)
     analyst_assigned = getattr(user, "analyst_code", None) is not None
+    companies = select(Shipment.company_code).distinct()
+    if user.role == "OPERATOR":
+        companies = companies.where(Shipment.owner_id == user.id)
     return {
         "version": VERSION,
         "process_codes": sorted(PROCESSES),
@@ -201,10 +204,12 @@ def reference_catalogs(request: Request, user: Actor):
         "business_units": request.app.state.settings.business_units,
         "business_units_configured": bool(request.app.state.settings.business_units),
         "sequence_digits": 4,
-        "company_codes": request.app.state.settings.company_codes,
+        "company_codes": sorted(
+            set(request.app.state.settings.company_codes) | set(session.scalars(companies).all())
+        ),
         "master_access": {
             "can_edit": can_edit,
-            "can_create": can_edit and units_configured and analyst_assigned,
+            "can_create": can_edit and units_configured and (analyst_assigned or user.role == "SUPER_ADMIN"),
             "edit_scope": "ALL" if user.role == "SUPER_ADMIN" else "OWN" if can_edit else "NONE",
             "read_only_reason": None
             if can_edit
@@ -410,7 +415,7 @@ def shipments(
 
 def master_statement(
     user: Actor,
-    operation_code: Operation,
+    operation_code: Operation | None = None,
     owner_id: UUID | None = None,
     statement=Depends(filtered_shipments),
 ):
@@ -419,7 +424,7 @@ def master_statement(
         raise HTTPException(403, "Cannot access another owner's master")
     if owner_id:
         statement = statement.where(Shipment.owner_id == owner_id)
-    return statement.where(Shipment.operation_code == operation_code)
+    return statement.where(Shipment.operation_code == operation_code) if operation_code else statement
 
 
 @router.get("/masters/shipments", response_model=Page[ShipmentRead], tags=["Masters"])
@@ -441,8 +446,13 @@ def shipment_detail(shipment_id: UUID, session: DB, user: Actor):
 
 @router.post("/shipments", response_model=ShipmentRead, status_code=201, tags=["Masters"])
 def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: MasterWriter):
-    if data.company_code not in request.app.state.settings.company_codes:
-        raise HTTPException(422, "Company code is not configured")
+    owner = user
+    if data.owner_id is not None and data.owner_id != user.id:
+        if user.role != "SUPER_ADMIN":
+            raise HTTPException(403, "Solo Administración puede crear en otro master")
+        owner = session.get(User, data.owner_id)
+        if owner is None or not owner.is_active or owner.analyst_code not in range(1, 6):
+            raise HTTPException(422, "Selecciona un responsable activo del master")
     catalog = request.app.state.settings.business_units
     if not catalog:
         raise HTTPException(503, "An approved business unit catalog must be configured")
@@ -453,7 +463,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
     try:
         reference, sequence = generate_reference(
             session,
-            user,
+            owner,
             process=data.process_code,
             operation=data.operation_code,
             year=data.reference_year,
@@ -465,8 +475,8 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         raise HTTPException(409, str(error)) from None
     mode, service, direction = OPERATIONS[data.operation_code]
     row = Shipment(
-        **data.model_dump(),
-        owner_id=user.id,
+        **data.model_dump(exclude={"owner_id"}),
+        owner_id=owner.id,
         reference_raw=reference,
         reference_normalized=reference,
         normalization_version=VERSION,

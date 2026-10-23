@@ -50,7 +50,7 @@ def test_local_api_persists_edits_versions_and_reference_sequence(tmp_path):
             process_code="RM",
             operation_code="SI",
             reference_year=2026,
-            business_unit="T01",
+            business_unit="M01",
             department_code="MAT",
         )
         response = client.post("/api/v1/shipments", json=payload)
@@ -89,19 +89,18 @@ def local_financial_environment(tmp_path):
                 ("manager", "MANAGER", None),
                 ("admin", "SUPER_ADMIN", 5),
             ]:
-                row = User(
-                    id=uuid4(),
-                    entra_tenant_id=LOCAL_TENANT,
-                    entra_object_id=uuid4(),
-                    email=f"{name}@example.com",
-                    display_name=name,
-                    role=role,
-                    analyst_code=code,
-                )
-                session.add(row)
+                row = session.scalar(select(User).where(User.analyst_code == code)) if code else None
+                if row is None:
+                    row = User(
+                        id=uuid4(), entra_tenant_id=LOCAL_TENANT, entra_object_id=uuid4(),
+                        email=f"{name}@example.com", display_name=name, role=role, analyst_code=code,
+                    )
+                    session.add(row)
+                else:
+                    row.display_name, row.role = name, role
                 session.flush()
                 rows[name] = {"id": row.id}
-                if code is not None:
+                if code is not None and session.get(ReferenceCounter, row.id) is None:
                     session.add(ReferenceCounter(owner_id=row.id, last_value=0))
             supplier = session.get(Supplier, LOCAL_SUPPLIER)
             supplier.legal_name = "Example Test Carrier"
@@ -290,3 +289,70 @@ def test_local_initialization_preserves_postgresql_metadata(tmp_path):
     with local_client(create_app(local_settings(tmp_path / "master.db"))):
         pass
     assert ddl() == before
+
+
+def test_responsible_masters_manual_company_and_exact_provision_date(tmp_path):
+    settings = local_settings(tmp_path / "masters.db")
+    app = create_app(settings)
+    with local_client(app) as client:
+        owners = client.get("/api/v1/masters/owners").json()
+        assert [o["display_name"] for o in owners] == ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"]
+        assert list(client.get("/api/v1/references/catalogs").json()["business_units"]) == [
+            "M01", "M19", "M23", "M45", "M46"
+        ]
+        body = dict(company_code="MXG", process_code="RM", operation_code="SI",
+                    reference_year=2026, business_unit="M45", department_code="MAT")
+        rows = []
+        for owner, operation in [(owners[0], "SI"), (owners[0], "AI"), (owners[1], "LI")]:
+            response = client.post("/api/v1/shipments", json={
+                **body, "owner_id": owner["id"], "operation_code": operation,
+            })
+            assert response.status_code == 201, response.text
+            rows.append(response.json())
+        response = client.get("/api/v1/masters/shipments", params={"owner_id": owners[0]["id"]})
+        assert {r["operation_code"] for r in response.json()["items"]} == {"SI", "AI"}
+        assert response.json()["total"] == 2
+        assert client.get("/api/v1/masters/summary", params={"owner_id": owners[1]["id"]}).json()["total"] == 1
+        assert client.post("/api/v1/shipments", json={**body, "business_unit": "T01"}).status_code == 422
+        assert "MXG" in client.get("/api/v1/references/catalogs").json()["company_codes"]
+        references = client.get("/api/v1/finance/references").json()
+        assert len(references) == 3
+        assert references[0]["owner_name"] in {"DENI", "MAG"}
+        client.post("/api/v1/finance/periods?period_month=2026-10-01")
+        response = client.post("/api/v1/finance/provisions", json={
+            "shipment_id": rows[0]["id"], "supplier_id": str(LOCAL_SUPPLIER),
+            "charge_code": "STORAGE", "provision_date": "2026-10-23",
+            "amount": "125.5000", "extra_charges": "0", "currency": "USD",
+        })
+        assert response.status_code == 201, response.text
+        provision = response.json()
+        assert provision["provision_date"] == "2026-10-23"
+        assert provision["month_accrued"] == "2026-10-01"
+    with local_client(create_app(settings)) as client:
+        stored = client.get("/api/v1/provisions/" + provision["id"]).json()
+        assert stored["provision_date"] == "2026-10-23"
+        balance = client.get("/api/v1/finance/balances?month=2026-10-01").json()["items"][0]
+        assert balance["provision_date"] == "2026-10-23"
+
+
+def test_local_version_one_upgrade_preserves_provisions_without_inventing_a_day(tmp_path):
+    settings = local_settings(tmp_path / "old.db")
+    app = create_app(settings)
+    with local_client(app) as client:
+        shipment = client.post("/api/v1/shipments", json=dict(
+            company_code="MXT", process_code="RM", operation_code="LI",
+            reference_year=2026, business_unit="M01", department_code="MAT",
+        )).json()
+        client.post("/api/v1/finance/periods?period_month=2026-10-01")
+        provision = client.post("/api/v1/finance/provisions", json=dict(
+            shipment_id=shipment["id"], supplier_id=str(LOCAL_SUPPLIER), charge_code="BROKER",
+            month_accrued="2026-10-01", currency="USD", amount="500", extra_charges="0",
+        )).json()
+        with app.state.engine.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE provisions DROP COLUMN provision_date")
+            connection.exec_driver_sql("UPDATE local_schema_version SET version = 1")
+    with local_client(create_app(settings)) as client:
+        row = client.get("/api/v1/provisions/" + provision["id"]).json()
+        assert row["provision_date"] is None
+        assert row["month_accrued"] == "2026-10-01"
+        assert Decimal(row["amount"]) == 500

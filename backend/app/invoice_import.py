@@ -78,9 +78,11 @@ def prepare(data, session, request):
     for supplier in suppliers:
         for name in (supplier.legal_name, supplier.code):
             by_name[normalized(name)].add(str(supplier.id))
-    companies = request.app.state.settings.company_codes
     # Index authorized finance scope once instead of querying per spreadsheet row.
     shipments = session.scalars(select(Shipment)).all()
+    companies = sorted(
+        set(request.app.state.settings.company_codes) | {s.company_code for s in shipments}
+    )
     by_ref = defaultdict(set)
     by_shipment = {s.id: s for s in shipments}
     for shipment in shipments:

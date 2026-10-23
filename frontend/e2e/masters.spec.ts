@@ -76,7 +76,7 @@ async function mock(
     : rows.map((row, i) => ({
         ...row,
         operation_code: "SI",
-        reference_raw: `RM1-${String(i + 1).padStart(4, "0")}SI26-T01-MAT`,
+        reference_raw: `RM1-${String(i + 1).padStart(4, "0")}SI26-M01-MAT`,
       }));
   let identifiers: {
     id: string;
@@ -146,7 +146,7 @@ async function mock(
         id: "created-1",
         row_version: 1,
         owner_id: "owner-1",
-        reference_raw: `RM1-0009${body.operation_code}26-T01-MAT`,
+        reference_raw: `RM1-0009${body.operation_code}26-M01-MAT`,
       };
       rows = [row, ...rows];
       return json(row, 201);
@@ -205,8 +205,8 @@ async function mock(
   ).toBeVisible();
   if (!options.noMaster) {
     await page
-      .getByLabel("Tipo de operación del master", { exact: true })
-      .selectOption("SI");
+      .getByLabel("Responsable del master", { exact: true })
+      .selectOption("owner-1");
     await page
       .getByRole("button", { name: "Abrir master", exact: true })
       .click();
@@ -226,7 +226,7 @@ test("filters and reset retain the selected master", async ({ page }) => {
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator(".active-master")).toContainText(
-    "Marítimo · Importación",
+    "Analista de prueba",
   );
   await page.getByLabel("Estado", { exact: true }).selectOption("IN_TRANSIT");
   await page.getByRole("button", { name: "Aplicar", exact: true }).click();
@@ -236,40 +236,36 @@ test("filters and reset retain the selected master", async ({ page }) => {
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
 });
-test("consolidated master spans authorized owners and retains operation scope", async ({ page }) => {
+test("each responsible master contains its operations without mixing owners", async ({ page }) => {
   const requests = await mock(page, { role: "MANAGER", mixed: true, noMaster: true });
   expect(requests.some(req => req.path === "/masters/shipments")).toBeFalsy();
-  await expect(page.getByLabel("Responsable del master", { exact: true })).toHaveCount(0);
-  await page.getByLabel("Tipo de operación del master", { exact: true }).selectOption("SI");
+  const selector = page.getByLabel("Responsable del master", { exact: true });
+  await expect(selector.locator("option")).toHaveCount(6);
+  await selector.selectOption("owner-1");
   await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody")).toContainText("RM1-0001SI26");
-  await expect(page.locator("tbody")).toContainText("RM5-0001SI26");
-  await page.getByLabel("Tipo de operación del master", { exact: true }).selectOption("AI");
+  await expect(page.locator("tbody")).toContainText("RM1-0002AI26");
+  await expect(page.locator("tbody")).not.toContainText("RM5-");
+  await selector.selectOption("owner-5");
   await expect(page.locator("tbody tr")).toHaveCount(0);
   await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody")).toContainText("RM5-0002AI26");
+  await expect(page.locator("tbody")).not.toContainText("RM1-");
 });
-test("operator has no owner selector and no unscoped initial list", async ({
-  page,
-}) => {
+test("operator can select only their own master", async ({ page }) => {
   const requests = await mock(page, { mixed: true, noMaster: true });
-  expect(requests.some((req) => req.path === "/masters/shipments")).toBeFalsy();
-  await expect(
-    page.getByLabel("Responsable del master", { exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toBeDisabled();
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("SI");
+  expect(requests.some(req => req.path === "/masters/shipments")).toBeFalsy();
+  const selector = page.getByLabel("Responsable del master", { exact: true });
+  await expect(selector.locator("option")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeDisabled();
+  await selector.selectOption("owner-1");
   await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator("tbody tr").first()).toContainText("RM1-0001SI26");
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await expect(page.locator("tbody")).not.toContainText("RM2-");
 });
-test("creates on server, never sends owner/reference, then attaches a pedimento", async ({
+test("creates in the selected master with manual company and an allowed BU, then attaches a pedimento", async ({
   page,
 }) => {
   const requests = await mock(page);
@@ -279,21 +275,25 @@ test("creates on server, never sends owner/reference, then attaches a pedimento"
     .getByRole("button", { name: "Crear embarque", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toContainText("Completa");
+  await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("SI");
+  await expect(dialog.getByLabel("Business unit *", { exact: true }).locator("option")).toHaveText(["Selecciona una BU", "M01", "M19", "M23", "M45", "M46"]);
   await dialog
     .getByLabel("Business unit *", { exact: true })
-    .selectOption("T01");
+    .selectOption("M01");
   await dialog
     .getByRole("button", { name: "Crear embarque", exact: true })
     .click();
   await expect(
-    dialog.getByRole("heading", { name: "RM1-0009SI26-T01-MAT" }),
+    dialog.getByRole("heading", { name: "RM1-0009SI26-M01-MAT" }),
   ).toBeVisible();
   const creation = requests.find(
     (r) => r.path === "/shipments" && r.method === "POST",
   )!;
-  expect(creation.body).not.toHaveProperty("owner_id");
+  expect(creation.body?.["owner_id"]).toBe("owner-1");
+  expect(creation.body?.["company_code"]).toBe("MXG");
   expect(creation.body).not.toHaveProperty("reference_raw");
-  expect(creation.body?.["business_unit"]).toBe("T01");
+  expect(creation.body?.["business_unit"]).toBe("M01");
   await dialog.getByLabel("Número de documento").fill("26 00 0000 0001234");
   await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
   await expect(dialog.locator(".identifier-list")).toContainText(
@@ -308,29 +308,17 @@ test("creates on server, never sends owner/reference, then attaches a pedimento"
     requests.filter((r) => r.method === "POST" && r.path === "/shipments"),
   ).toHaveLength(1);
 });
-test("creation uses the master operation and its specific fields", async ({
-  page,
-}) => {
+test("each shipment selects its own operation and specific fields", async ({ page }) => {
   await mock(page);
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByLabel("Tipo de operación", { exact: true }),
-  ).toHaveValue("Marítimo · Importación");
-  await expect(
-    dialog.getByLabel("Tipo de operación", { exact: true }),
-  ).toHaveAttribute("readonly", "");
+  const operation = dialog.getByLabel("Tipo de operación *", { exact: true });
+  await expect(operation).toHaveValue("");
+  await operation.selectOption("SI");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("R1");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await page.getByRole("button", { name: "Nuevo embarque" }).click();
+  await operation.selectOption("R1");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toHaveCount(0);
-  await expect(
-    dialog.getByRole("heading", { name: "Seguimiento de la operación" }),
-  ).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Seguimiento de la operación" })).toBeVisible();
 });
 test("conflict preserves edits and requires explicit reload before saving", async ({
   page,
@@ -373,7 +361,7 @@ for (const role of ["MANAGER", "FINANCE"]) {
 test("administrator can edit the consolidated master", async ({ page }) => {
   await mock(page, { role: "SUPER_ADMIN", mixed: true });
   await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeEnabled();
-  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
   await page.locator(".reference-link").last().click();
   await expect(page.getByRole("dialog").getByLabel("Comentarios")).toBeEnabled();
 });
@@ -525,7 +513,7 @@ test("invalid dates, protected columns and oversized pastes do not partially sta
   await pasteCells(page, 0, "ship_date", "12/10/2026\t31/02/2026");
   await expect(page.getByRole("alert")).toContainText("ETA");
   await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
-  await pasteCells(page, 0, "status", "Entregado\tT02");
+  await pasteCells(page, 0, "status", "Entregado\tM19");
   await expect(page.getByRole("alert")).toContainText("solo lectura");
   await expect(cell(page, 0, "status")).toContainText("En tránsito");
   await pasteCells(page, 7, "sender", "A\nB");
@@ -603,7 +591,7 @@ test("unconfirmed network writes are retained and not submitted twice", async ({
 test("pending edits survive a canceled master switch, refresh and page change", async ({
   page,
 }) => {
-  await mock(page, { count: 55 });
+  await mock(page, { role: "SUPER_ADMIN", count: 55, mixed: true });
   await pasteCells(page, 0, "origin", "Cambio pendiente");
   page.on("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Página siguiente" }).click();
@@ -611,11 +599,11 @@ test("pending edits survive a canceled master switch, refresh and page change", 
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
   await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("AI");
+    .getByLabel("Responsable del master", { exact: true })
+    .selectOption("owner-2");
   await expect(
-    page.getByLabel("Tipo de operación del master", { exact: true }),
-  ).toHaveValue("SI");
+    page.getByLabel("Responsable del master", { exact: true }),
+  ).toHaveValue("owner-1");
   await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
 });
 
@@ -645,9 +633,9 @@ test("CSV exports the displayed page and neutralizes spreadsheet formulas", asyn
   const stream = await download.createReadStream();
   let csv = "";
   for await (const chunk of stream!) csv += chunk.toString();
-  expect(download.suggestedFilename()).toBe("master-SI-pagina-1.csv");
+  expect(download.suggestedFilename()).toBe("master-Analista de prueba-pagina-1.csv");
   expect(csv).toContain("'" + '=HYPERLINK(""https://example.com"")');
-  expect(csv).toContain("Referencia,Estado,BU,Fecha de embarque");
+  expect(csv).toContain("Referencia,Estado,BU,Tipo de operación,Empresa,Fecha de embarque");
   expect(csv.split("\r\n")).toHaveLength(9);
 });
 

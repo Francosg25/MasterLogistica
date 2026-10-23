@@ -2,7 +2,7 @@ import { Balance, HistoryRow, InvoiceRow, Report } from "./finance.types";
 const balance = (id: string, changes: Partial<Balance>): Balance => ({
   id,
   row_version: 1,
-  reference: `RM1-00${id}LI26-T01-MAT`,
+  reference: `RM1-00${id}LI26-M01-MAT`,
   supplier_name: "Transporte Ejemplo",
   owner_name: "Integrante 1 · Demostración",
   owner_id: "owner-1",

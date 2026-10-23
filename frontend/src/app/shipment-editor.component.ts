@@ -29,7 +29,6 @@ import {
 export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   @ViewChild("dialog") dialog!: ElementRef<HTMLDialogElement>;
   catalogs = input.required<Catalogs>();
-  masterOperation = input.required<string>();
   masterOwnerName = input.required<string>();
   suppliers = input<Supplier[]>([]);
   shipment = input<Shipment | null>(null);
@@ -53,7 +52,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   submitted = false;
   private fb = new FormBuilder().nonNullable;
   form = this.fb.group({
-    company_code: ["", Validators.required],
+    company_code: ["", [Validators.required, Validators.maxLength(32), Validators.pattern(/.*\S.*/)]],
     process_code: ["RM", Validators.required],
     operation_code: ["LI", Validators.required],
     reference_year: [
@@ -99,10 +98,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       );
       this.form.patchValue(values);
     } else
-      this.form.patchValue({
-        company_code: this.catalogs().company_codes[0] ?? "",
-        operation_code: this.masterOperation(),
-      });
+      this.form.patchValue({ company_code: "", operation_code: "" });
     if (this.readOnly()) this.form.disable();
   }
   ngAfterViewInit(): void {
@@ -153,7 +149,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       this.form.controls.pfa_approval_code.setErrors({ required: true });
       return;
     }
-    const data: Record<string, unknown> = { ...values };
+    const data: Record<string, unknown> = { ...values, company_code: values.company_code.trim() };
     for (const key of [
       "sender",
       "origin",

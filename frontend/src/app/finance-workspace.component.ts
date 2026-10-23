@@ -33,6 +33,14 @@ import {
   Section,
 } from "./finance.types";
 
+interface ReferenceOption {
+  id: string;
+  reference: string;
+  company_code: string;
+  owner_name?: string;
+  business_unit?: string;
+}
+
 @Component({
   selector: "finance-workspace",
   standalone: true,
@@ -60,9 +68,15 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   totals = signal<CurrencyTotal[]>([]);
   report = signal<Report | null>(null);
   owners = signal<Pick<Owner, "id" | "display_name">[]>([]);
-  references = signal<
-    { id: string; reference: string; company_code: string }[]
-  >([]);
+  references = signal<ReferenceOption[]>([]);
+  referenceOpen = signal(false);
+  referenceLoading = signal(false);
+  referenceError = signal("");
+  activeReference = signal(-1);
+  selectedReference = signal<ReferenceOption | null>(null);
+  readonly concepts = ["FREIGHT", "BROKER", "STORAGE"];
+  private referenceTimer?: ReturnType<typeof setTimeout>;
+  private referenceController?: AbortController;
   total = signal(0);
   offset = signal(0);
   limit = 20;
@@ -114,10 +128,10 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     supplier_id: ["", Validators.required],
     charge_code: [
       "FREIGHT",
-      [Validators.required, Validators.pattern(/^[A-Z0-9_-]+$/)],
+      [Validators.required, Validators.pattern(/^(FREIGHT|BROKER|STORAGE)$/)],
     ],
     line_no: [1, Validators.min(1)],
-    month_accrued: [this.currentMonth, Validators.required],
+    provision_date: [this.day, Validators.required],
     amount: ["", [Validators.required, Validators.min(0)]],
     extra_charges: ["0", [Validators.required, Validators.min(0)]],
     currency: ["USD", Validators.required],
@@ -168,6 +182,9 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   ngOnDestroy() {
     this.controller?.abort();
+    this.referenceController?.abort();
+    clearTimeout(this.referenceTimer);
+    this.refRequest++;
     this.requestNumber++;
   }
   @HostListener("window:beforeunload", ["$event"])
@@ -322,7 +339,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       supplier_id: "",
       charge_code: "FREIGHT",
       line_no: 1,
-      month_accrued: this.filters.controls.month.value,
+      provision_date: this.filters.controls.month.value === this.currentMonth ? this.day : "",
       amount: "",
       extra_charges: "0",
       currency: "USD",
@@ -339,6 +356,10 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     this.lines.push(this.newLine());
     this.invoiceForm.markAsPristine();
     this.formOpen.set(true);
+    this.references.set([]);
+    this.selectedReference.set(null);
+    this.referenceOpen.set(false);
+    this.referenceError.set("");
     this.error.set("");
   }
   closeForm() {
@@ -346,17 +367,69 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   async lookup(value: string) {
     const request = ++this.refRequest;
-    if (this.demo || value.trim().length < 2) {
+    this.referenceController?.abort();
+    if (this.demo) {
       this.references.set([]);
       return;
     }
+    const controller = new AbortController();
+    this.referenceController = controller;
+    this.referenceLoading.set(true);
+    this.referenceError.set("");
     try {
-      const rows = await this.api.request<
-        { id: string; reference: string; company_code: string }[]
-      >("/finance/references?q=" + encodeURIComponent(value));
+      const rows = await this.api.request<ReferenceOption[]>(
+        "/finance/references?q=" + encodeURIComponent(value.trim()), "GET", undefined, controller.signal,
+      );
       if (request === this.refRequest) this.references.set(rows);
-    } catch {
-      if (request === this.refRequest) this.references.set([]);
+    } catch (error) {
+      if (request === this.refRequest && !controller.signal.aborted) {
+        this.references.set([]);
+        this.referenceError.set("No se pudieron cargar las referencias. Vuelve a buscar.");
+      }
+    } finally {
+      if (request === this.refRequest) this.referenceLoading.set(false);
+    }
+  }
+  searchProvisionReferences(immediate = false) {
+    clearTimeout(this.referenceTimer);
+    this.refRequest++;
+    this.referenceController?.abort();
+    this.references.set([]);
+    this.referenceLoading.set(true);
+    this.activeReference.set(-1);
+    this.referenceOpen.set(true);
+    const value = this.provisionForm.controls.reference.value;
+    if (!immediate) this.selectedReference.set(null);
+    if (immediate) void this.lookup(value);
+    else this.referenceTimer = setTimeout(() => void this.lookup(value), 180);
+  }
+  selectReference(reference: ReferenceOption) {
+    this.provisionForm.controls.reference.setValue(reference.reference);
+    this.provisionForm.controls.reference.markAsDirty();
+    this.selectedReference.set(reference);
+    this.referenceOpen.set(false);
+    this.activeReference.set(-1);
+  }
+  referenceDetails(reference: ReferenceOption) {
+    return [reference.owner_name, reference.business_unit, reference.company_code].filter(Boolean).join(" · ");
+  }
+  referenceKey(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      this.referenceOpen.set(false);
+      event.preventDefault();
+    } else if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      if (!this.referenceOpen()) { this.searchProvisionReferences(true); return; }
+      const count = this.references().length;
+      if (count) this.activeReference.set((this.activeReference() + (event.key === "ArrowDown" ? 1 : -1) + count) % count);
+    } else if (event.key === "Enter" && this.referenceOpen() && this.activeReference() >= 0) {
+      event.preventDefault();
+      this.selectReference(this.references()[this.activeReference()]);
+    }
+  }
+  referenceBlur(event: FocusEvent) {
+    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+      this.referenceOpen.set(false);
     }
   }
   async write(action: () => Promise<unknown>, success: string) {
@@ -409,7 +482,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       await this.api.request("/finance/provisions", "POST", {
         ...data,
         shipment_id: reference.id,
-        month_accrued: v.month_accrued + "-01",
+        month_accrued: v.provision_date.slice(0, 7) + "-01",
       });
       this.provisionForm.markAsPristine();
       this.formOpen.set(false);

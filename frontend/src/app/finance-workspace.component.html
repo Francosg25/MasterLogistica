@@ -184,15 +184,41 @@
         <form [formGroup]="provisionForm" (ngSubmit)="saveProvision()">
           <fieldset [disabled]="busy()">
             <div class="finance-form-grid">
-              <label class="wide"
-                >Referencia del master<input
+              <div class="wide reference-picker" (focusout)="referenceBlur($event)">
+                <label for="provision-reference">Referencia del master</label>
+                <input id="provision-reference"
                   formControlName="reference"
-                  list="finance-references"
-                  (input)="lookup(provisionForm.controls.reference.value)"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-controls="provision-reference-options"
+                  [attr.aria-expanded]="referenceOpen()"
+                  [attr.aria-activedescendant]="referenceOpen() && activeReference() >= 0 ? 'reference-option-' + activeReference() : null"
+                  autocomplete="off"
+                  (focus)="searchProvisionReferences(true)"
+                  (input)="searchProvisionReferences()"
+                  (keydown)="referenceKey($event)"
                   required
                   maxlength="160"
-                  placeholder="Escribe la referencia existente"
-              /></label>
+                  placeholder="Busca o selecciona una referencia existente"
+                />
+                @if (selectedReference(); as ref) {
+                  <small>{{ referenceDetails(ref) }}</small>
+                }
+                @if (referenceOpen()) {
+                  <div class="reference-options" id="provision-reference-options" role="listbox" aria-label="Referencias disponibles" [attr.aria-busy]="referenceLoading()">
+                    @if (referenceLoading()) {<p role="status">Buscando referencias…</p>}
+                    @else if (referenceError()) {<p role="alert">{{ referenceError() }}</p>}
+                    @else {
+                      @for (ref of references(); track ref.id; let i = $index) {
+                        <button type="button" role="option" tabindex="-1" [id]="'reference-option-' + i" [attr.aria-selected]="activeReference() === i" (mousedown)="$event.preventDefault()" (click)="selectReference(ref)">
+                          <strong>{{ ref.reference }}</strong><small>{{ referenceDetails(ref) }}</small>
+                        </button>
+                      } @empty {<p>No hay referencias disponibles para esta búsqueda.</p>}
+                      @if (references().length >= 30) {<p>Se muestran 30 coincidencias. Escribe más para precisar la búsqueda.</p>}
+                    }
+                  </div>
+                }
+              </div>
               <label
                 >Proveedor<select
                   aria-label="Proveedor"
@@ -208,12 +234,11 @@
                 </select></label
               >
               <label
-                >Concepto<input
+                >Concepto<select
+                  aria-label="Concepto"
                   formControlName="charge_code"
-                  maxlength="40"
-                  placeholder="FREIGHT"
                   required
-              /></label>
+                >@for (concept of concepts; track concept) {<option [value]="concept">{{ concept }}</option>}</select></label>
               <label
                 >Línea de costo<input
                   formControlName="line_no"
@@ -223,9 +248,9 @@
                   required
               /></label>
               <label
-                >Mes de origen<input
-                  formControlName="month_accrued"
-                  type="month"
+                >Fecha de provisión<input
+                  formControlName="provision_date"
+                  type="date"
                   required
               /></label>
               <label
@@ -256,7 +281,7 @@
               /></label>
             </div>
             <p class="hint">
-              El periodo debe estar abierto. Usa una línea distinta para cada
+              El mes de la fecha seleccionada debe estar abierto. Usa una línea distinta para cada
               costo adicional de la misma referencia, proveedor y concepto.
               Primero se guarda un borrador; después se aprueba.
             </p>
@@ -465,7 +490,7 @@
             <tr>
               <th>Referencia / responsable</th>
               <th>Proveedor / concepto</th>
-              <th>Origen</th>
+              <th>Fecha de provisión</th>
               <th>Moneda</th>
               <th class="number">Provisión</th>
               <th class="number">Inicial</th>
@@ -492,7 +517,7 @@
                     >{{ row.charge_code }} · Línea {{ row.line_no }}</small
                   >
                 </td>
-                <td>{{ row.month_accrued.slice(0, 7) }}</td>
+                <td>{{ row.provision_date ? row.provision_date!.split('-').reverse().join('/') : row.month_accrued.slice(0, 7) }}@if (!row.provision_date) {<small>Día no registrado</small>}</td>
                 <td>{{ row.currency || "—" }}</td>
                 <td class="number">{{ money(row.total_amount) }}</td>
                 <td class="number">{{ money(row.opening_amount) }}</td>

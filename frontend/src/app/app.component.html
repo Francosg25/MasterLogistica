@@ -84,7 +84,7 @@
           <h1>Tu espacio de trabajo.</h1>
           <p>Consulta los masters, sigue las provisiones y concilia la facturación.</p>
           <div class="home-grid">
-            <button (click)="changeSection('masters')"><span>01</span><h2>Masters</h2><p>Abre una operación y trabaja en la tabla. Consulta los movimientos de cada referencia.</p><strong>Abrir masters →</strong></button>
+            <button (click)="changeSection('masters')"><span>01</span><h2>Masters</h2><p>Abre el master de un responsable y trabaja en la tabla. Consulta los movimientos de cada referencia.</p><strong>Abrir masters →</strong></button>
             <button (click)="changeSection('provisions')"><span>02</span><h2>Provisiones</h2><p>Consulta saldos vivos, importes aplicados y el mes de origen de cada provisión.</p><strong>Ver provisiones →</strong></button>
             <button (click)="changeSection('invoices')"><span>03</span><h2>Facturas</h2><p>Importa el consolidado de Excel y aplica USD AMOUNT a las referencias provisionadas.</p><strong>Facturas y conciliación →</strong></button>
             <button (click)="changeSection('history')"><span>04</span><h2>Historial</h2><p>Revisa quién agregó, modificó o canceló un movimiento y consulta los valores anteriores.</p><strong>Consultar cambios →</strong></button>
@@ -107,15 +107,15 @@
         <section class="master-selector" aria-label="Selección de master">
           <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
             <label
-              >Tipo de operación del master<select
-                aria-label="Tipo de operación del master"
-                formControlName="operation_code"
+              >Responsable del master<select
+                aria-label="Responsable del master"
+                formControlName="owner_id"
                 (change)="resetMaster()"
               >
-                <option value="">Selecciona una operación</option>
-                @for (code of catalog()!.operation_codes; track code) {
-                  <option [value]="code">
-                    {{ code }} · {{ operations[code] || code }}
+                <option value="">Selecciona un responsable</option>
+                @for (owner of logisticsOwners(); track owner.id) {
+                  <option [value]="owner.id">
+                    {{ owner.display_name }}
                   </option>
                 }
               </select></label
@@ -165,18 +165,14 @@
             <span class="empty-sheet-icon" aria-hidden="true">▦</span>
             <h2>Abre un master para comenzar</h2>
             <p>
-              Selecciona el tipo
-              de operación.
+              Selecciona a DENI, MAG, NAT, ANDREA o ALEXA según tus permisos.
             </p>
           </div>
         } @else {
           <section class="masters-panel" aria-label="Embarques del master">
             <div class="active-master">
-              <strong>Master {{ masterOperation() }}</strong
-              ><span>/</span
-              ><span>{{
-                operations[masterOperation()] || masterOperation()
-              }}</span>
+              <strong>Master de {{ ownerName(masterOwner()) }}</strong
+              ><span>/</span><span>Todos los tipos de operación</span>
               <button class="button subtle filter-toggle" (click)="filtersVisible.set(!filtersVisible())" [attr.aria-expanded]="filtersVisible()" aria-controls="master-filters">{{ filtersVisible() ? 'Ocultar filtros' : 'Mostrar filtros' }}</button>
             </div>
             <form id="master-filters" class="filters" [hidden]="!filtersVisible()" [formGroup]="filters" (ngSubmit)="apply()">
@@ -224,6 +220,7 @@
               <details class="more-filters">
                 <summary>Más filtros</summary>
                 <div class="filter-grid">
+                  <label>Tipo de operación<select aria-label="Tipo de operación" formControlName="operation_code"><option value="">Todas las operaciones</option>@for (code of catalog()!.operation_codes; track code) {<option [value]="code">{{ code }} · {{ operations[code] || code }}</option>}</select></label>
                   <label
                     >Business unit<select
                       aria-label="Business unit"
@@ -232,7 +229,7 @@
                       <option value="">Todas las BU</option>
                       @for (code of unitCodes(); track code) {
                         <option [value]="code">
-                          {{ code }} · {{ catalog()!.business_units[code] }}
+                          {{ code }}
                         </option>
                       }
                     </select></label
@@ -294,7 +291,7 @@
                 [practice]="practice()"
                 [suppliers]="suppliers()"
                 [offset]="offset()"
-                [operation]="masterOperation()"
+                [masterName]="ownerName(masterOwner())"
                 (opened)="open($event)"
                 (activity)="activity.set($event)"
                 (updated)="updateSheetRow($event)"
@@ -302,7 +299,7 @@
             }
             <footer class="table-footer">
               <span class="sheet-tab"
-                ><span aria-hidden="true">▦</span> {{ masterOperation() }} ·
+                ><span aria-hidden="true">▦</span> {{ ownerName(masterOwner()) }} ·
                 Vista de operaciones</span
               >
               <span
@@ -351,8 +348,7 @@
     [catalogs]="catalog()!"
     [suppliers]="suppliers()"
     [shipment]="selected()"
-    [masterOperation]="masterOperation()"
-    [masterOwnerName]="ownerName(selected()?.owner_id || user()!.id)"
+    [masterOwnerName]="ownerName(selected()?.owner_id || masterOwner())"
     [identifiers]="identifiers()"
     [readOnly]="!canWrite()"
     [busy]="saving()"

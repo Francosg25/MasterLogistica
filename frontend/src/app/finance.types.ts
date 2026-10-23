@@ -12,6 +12,7 @@ export interface Balance {
   charge_code: string;
   line_no: number;
   month_accrued: string;
+  provision_date?: string | null;
   period_month: string;
   currency: string;
   total_amount: string;
@@ -128,6 +129,7 @@ export const FIELDS: Record<string, string> = {
   total_amount: "Provisión total",
   extra_charges: "Cargos extra",
   month_accrued: "Mes de origen",
+  provision_date: "Fecha de provisión",
   accounting_period: "Periodo contable",
   period_month: "Mes del movimiento",
   invoice_number: "Factura",

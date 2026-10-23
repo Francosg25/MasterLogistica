@@ -8,8 +8,8 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 
 ## Estado
 
-- Referencias: nomenclatura versionada y catálogo de BU configurable.
-- Inicio con accesos a Masters, Provisiones, Facturas e Historial. Masters por tipo de operación, sin selector de responsable, con vista ampliada y 50 filas por página. Se conserva la propiedad y autorización de cada registro.
+- Referencias: nomenclatura versionada y catálogo de BU M01, M19, M23, M45 y M46.
+- Inicio con accesos a Masters, Provisiones, Facturas e Historial. Masters por responsable (DENI, MAG, NAT, ANDREA y ALEXA), con todos sus tipos de operación, con vista ampliada y 50 filas por página. Se conserva la propiedad y autorización de cada registro.
 - Detalle: edición con control de concurrencia, pedimentos, BL, contenedores, guías y seguimiento de incidencias.
 - Desarrollo local: API real, base SQLite persistente y usuario local con permisos de edición; sin Docker, servidor de base de datos ni cuenta Microsoft.
 - Demostración: disponible sin credenciales, con datos ficticios y sólo lectura. No consulta ni modifica registros operativos.
@@ -37,9 +37,9 @@ Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `n
 
 ### Desarrollo local editable (predeterminado)
 
-Sin configuración adicional, el lanzador prepara `.venv`, inicia **la API real y Angular** y crea automáticamente **`.data/masterlogistica.db`** en la raíz del proyecto. Entras como **Desarrollo local**, con permisos para crear y editar embarques, documentos, provisiones y facturas. Los cambios se guardan en ese archivo y continúan después de cerrar el navegador, detener la aplicación o reiniciar el equipo. La misma API aplica validaciones, control de versiones y auditoría.
+Sin configuración adicional, el lanzador prepara `.venv`, inicia **la API real y Angular** y crea automáticamente **`.data/masterlogistica.db`** en la raíz del proyecto. Entras en el master local de **DENI**, con acceso de administración para seleccionar los cinco responsables, con permisos para crear y editar embarques, documentos, provisiones y facturas. Los cambios se guardan en ese archivo y continúan después de cerrar el navegador, detener la aplicación o reiniciar el equipo. La misma API aplica validaciones, control de versiones y auditoría.
 
-Se crean la compañía `LOCAL`, las BU ficticias `T01`/`T02` y un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
+Se preparan las identidades locales DENI, MAG, NAT, ANDREA y ALEXA, las BU `M01`/`M19`/`M23`/`M45`/`M46` y un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
 
 `.env.native` es opcional. Si quieres cambiar catálogos o la ubicación del archivo, copia `.env.native.example` a `.env.native` y edita sus valores. Si ya tenías una `.env.native` con PostgreSQL/Entra, se conserva y sigue utilizando esa conexión: para elegir SQLite, renómbrala como respaldo y usa la nueva plantilla. No se migra ni borra la base anterior.
 
@@ -93,7 +93,7 @@ ENTRA_API_CLIENT_ID=ID-DE-LA-API
 ENTRA_FRONTEND_CLIENT_ID=ID-DE-LA-SPA
 ENTRA_ALLOWED_CLIENT_IDS=["ID-DE-LA-SPA"]
 COMPANY_CODES=["JE_MX"]
-BUSINESS_UNITS={"T01":"Descripcion aprobada"}
+BUSINESS_UNITS={"M01":"M01","M19":"M19","M23":"M23","M45":"M45","M46":"M46"}
 ```
 
 Completa los identificadores y credenciales reales por el canal autorizado. El DBA prepara el esquema o proporciona `MIGRATION_DATABASE_URL` con un rol separado. El lanzador aplica Alembic si recibe esa identidad y la retira antes de iniciar la API. Aprovisiona los usuarios como indica **Configuración de acceso y catálogos**. Nunca uses una base operativa para pruebas locales.
@@ -212,7 +212,7 @@ El perfil corporativo (`AUTH_MODE=entra`) necesita dos registros de Entra: API y
 
 Registra **http://127.0.0.1:4200/** como URI de redirección de tipo **Single-page application**. Si usas `localhost`, registra también **http://localhost:4200/**. La URL debe coincidir con la que abras. La SPA no usa secretos de cliente.
 
-`COMPANY_CODES` contiene las empresas permitidas. El catálogo privado de BU se carga desde un JSON con códigos y descripciones, por ejemplo `{"T01":"Unidad de ejemplo"}`:
+`Empresa` se captura manualmente como en el master (hasta 32 caracteres). `COMPANY_CODES` aporta sugerencias iniciales; las empresas registradas aparecen también en el catálogo para facturación e importación. Las BU permitidas son M01, M19, M23, M45 y M46. Se pueden personalizar sus descripciones desde un JSON, por ejemplo `{"M01":"Descripción interna"}`:
 
 ```powershell
 py -3.13 scripts/configure_business_units.py ruta\catalogo.business-units.json
@@ -233,12 +233,12 @@ El acceso requiere una identidad Microsoft Entra válida y un usuario local acti
 
 | Rol | Consulta de masters | Modificación de datos operativos |
 | --- | --- | --- |
-| Operaciones (`OPERATOR`) | Su propio master, separado por operación | Alta y edición de registros propios |
-| Gerencia (`MANAGER`) | Todos los responsables autorizados por operación | Sólo lectura |
+| Operaciones (`OPERATOR`) | Su propio master con todos sus tipos de operación | Alta y edición de registros propios |
+| Gerencia (`MANAGER`) | Un master por cada responsable autorizado | Sólo lectura |
 | Finanzas (`FINANCE`) | Registros propios según el alcance actual | Sin alta ni edición operativa; los permisos de provisiones se gestionan por separado |
-| Super Admin (`SUPER_ADMIN`) | Todos los responsables autorizados por operación | Edición y administración de usuarios; las altas se asignan siempre al usuario autenticado |
+| Super Admin (`SUPER_ADMIN`) | Un master por cada responsable autorizado | Edición y administración de usuarios; puede crear en el master seleccionado |
 
-La interfaz no carga embarques hasta seleccionar una operación. Las rutas `/masters/shipments` y `/masters/summary` exigen un único `operation_code`; `owner_id` es opcional y conserva sus comprobaciones de autorización. Gerencia y Super Admin pueden consultar la operación completa. Los otros roles siguen limitados a sus registros. El servidor asigna el dueño autenticado en cada alta.
+La interfaz no carga embarques hasta abrir el master de un responsable. Las rutas `/masters/shipments` y `/masters/summary` aceptan `owner_id` y un filtro opcional `operation_code`. La pantalla envía siempre el responsable seleccionado. Operaciones conserva el acceso a sus registros; Gerencia y Administración pueden consultar los responsables autorizados. Sólo Administración puede crear registros para otro responsable; la referencia y su consecutivo se generan con el código del dueño seleccionado, mientras la auditoría registra al usuario que realizó el alta.
 
 Los códigos de analista 1–5 identifican a los integrantes de logística en el catálogo. Las cinco identidades de la demostración son ficticias; las cuentas reales deben aprovisionarse con sus códigos verificados. Los endpoints generales de embarques mantienen la consulta consolidada autorizada para Gerencia y Super Admin.
 
@@ -277,7 +277,7 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 ## Vista de demostración
 
-La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. No carga registros hasta abrir un master por tipo de operación. La demostración sigue siendo de solo lectura.
+La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. No carga registros hasta abrir el master de un responsable. La demostración sigue siendo de solo lectura.
 
 ## Edición del master
 
@@ -288,13 +288,13 @@ La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipogra
 - Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa` o `aaaa-mm-dd`. Los estados y proveedores se validan contra sus catálogos. Un rango inválido se rechaza completo.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
-- Referencia y BU están protegidas porque forman parte de la identidad de la operación. La propiedad del registro permanece protegida y el tipo de operación lo define el master. La edición respeta los roles del servidor.
+- Referencia y BU están protegidas porque forman parte de la identidad de la operación. La propiedad del registro permanece protegida y el tipo de operación se elige al crear cada embarque. La edición respeta los roles del servidor.
 - **Nuevo embarque** genera la referencia mediante el servidor. Abrir una referencia permite consultar o editar su detalle, incidencias y documentos.
 - **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros como masters; la carga del consolidado de facturación se realiza en su sección dedicada.
 
 Los registros modificados permanecen visibles hasta actualizar o volver a aplicar los filtros.
 
-![Masters con datos ficticios](frontend/docs/masters-preview.png)
+![Master por responsable con datos de prueba locales](frontend/docs/masters-preview.png)
 
 ## Provisiones, facturas e historial
 
@@ -303,7 +303,7 @@ El menú principal incorpora **Provisiones**, **Facturas y conciliación** e **H
 ### Flujo financiero
 
 1. Finanzas o Administración selecciona un mes y pulsa **Abrir periodo**. Esto crea un periodo abierto; no cierra ni reemplaza otros meses.
-2. En **Provisiones**, captura referencia existente, proveedor, concepto, línea de costo, mes de origen, moneda, importe neto y cargos extra. Guarda el borrador y pulsa **Aprobar**. Los borradores no afectan los saldos.
+2. En **Provisiones**, busca o selecciona una referencia existente en la lista con responsable, BU y empresa (también admite flechas y Enter). Captura proveedor, concepto **FREIGHT**, **BROKER** o **STORAGE**, línea de costo, **fecha exacta**, moneda, importe neto y cargos extra. El mes de origen se deriva de la fecha y debe estar abierto. Guarda el borrador y pulsa **Aprobar**. Los borradores no afectan los saldos.
 3. En **Facturas y conciliación**, registra folio, proveedor, empresa, moneda, fecha, periodo y una o varias líneas por referencia. **Registrar y conciliar** aplica automáticamente los importes compatibles. También puedes usar **Subir consolidado Excel**, descrito abajo. La captura manual sigue disponible; no se interpretan archivos PDF/XML.
 4. Si una factura llegó antes que su provisión, queda pendiente. Después de aprobar la provisión, selecciona el mes de aplicación y pulsa **Conciliar** en la factura.
 5. **Reporte mensual** muestra saldos, movimientos y facturas pendientes. **Descargar CSV para Excel** exporta todas las filas del alcance, independientemente de la paginación.
@@ -333,7 +333,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere **0005_invoice_excel**, además de las migraciones anteriores, para conservar la evidencia original de la importación. No regeneres `.env`.
+Esta versión requiere **0006_provision_date**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -376,3 +376,7 @@ Desde el master, selecciona una celda y pulsa **Movimientos de referencia**. Des
 Validación de la actualización XLSX: 177 pruebas de backend sin base externa y 30 casos de parser/finanzas sobre PGlite aprobados. La lectura se comprobó también contra el consolidado suministrado, sin incorporar datos operativos al repositorio. Las pruebas de navegador usan respuestas de API y datos ficticios; la integración con PostgreSQL nativo y Microsoft Entra ID sigue pendiente en el entorno autorizado.
 
 ![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)
+
+La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente de la versión 1 a la 2 conservando sus filas. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
+
+![Captura de provisión con fecha exacta y concepto](frontend/docs/provision-date-preview.png)
