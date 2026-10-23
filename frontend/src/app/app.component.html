@@ -35,12 +35,33 @@
   </main>
 } @else {
   <div class="workspace" [class.master-workspace]="section() === 'masters'" [class.sheet-focus]="focusedSheet() && section() === 'masters'">
+    <ng-template #sectionNavigation>
+      <nav class="workspace-nav" aria-label="Secciones">
+        @for (item of sections; track item.id) {
+          <button
+            class="nav-section"
+            [class.active]="section() === item.id"
+            [attr.aria-current]="section() === item.id ? 'page' : null"
+            (click)="changeSection(item.id)"
+            [disabled]="saving() || sheet?.saving() || finance?.busy()"
+          >
+            {{ item.label }}
+          </button>
+        }
+      </nav>
+    </ng-template>
     <header class="topbar">
       <div class="wordmark">
         <span class="brand-mark">M</span><strong>MasterLogistica</strong
         ><span class="product-section">Logística</span>
       </div>
+      @if (section() === 'masters') {
+        <ng-container [ngTemplateOutlet]="sectionNavigation" />
+      }
       <div class="account">
+        @if (auth.local && !demo() && section() === 'masters') {
+          <span class="local-banner" title="Guardado en la base de esta computadora (SQLite)">Guardado local</span>
+        }
         <span
           >{{ user()?.display_name }}<small>{{ roleName() }}</small></span
         ><button
@@ -52,21 +73,11 @@
         </button>
       </div>
     </header>
-    <nav class="workspace-nav" aria-label="Secciones">
-      @for (item of sections; track item.id) {
-        <button
-          class="nav-section"
-          [class.active]="section() === item.id"
-          [attr.aria-current]="section() === item.id ? 'page' : null"
-          (click)="changeSection(item.id)"
-          [disabled]="saving() || sheet?.saving() || finance?.busy()"
-        >
-          {{ item.label }}
-        </button>
-      }
-    </nav>
+    @if (section() !== 'masters') {
+      <ng-container [ngTemplateOutlet]="sectionNavigation" />
+    }
     <main class="main-content" id="main">
-      @if (auth.local && !demo()) {
+      @if (auth.local && !demo() && section() !== 'masters') {
         <div class="local-banner">Desarrollo local · Guardado en la base de esta computadora (SQLite)</div>
       }
       @if (demo()) {
@@ -91,61 +102,54 @@
           </div>
         </section>
       } @else if (section() === "masters") {
-        <div class="workspace-heading">
-          <h1>Masters de logística.</h1>
-          <button class="button secondary" (click)="focusedSheet.set(!focusedSheet())">{{ focusedSheet() ? 'Salir de vista ampliada' : 'Ampliar master' }}</button>
-          @if (canWrite()) {
-            <button
-              class="button primary"
-              [disabled]="!canCreate() || sheet?.saving()"
-              (click)="openCreate()"
-            >
-              <span aria-hidden="true">+</span> Nuevo embarque
-            </button>
-          }
-        </div>
-        <section class="master-selector" aria-label="Selección de master">
-          <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
-            <label
-              >Responsable del master<select
-                aria-label="Responsable del master"
-                formControlName="owner_id"
-                (change)="resetMaster()"
+        <div class="workspace-heading master-toolbar">
+          <h1 [class.sr-only]="masterReady() && !focusedSheet()">{{ focusedSheet() && masterReady() ? 'Master de ' + ownerName(masterOwner()) : 'Masters de logística.' }}</h1>
+          <section class="master-selector" aria-label="Selección de master">
+            <form [formGroup]="masterSelection" (ngSubmit)="chooseMaster()">
+              <label
+                ><span>Master</span><select
+                  aria-label="Responsable del master"
+                  formControlName="owner_id"
+                  (change)="resetMaster()"
+                >
+                  <option value="">Selecciona un responsable</option>
+                  @for (owner of logisticsOwners(); track owner.id) {
+                    <option [value]="owner.id">
+                      {{ owner.display_name }}
+                    </option>
+                  }
+                </select></label
               >
-                <option value="">Selecciona un responsable</option>
-                @for (owner of logisticsOwners(); track owner.id) {
-                  <option [value]="owner.id">
-                    {{ owner.display_name }}
-                  </option>
-                }
-              </select></label
-            >
-            <button
-              class="button secondary"
-              type="submit"
-              [disabled]="sheet?.saving()"
-            >
-              Abrir master
-            </button>
+              <button
+                class="button secondary"
+                type="submit"
+                [disabled]="sheet?.saving()"
+              >
+                Abrir master
+              </button>
+              @if (masterReady()) {
+                <span class="access-label">{{
+                  practice() ? "Práctica editable" : canWrite() ? "Edición habilitada" : "Solo lectura"
+                }}</span>
+              }
+            </form>
+          </section>
+          <div class="master-toolbar-actions">
             @if (masterReady()) {
-              <span class="access-label">{{
-                practice() ? "Práctica editable" : canWrite() ? "Edición habilitada" : "Solo lectura"
-              }}</span>
+              <button class="button subtle filter-toggle" (click)="filtersVisible.set(!filtersVisible())" [attr.aria-expanded]="filtersVisible()" aria-controls="master-filters">{{ filtersVisible() ? 'Ocultar filtros' : 'Mostrar filtros' }}</button>
             }
-          </form>
-        </section>
-        @if (notice()) {
-          <div class="success" role="status">
-            {{ notice()
-            }}<button
-              class="icon-button"
-              aria-label="Cerrar aviso"
-              (click)="notice.set('')"
-            >
-              ×
-            </button>
+            <button class="button secondary" (click)="focusedSheet.set(!focusedSheet())">{{ focusedSheet() ? 'Salir de vista ampliada' : 'Ampliar master' }}</button>
+            @if (canWrite()) {
+              <button
+                class="button primary"
+                [disabled]="!canCreate() || sheet?.saving()"
+                (click)="openCreate()"
+              >
+                <span aria-hidden="true">+</span> Nuevo embarque
+              </button>
+            }
           </div>
-        }
+        </div>
         @if (
           masterReady() &&
           canWrite() &&
@@ -170,11 +174,6 @@
           </div>
         } @else {
           <section class="masters-panel" aria-label="Embarques del master">
-            <div class="active-master">
-              <strong>Master de {{ ownerName(masterOwner()) }}</strong
-              ><span>/</span><span>Todos los tipos de operación</span>
-              <button class="button subtle filter-toggle" (click)="filtersVisible.set(!filtersVisible())" [attr.aria-expanded]="filtersVisible()" aria-controls="master-filters">{{ filtersVisible() ? 'Ocultar filtros' : 'Mostrar filtros' }}</button>
-            </div>
             <form id="master-filters" class="filters" [hidden]="!filtersVisible()" [formGroup]="filters" (ngSubmit)="apply()">
               <div class="filter-main">
                 <label class="search-label"
@@ -306,6 +305,12 @@
                 >{{ total() ? offset() + 1 : 0 }}–{{ lastItem() }} de
                 {{ total() }} operaciones</span
               >
+              @if (notice()) {
+                <span class="master-notice" role="status" [title]="notice()">
+                  <span>{{ notice() }}</span>
+                  <button class="icon-button" aria-label="Cerrar aviso" (click)="notice.set('')">×</button>
+                </span>
+              }
               <div class="pagination">
                 <button
                   class="icon-button"

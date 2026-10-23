@@ -251,22 +251,6 @@ input[readonly] {
   border: 1px solid var(--border);
   min-width: 0;
 }
-.active-master {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 16px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-}
-.active-master strong {
-  font-size: 13px;
-  font-weight: 600;
-}
-.active-master > span {
-  color: var(--muted);
-}
 .filters {
   padding: 12px 16px 9px;
   border-bottom: 1px solid var(--border);
@@ -384,7 +368,7 @@ master-sheet {
 .home-grid p { line-height: 1.6; color: var(--muted); margin-bottom: 22px; }
 .home-grid strong { font-size: 13px; font-weight: 500; color: var(--green); }
 .sheet-focus .topbar, .sheet-focus .workspace-nav, .sheet-focus .master-selector,
-.sheet-focus .filters, .sheet-focus .active-master, .sheet-focus .demo-banner,
+.sheet-focus .filters, .sheet-focus .filter-toggle, .sheet-focus .demo-banner,
 .sheet-focus .master-summary, .sheet-focus .view-tabs { display: none; }
 .sheet-focus .main-content { padding: 10px; }
 .sheet-focus .sheet-scroll { max-height: calc(100dvh - 210px); }
@@ -1360,29 +1344,65 @@ textarea {
 .spreadsheet .reference-link { font-size: inherit; }
 .spreadsheet td .status { font-size: .86em; }
 .spreadsheet .cell-text { line-height: 1.4; }
-@media (min-width: 761px) and (min-height: 650px) {
+.master-toolbar { justify-content: flex-start; gap: 8px; margin-bottom: 6px; }
+.master-toolbar h1 { font-size: 19px; margin-right: auto; }
+.master-toolbar .master-selector { margin: 0; }
+.master-toolbar .master-selector form { align-items: center; gap: 8px; }
+.master-toolbar .master-selector label { flex-direction: row; align-items: center; width: auto; gap: 8px; }
+.master-toolbar .master-selector select { width: 220px; }
+.master-toolbar .access-label { margin: 0; padding: 0; align-self: center; font-size: 11px; }
+.master-toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.master-workspace .sheet-actions { padding: 4px 8px; gap: 6px; }
+.master-workspace .sheet-actions .button, .master-toolbar .button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
+.master-workspace .sheet-zoom select { padding: 4px 6px; }
+.master-workspace .formula-bar { min-height: 30px; }
+.master-workspace .cell-address { padding: 6px; }
+.master-workspace .formula-bar input { min-height: 30px; padding: 4px 6px; }
+.master-workspace .formula-bar .button { min-height: 28px; padding: 3px 8px; font-size: 11px; }
+.formula-bar .sheet-cell-notice { flex: 0 1 auto; max-width: 45%; margin: 0; padding: 0 8px; font-size: 11px; color: #24633a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.master-notice { display: inline-flex; flex: 1 1 200px; min-width: 0; align-items: center; gap: 6px; color: #24633a; }
+.master-notice > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.master-notice .icon-button { width: 24px; height: 24px; font-size: 16px; }
+.master-workspace .topbar { flex-wrap: wrap; gap: 8px; }
+.master-workspace .topbar .product-section { display: none; }
+.master-workspace .topbar .local-banner { margin: 0; padding: 3px 6px; font-size: 11px; white-space: nowrap; }
+@media (min-width: 761px) {
   .master-workspace { height: 100dvh; display: flex; flex-direction: column; }
-  .master-workspace > .topbar, .master-workspace > .workspace-nav { flex-shrink: 0; }
-  .master-workspace .main-content { flex: 1; min-height: 0; padding: 10px 16px 12px; display: flex; flex-direction: column; }
+  .master-workspace > .topbar { flex-shrink: 0; min-height: 44px; padding: 0 16px; gap: 12px; }
+  .master-workspace .workspace-nav { flex: 1; padding: 0; border: 0; }
+  .master-workspace .nav-section { padding: 12px 10px; font-size: 12px; }
+  .master-workspace .account { gap: 8px; }
+  .master-workspace .account .button { min-height: 28px; padding: 4px 8px; font-size: 11px; }
+  .master-workspace .main-content { flex: 1; min-height: 0; padding: 6px 12px 8px; display: flex; flex-direction: column; }
   .master-workspace .main-content > :not(.masters-panel) { flex-shrink: 0; }
-  .master-workspace .workspace-heading { margin-bottom: 8px; }
-  .master-workspace .workspace-heading h1 { margin-right: auto; }
-  .master-workspace .master-selector { margin-bottom: 8px; }
-  .master-workspace .master-selector label { flex-direction: row; align-items: center; width: auto; gap: 10px; }
-  .master-workspace .master-selector select { width: 280px; }
   .master-workspace .masters-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  .master-workspace .active-master { padding: 4px 12px; min-height: 36px; }
   .master-workspace .masters-panel > :not(master-sheet) { flex-shrink: 0; }
   .master-workspace master-sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .master-workspace master-sheet > :not(.sheet-scroll) { flex-shrink: 0; }
   .master-workspace .sheet-scroll { flex: 1; min-height: 100px; max-height: none; }
-  .master-workspace .sheet-actions { padding: 6px 10px; gap: 6px; }
-  .master-workspace .table-footer { min-height: 40px; }
+  .master-workspace .save-state { padding: 0 6px; font-size: 11px; }
+  .master-workspace .table-footer { min-height: 34px; }
+  .master-workspace .sheet-tab { padding: 8px 12px; }
   .master-workspace .demo-banner { margin-bottom: 8px; padding: 6px 10px; }
   .master-workspace .filters { padding: 8px 12px; }
   .sheet-focus .main-content { padding: 8px; }
 }
-@media (max-width: 760px), (max-height: 649px) {
+@media (min-width: 761px) and (max-width: 1100px) {
+  .master-workspace .topbar .workspace-nav { order: 3; flex-basis: 100%; }
+  .master-workspace .topbar .account { margin-left: auto; }
+  .master-workspace .topbar { gap: 0 12px; padding-top: 4px; }
+  .master-workspace .nav-section { padding: 8px 10px; }
+}
+@media (max-width: 760px) {
+  .master-workspace .main-content { padding: 8px; }
+  .master-workspace .workspace-nav { order: 3; flex-basis: 100%; padding: 0; border: 0; }
+  .master-workspace .nav-section { padding: 9px 10px; font-size: 12px; }
+  .master-workspace .topbar .local-banner { display: none; }
+  .master-toolbar .master-selector { flex-basis: 100%; }
+  .master-toolbar .master-selector label { flex: 1 1 150px; }
+  .master-toolbar .master-selector select { width: 100%; }
+  .master-toolbar-actions { margin-left: 0; }
+  .master-toolbar .access-label { flex-basis: 100%; }
   .sheet-scroll { height: 55dvh; max-height: none; }
   .sheet-zoom { margin-left: 0; }
   .sheet-access-reason { font-size: 11px; }

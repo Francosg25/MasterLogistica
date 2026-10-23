@@ -26,10 +26,15 @@ test("local configuration creates and edits real records without corporate login
   await dialog.getByLabel("Comentarios").fill("Nota persistente de la API local");
   await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
+  expect((await page.locator("tbody tr").first().boundingBox())!.y).toBeLessThan(240);
   const origin = page.locator('td[data-row="0"][data-field="origin"]');
-  await origin.dblclick();
-  await page.getByLabel("Editar Origen", { exact: true }).fill("Origen guardado en SQLite");
+  await origin.click();
+  await page.keyboard.type("Origen guardado en SQLite");
+  await expect(page.getByLabel("Editar Origen", { exact: true })).toHaveValue("Origen guardado en SQLite");
   await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  await page.locator('td[data-row="0"][data-field="eta"]').click();
+  await page.keyboard.type("27/10/2026");
+  await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
   await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
   // A fresh browser context has no localStorage/sessionStorage from the editing context.
@@ -41,6 +46,7 @@ test("local configuration creates and edits real records without corporate login
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
   await reopened.getByRole("button", { name: "Abrir master", exact: true }).click();
   await expect(reopened.locator('td[data-row="0"][data-field="origin"]')).toHaveText("Origen guardado en SQLite");
+  await expect(reopened.locator('td[data-row="0"][data-field="eta"]')).toHaveText("27/10/2026");
   await reopened.locator(".reference-link").first().click();
   await expect(reopened.getByRole("dialog").getByLabel("Comentarios")).toHaveValue("Nota persistente de la API local");
   await context.close();

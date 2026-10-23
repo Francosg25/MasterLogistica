@@ -51,9 +51,6 @@
 @if (error()) {
   <p class="error sheet-message" role="alert">{{ error() }}</p>
 }
-@if (notice()) {
-  <p class="success sheet-message" role="status">{{ notice() }}</p>
-}
 @for (row of rows(); track row.id) {
   @if (issues()[row.id]) {
     <div class="row-issue">
@@ -71,7 +68,10 @@
 <div class="formula-bar">
   <span class="cell-address">{{ address() }}</span
   ><span class="formula-label">{{ activeColumn().label }}</span>
-  <input aria-label="Contenido de celda" readonly [value]="activeValue()" />
+  <input aria-label="Contenido de celda" readonly [value]="activeValue()" [placeholder]="editable(active().row, active().col) ? 'Selecciona la celda y escribe para editar' : ''" />
+  @if (notice()) {
+    <span class="sheet-cell-notice sheet-message" role="status" [title]="notice()">{{ notice() }}</span>
+  }
   @if (readOnly() || activeColumn().kind === "locked") {
     <span class="locked-label">{{
       readOnly() ? "Solo lectura" : "Columna protegida"
@@ -100,6 +100,7 @@
     [style.width.px]="tableWidth()"
     role="grid"
     aria-label="Embarques del master"
+    aria-describedby="master-edit-help"
     [attr.aria-readonly]="readOnly()"
     [attr.aria-busy]="saving()"
   >
@@ -160,10 +161,10 @@
               (click)="pick(r, c, $event.shiftKey)"
               (dblclick)="begin(r, c)"
               (keydown)="key($event)"
-              [title]="display(row, column)"
+              [title]="display(row, column) + (editable(r, c) ? ' · Haz clic y escribe para editar' : ' · Solo lectura')"
             >
               @if (isEditing(r, c)) {
-                @if (column.kind === "status" || column.kind === "supplier") {
+                @if ((column.kind === "status" || column.kind === "supplier") && !directEntry()) {
                   <select
                     class="cell-input"
                     [attr.aria-label]="'Editar ' + column.label"
@@ -192,7 +193,10 @@
                 } @else {
                   <input
                     class="cell-input"
-                    [type]="column.kind === 'date' ? 'date' : 'text'"
+                    type="text"
+                    [attr.inputmode]="column.kind === 'date' ? 'numeric' : null"
+                    [attr.placeholder]="column.kind === 'date' ? 'dd/mm/aaaa' : null"
+                    [attr.list]="column.kind === 'status' ? 'master-status-options' : column.kind === 'supplier' ? 'master-supplier-options' : null"
                     [attr.aria-label]="'Editar ' + column.label"
                     [value]="editValue"
                     [attr.maxlength]="column.max ?? null"
@@ -226,3 +230,12 @@
     </tbody>
   </table>
 </div>
+<p class="sr-only" id="master-edit-help">Selecciona una celda editable y empieza a escribir para reemplazar su contenido. Doble clic o F2 permite modificar el valor actual. Enter confirma y baja una fila; Tab avanza de columna; Escape cancela. Guarda con Ctrl+S o Guardar cambios.</p>
+<datalist id="master-status-options">
+  @for (code of statusCodes; track code) { <option [value]="status[code]">{{ code }}</option> }
+</datalist>
+<datalist id="master-supplier-options">
+  @for (supplier of suppliers(); track supplier.id) {
+    @if (supplier.is_active) { <option [value]="supplier.legal_name">{{ supplier.code }}</option> }
+  }
+</datalist>

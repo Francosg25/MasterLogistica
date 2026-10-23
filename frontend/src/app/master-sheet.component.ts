@@ -1,4 +1,5 @@
 import {
+  ChangeDetectorRef,
   Component,
   ElementRef,
   HostListener,
@@ -35,6 +36,7 @@ export class MasterSheetComponent implements OnDestroy {
   private api = inject(ApiService);
   private practiceStore = inject(MasterPracticeService);
   private element: ElementRef<HTMLElement> = inject(ElementRef);
+  private changeDetector = inject(ChangeDetectorRef);
   rows = input.required<Shipment[]>();
   readOnly = input(true);
   readOnlyReason = input("Tu perfil permite consultar esta hoja. La edición requiere permisos de Operaciones o Administración.");
@@ -54,6 +56,7 @@ export class MasterSheetComponent implements OnDestroy {
   active = signal<Position>({ row: 0, col: 0 });
   anchor = signal<Position>({ row: 0, col: 0 });
   editing = signal<Position | null>(null);
+  directEntry = signal(false);
   editValue = "";
   private history: Changes[] = [];
   private focusFrame = 0;
@@ -247,24 +250,26 @@ export class MasterSheetComponent implements OnDestroy {
   begin(row: number, col: number, initial?: string): void {
     if (!this.editable(row, col)) {
       this.notice.set(this.readOnly() ? this.readOnlyReason() :
-        this.columns()[col]?.kind === "locked" ? "Referencia y BU forman parte de la identidad del embarque y están protegidas." :
+        this.columns()[col]?.kind === "locked" ? `${this.columns()[col].label}: columna protegida. Se define al crear el embarque.` :
         "Esta fila está bloqueada. Revisa el aviso y recárgala antes de editar.");
       return;
     }
     if (!this.commit()) return;
     this.active.set({ row, col });
     this.anchor.set({ row, col });
-    this.editValue =
-      initial ?? this.value(this.rows()[row], this.columns()[col]);
+    this.directEntry.set(initial !== undefined);
+    const column = this.columns()[col];
+    this.editValue = initial ?? (column.kind === "date"
+      ? this.display(this.rows()[row], column)
+      : this.value(this.rows()[row], column));
     this.editing.set({ row, col });
-    setTimeout(() => {
-      const control =
-        this.element.nativeElement.querySelector<HTMLInputElement>(
-          ".cell-input",
-        );
-      control?.focus();
-      if (initial === undefined && control?.type === "text") control.select();
-    });
+    // Render and focus before returning the first key event. Deferring focus
+    // loses subsequent characters when typing quickly into a selected cell.
+    this.changeDetector.detectChanges();
+    const control = this.element.nativeElement.querySelector<HTMLInputElement>(".cell-input");
+    control?.focus({ preventScroll: true });
+    if (initial === undefined && control?.type === "text") control.select();
+    else if (control?.type === "text") control.setSelectionRange(control.value.length, control.value.length);
   }
   private normalize(raw: string, column: Column): string | null {
     if (column.kind === "locked")
@@ -470,8 +475,8 @@ export class MasterSheetComponent implements OnDestroy {
     if (
       !command &&
       !event.altKey &&
-      event.key.length === 1 &&
-      this.columns()[this.active().col].kind === "text"
+      !event.isComposing &&
+      event.key.length === 1
     ) {
       event.preventDefault();
       this.begin(this.active().row, this.active().col, event.key);

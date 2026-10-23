@@ -7,6 +7,7 @@ import {
   signal,
 } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
+import { NgTemplateOutlet } from "@angular/common";
 import { ApiError, ApiService } from "./api.service";
 import { FinanceWorkspaceComponent } from "./finance-workspace.component";
 import { Section } from "./finance.types";
@@ -33,6 +34,7 @@ import {
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    NgTemplateOutlet,
     ShipmentEditorComponent,
     MasterSheetComponent,
     FinanceWorkspaceComponent,

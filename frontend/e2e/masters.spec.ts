@@ -1,5 +1,6 @@
 import { expect, test, Page } from "@playwright/test";
 import { demoCatalogs, demoShipments } from "../src/app/demo";
+import { Supplier } from "../src/app/types";
 
 const cell = (page: Page, row: number, field: string) =>
   page.locator(`td[data-row="${row}"][data-field="${field}"]`);
@@ -55,6 +56,7 @@ async function mock(
     noMaster?: boolean;
     collapsed?: boolean;
     accessDenied?: boolean;
+    suppliers?: Supplier[];
   } = {},
 ) {
   let rows = options.empty
@@ -126,7 +128,7 @@ async function mock(
         ),
       );
     if (path === "/suppliers")
-      return json({ items: [], total: 0, limit: 100, offset: 0 });
+      return json({ items: options.suppliers ?? [], total: options.suppliers?.length ?? 0, limit: 100, offset: 0 });
     if (path.endsWith("/identifiers")) {
       if (req.method() === "POST") {
         const row = {
@@ -225,9 +227,7 @@ test("filters and reset retain the selected master", async ({ page }) => {
     .getByRole("button", { name: "Limpiar filtros", exact: true })
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
-  await expect(page.locator(".active-master")).toContainText(
-    "Analista de prueba",
-  );
+  await expect(page.getByLabel("Responsable del master", { exact: true })).toHaveValue("owner-1");
   await page.getByLabel("Estado", { exact: true }).selectOption("IN_TRANSIT");
   await page.getByRole("button", { name: "Aplicar", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(2);
@@ -403,7 +403,6 @@ test("desktop and mobile render without script errors or page overflow", async (
     path: "test-results/masters-desktop.png",
     fullPage: true,
   });
-  await page.screenshot({ path: "docs/masters-preview.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   const controls = await page
     .locator(".filter-main > label, .filter-main > button")
@@ -442,6 +441,89 @@ test("desktop and mobile render without script errors or page overflow", async (
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.screenshot({ path: "test-results/masters-detail.png" });
   expect(errors).toEqual([]);
+});
+
+test("compact master gives records most of the window without expanding the view", async ({ page }) => {
+  await mock(page, { count: 60, collapsed: true });
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+    { width: 1280, height: 600 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const first = await page.locator("tbody tr").first().boundingBox();
+    const sheet = await page.locator(".sheet-scroll").boundingBox();
+    const footer = await page.locator(".table-footer").boundingBox();
+    expect(first!.y).toBeLessThan(240);
+    expect(sheet!.height - 60).toBeGreaterThan(viewport.height / 2);
+    expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height);
+    await expect(page.getByLabel("Responsable del master", { exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Secciones" })).toBeVisible();
+    await expect(page.locator("#master-filters")).toBeHidden();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  }
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.screenshot({ path: "docs/masters-preview.png", fullPage: true });
+});
+
+test("typing in a selected cell edits text, dates and catalog values immediately", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true, suppliers: [
+    { id: "supplier-1", code: "TR001", legal_name: "Transportes de prueba", is_active: true },
+  ] });
+  const firstRowTop = (await page.locator("tbody tr").first().boundingBox())!.y;
+  await cell(page, 0, "sender").click();
+  await page.keyboard.type("Proveedor escrito directamente");
+  await expect(page.getByLabel("Editar Remitente / Proveedor", { exact: true })).toHaveValue("Proveedor escrito directamente");
+  await page.keyboard.press("Enter");
+  await expect(cell(page, 1, "sender")).toBeFocused();
+
+  await cell(page, 0, "ship_date").click();
+  await page.keyboard.type("25/10/2026");
+  await page.keyboard.press("Tab");
+  await expect(cell(page, 0, "ship_date")).toHaveText("25/10/2026");
+  await expect(cell(page, 0, "eta")).toBeFocused();
+
+  await cell(page, 0, "status").click();
+  await page.keyboard.type("Entregado");
+  await page.keyboard.press("Tab");
+  await expect(cell(page, 0, "status")).toHaveText("Entregado");
+
+  await cell(page, 0, "carrier_broker_id").click();
+  await page.keyboard.type("TR001");
+  await page.keyboard.press("Enter");
+  await expect(cell(page, 0, "carrier_broker_id")).toHaveText("Transportes de prueba");
+  await expect(page.locator(".save-state")).toContainText("4 celdas sin guardar");
+  expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
+  await page.keyboard.press("Control+s");
+  await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
+  expect((await page.locator("tbody tr").first().boundingBox())!.y).toBe(firstRowTop);
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    sender: "Proveedor escrito directamente", ship_date: "2026-10-25", status: "DELIVERED",
+    carrier_broker_id: "supplier-1", expected_version: 1,
+  });
+});
+
+test("direct typing validates dates and catalogs and Escape restores the original cell", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true });
+  await cell(page, 0, "ship_date").click();
+  await page.keyboard.type("31/02/2026");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Fecha de embarque");
+  await expect(page.getByLabel("Editar Fecha de embarque", { exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
+  await cell(page, 0, "status").click();
+  await page.keyboard.type("Estado inexistente");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("catálogo");
+  await page.keyboard.press("Escape");
+  await expect(cell(page, 0, "status")).toHaveText("En tránsito");
+  await cell(page, 0, "operation_code").click();
+  await page.keyboard.press("A");
+  await expect(page.locator(".sheet-message")).toContainText("Tipo de operación: columna protegida");
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
+  expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
 });
 
 test("sheet stages keyboard edits and saves only changed fields with row versions", async ({
@@ -612,6 +694,8 @@ test("read-only roles cannot stage or submit spreadsheet changes", async ({
 }) => {
   const requests = await mock(page, { role: "MANAGER" });
   await cell(page, 0, "origin").dblclick();
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await page.keyboard.type("Escritura no permitida");
   await expect(page.locator(".cell-input")).toHaveCount(0);
   await pasteCells(page, 0, "origin", "Cambio no permitido");
   await page.keyboard.press("Delete");
