@@ -1,7 +1,9 @@
 import {
+  ChangeDetectorRef,
   Component,
   ElementRef,
   HostListener,
+  OnDestroy,
   computed,
   inject,
   input,
@@ -9,14 +11,16 @@ import {
   signal,
 } from "@angular/core";
 import { ApiError, ApiService } from "./api.service";
-import { Shipment, STATUS, Supplier } from "./types";
+import { Shipment, STATUS, Supplier, OPERATIONS, EXCEL_OPERATION_LABELS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
+import { MasterPracticeService } from "./master-practice.service";
 
 interface Column {
   key: keyof Shipment;
   label: string;
   width: number;
-  kind: "text" | "date" | "status" | "supplier" | "locked";
+  kind: "text" | "date" | "status" | "supplier" | "unit" | "operation";
   max?: number;
+  required?: boolean;
 }
 type Changes = Record<string, Record<string, string | null>>;
 interface Position {
@@ -29,15 +33,21 @@ interface Position {
   standalone: true,
   templateUrl: "./master-sheet.component.html",
 })
-export class MasterSheetComponent {
+export class MasterSheetComponent implements OnDestroy {
   private api = inject(ApiService);
+  private practiceStore = inject(MasterPracticeService);
   private element: ElementRef<HTMLElement> = inject(ElementRef);
+  private changeDetector = inject(ChangeDetectorRef);
   rows = input.required<Shipment[]>();
   readOnly = input(true);
+  readOnlyReason = input("Tu perfil permite consultar esta hoja. La edición requiere permisos de Operaciones o Administración.");
+  practice = input(false);
   offset = input(0);
   suppliers = input<Supplier[]>([]);
-  operation = input("");
+  businessUnits = input<string[]>([]);
+  masterName = input("");
   opened = output<Shipment>();
+  activity = output<Shipment>();
   updated = output<Shipment>();
   drafts = signal<Changes>({});
   saving = signal(false);
@@ -48,20 +58,45 @@ export class MasterSheetComponent {
   active = signal<Position>({ row: 0, col: 0 });
   anchor = signal<Position>({ row: 0, col: 0 });
   editing = signal<Position | null>(null);
+  directEntry = signal(false);
   editValue = "";
   private history: Changes[] = [];
+  private focusFrame = 0;
+  zoom = signal(this.loadZoom());
+  readonly zoomLevels = [100, 115, 130];
+  private loadZoom(): number {
+    try {
+      const value = Number(localStorage.getItem("masterlogistica.sheet-zoom"));
+      return [100, 115, 130].includes(value) ? value : 100;
+    } catch { return 100; }
+  }
+  setZoom(value: string): void {
+    const zoom = Number(value);
+    if (!this.zoomLevels.includes(zoom)) return;
+    this.zoom.set(zoom);
+    try { localStorage.setItem("masterlogistica.sheet-zoom", value); } catch { /* Preference is optional. */ }
+    this.focus();
+  }
+  tableWidth = computed(() => 44 + this.columns().reduce((sum, column) => sum + column.width * this.zoom() / 100, 0));
+  ngOnDestroy(): void { cancelAnimationFrame(this.focusFrame); }
   readonly status = STATUS;
-  readonly statusCodes = Object.keys(STATUS);
+  get statusCodes(): string[] { return [...new Set([...Object.keys(STATUS), ...this.rows().map(row => row.status).filter(Boolean)])]; }
+  readonly excelOperations = EXCEL_OPERATION_LABELS;
+  readonly operations = OPERATIONS;
+  readonly operationCodes = Object.keys(OPERATIONS);
+  private supplierNames = computed(() => new Map(this.suppliers().map(s => [s.id, s.legal_name])));
   readonly columns = computed<Column[]>(() => [
-    { key: "reference_raw", label: "Referencia", width: 265, kind: "locked" },
-    { key: "status", label: "Estado", width: 144, kind: "status" },
-    { key: "business_unit", label: "BU", width: 75, kind: "locked" },
-    { key: "ship_date", label: "Fecha de embarque", width: 155, kind: "date" },
+    { key: "reference_raw", label: "Referencia", width: 265, kind: "text", max: 160 },
+    { key: "status", label: "Estado", width: 144, kind: "status", max: 100 },
+    { key: "business_unit", label: "BU", width: 75, kind: "unit" },
+    { key: "operation_code", label: "Tipo de operación", width: 190, kind: "operation", max: 100 },
+    { key: "company_code", label: "Empresa", width: 130, kind: "text", max: 32, required: true },
+    { key: "ship_date", label: "Fecha de embarque", width: 175, kind: "date" },
     { key: "eta", label: "ETA", width: 135, kind: "date" },
     {
       key: "delivery_date",
       label: "Fecha de entrega",
-      width: 150,
+      width: 175,
       kind: "date",
     },
     {
@@ -91,18 +126,9 @@ export class MasterSheetComponent {
       key: "carrier_broker_id",
       label: "Carrier / Agente",
       width: 200,
-      kind: "supplier",
+      kind: "supplier", max: 250,
     },
-    ...(["SI", "SE"].includes(this.operation())
-      ? [
-          {
-            key: "shipping_line_id",
-            label: "Naviera",
-            width: 200,
-            kind: "supplier",
-          } as Column,
-        ]
-      : []),
+    { key: "shipping_line_id", label: "Naviera", width: 200, kind: "supplier", max: 250 },
     {
       key: "comments",
       label: "Comentarios",
@@ -135,16 +161,19 @@ export class MasterSheetComponent {
   }
   value(row: Shipment, column: Column): string {
     const patch = this.drafts()[row.id];
-    return String(
-      (patch && column.key in patch ? patch[column.key] : row[column.key]) ??
-        "",
-    );
+    if (patch && column.key in patch) return String(patch[column.key] ?? "");
+    if (column.kind === "supplier") {
+      const name = column.key === "carrier_broker_id" ? row.carrier_broker_name : row.shipping_line_name;
+      return String(row[column.key] || name || "");
+    }
+    return String(row[column.key] ?? "");
   }
   display(row: Shipment, column: Column): string {
     const value = this.value(row, column);
     if (column.kind === "status") return STATUS[value] ?? value;
+    if (column.key === "operation_code") return OPERATIONS[value] ?? value;
     if (column.kind === "supplier")
-      return this.suppliers().find((s) => s.id === value)?.legal_name ?? value;
+      return this.supplierNames().get(value) ?? value;
     if (column.kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(value))
       return value.split("-").reverse().join("/");
     return value;
@@ -172,57 +201,88 @@ export class MasterSheetComponent {
     return (
       !this.readOnly() &&
       !this.saving() &&
-      this.columns()[col]?.kind !== "locked" &&
+      !!this.rows()[row] &&
+      !!this.columns()[col] &&
       !this.blocked.has(this.rows()[row]?.id)
     );
   }
-  private focus(): void {
-    const { row, col } = this.active();
-    this.element.nativeElement
-      .querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`)
-      ?.focus({ preventScroll: true });
-    this.element.nativeElement
-      .querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`)
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  private focus(immediate = false): void {
+    // Coalesce key repeats into one layout pass. Scroll only the sheet, accounting
+    // for sticky headers/reference; scrollIntoView also moves the document and
+    // can leave the selected cell underneath a frozen column.
+    cancelAnimationFrame(this.focusFrame);
+    const reveal = () => {
+      const { row, col } = this.active();
+      const host = this.element.nativeElement;
+      const cell = host.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`);
+      const viewport = host.querySelector<HTMLElement>(".sheet-scroll");
+      if (!cell || !viewport || this.editing()) return;
+      cell.focus({ preventScroll: true });
+      const box = viewport.getBoundingClientRect();
+      const target = cell.getBoundingClientRect();
+      const headers = host.querySelector("thead")!.getBoundingClientRect().height;
+      const frozen = host.querySelector<HTMLElement>("tbody .frozen")!;
+      const pinned = getComputedStyle(frozen).position === "sticky";
+      const left = box.left + 44 + (pinned && col > 0 ? frozen.offsetWidth : 0) + 2;
+      const right = box.left + viewport.clientWidth - 2;
+      const top = box.top + headers + 2;
+      const bottom = box.top + viewport.clientHeight - 2;
+      if (!(pinned && col === 0)) {
+        if (target.width > right - left) viewport.scrollLeft += target.left - left;
+        else if (target.left < left) viewport.scrollLeft -= left - target.left;
+        else if (target.right > right) viewport.scrollLeft += target.right - right;
+      }
+      if (target.height > bottom - top) viewport.scrollTop += target.top - top;
+      else if (target.top < top) viewport.scrollTop -= top - target.top;
+      else if (target.bottom > bottom) viewport.scrollTop += target.bottom - bottom;
+    };
+    if (immediate) reveal();
+    else this.focusFrame = requestAnimationFrame(reveal);
   }
   pick(row: number, col: number, extend = false): void {
+    if (!this.rows()[row] || !this.columns()[col]) return;
     if (!this.commit()) return;
     this.active.set({ row, col });
     if (!extend) this.anchor.set({ row, col });
     this.focus();
   }
   begin(row: number, col: number, initial?: string): void {
-    if (!this.editable(row, col) || !this.commit()) return;
+    if (!this.editable(row, col)) {
+      this.notice.set(this.readOnly() ? this.readOnlyReason() :
+        "Esta fila está bloqueada. Revisa el aviso y recárgala antes de editar.");
+      return;
+    }
+    if (!this.commit()) return;
     this.active.set({ row, col });
     this.anchor.set({ row, col });
-    this.editValue =
-      initial ?? this.value(this.rows()[row], this.columns()[col]);
+    this.directEntry.set(initial !== undefined);
+    const column = this.columns()[col];
+    this.editValue = initial ?? this.display(this.rows()[row], column);
     this.editing.set({ row, col });
-    setTimeout(() => {
-      const control =
-        this.element.nativeElement.querySelector<HTMLInputElement>(
-          ".cell-input",
-        );
-      control?.focus();
-      if (initial === undefined && control?.type === "text") control.select();
-    });
+    // Render and focus before returning the first key event. Deferring focus
+    // loses subsequent characters when typing quickly into a selected cell.
+    this.changeDetector.detectChanges();
+    const control = this.element.nativeElement.querySelector<HTMLInputElement>(".cell-input");
+    control?.focus({ preventScroll: true });
+    if (initial === undefined && control?.type === "text") control.select();
+    else if (control?.type === "text") control.setSelectionRange(control.value.length, control.value.length);
   }
   private normalize(raw: string, column: Column): string | null {
-    if (column.kind === "locked")
-      throw new Error(`${column.label}: columna protegida.`);
     let value = raw.trim();
-    if (column.kind === "status") {
-      const code = Object.keys(STATUS).find(
-        (key) =>
-          key.toLowerCase() === value.toLowerCase() ||
-          STATUS[key].toLowerCase() === value.toLowerCase(),
-      );
-      if (!code) throw new Error("Estado: selecciona un valor del catálogo.");
-      return code;
+    if (column.max && value.length > column.max)
+      throw new Error(`${column.label}: máximo ${column.max} caracteres.`);
+    if (column.kind === "status") return masterStatusValue(value);
+    if (!value) {
+      if (column.required) throw new Error(`${column.label}: ingresa un valor.`);
+      return null;
     }
-    if (!value) return null;
+    if (column.kind === "unit") {
+      value = value.toUpperCase();
+      if (!this.businessUnits().includes(value)) throw new Error("BU: selecciona M01, M19, M23, M45 o M46.");
+    }
+    if (column.kind === "operation") return masterOperationValue(value);
     if (column.kind === "date") {
-      const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+      const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
       if (match)
         value = `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
       const date = new Date(`${value}T00:00:00Z`);
@@ -241,14 +301,8 @@ export class MasterSheetComponent {
             (v) => v.toLowerCase() === value.toLowerCase(),
           ),
       );
-      if (matches.length !== 1)
-        throw new Error(
-          `${column.label}: selecciona un proveedor activo del catálogo.`,
-        );
-      return matches[0].id;
+      return matches.length === 1 ? matches[0].id : value;
     }
-    if (column.max && value.length > column.max)
-      throw new Error(`${column.label}: máximo ${column.max} caracteres.`);
     return value;
   }
   private stage(cells: { row: number; col: number; value: string }[]): boolean {
@@ -320,17 +374,21 @@ export class MasterSheetComponent {
       event.preventDefault();
       this.editing.set(null);
       this.error.set("");
-      this.focus();
+      this.changeDetector.detectChanges();
+      this.focus(true);
     }
     if (event.key === "Enter" || event.key === "Tab") {
       event.preventDefault();
-      if (this.commit())
+      if (this.commit()) {
         this.move(
           event.key === "Enter" ? (event.shiftKey ? -1 : 1) : 0,
           event.key === "Tab" ? (event.shiftKey ? -1 : 1) : 0,
           false,
           event.key === "Tab",
         );
+        this.changeDetector.detectChanges();
+        this.focus(true);
+      }
     }
   }
   private move(dr: number, dc: number, extend = false, wrap = false): void {
@@ -351,8 +409,14 @@ export class MasterSheetComponent {
     );
   }
   key(event: KeyboardEvent): void {
-    if (event.target instanceof HTMLButtonElement) return;
+    if (!this.rows().length || this.editing()) return;
+    if (event.target instanceof HTMLButtonElement && !event.target.closest("td")) return;
     const command = event.ctrlKey || event.metaKey;
+    if (command && event.key === "Enter") {
+      event.preventDefault();
+      this.opened.emit(this.rows()[this.active().row]);
+      return;
+    }
     if (command && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void this.save();
@@ -369,6 +433,20 @@ export class MasterSheetComponent {
       ArrowLeft: [0, -1],
       ArrowRight: [0, 1],
     };
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      this.pick(command ? (event.key === "Home" ? 0 : this.rows().length - 1) : this.active().row,
+        event.key === "Home" ? 0 : this.columns().length - 1, event.shiftKey);
+      return;
+    }
+    if (event.key === "PageUp" || event.key === "PageDown") {
+      event.preventDefault();
+      const viewport = this.element.nativeElement.querySelector<HTMLElement>(".sheet-scroll");
+      const cell = this.element.nativeElement.querySelector<HTMLElement>("td");
+      const step = Math.max(1, Math.floor(((viewport?.clientHeight ?? 300) - 64) / (cell?.offsetHeight ?? 40)) - 1);
+      this.move(step * (event.key === "PageUp" ? -1 : 1), 0, event.shiftKey);
+      return;
+    }
     if (arrows[event.key]) {
       event.preventDefault();
       this.move(arrows[event.key][0], arrows[event.key][1], event.shiftKey);
@@ -392,8 +470,8 @@ export class MasterSheetComponent {
     if (
       !command &&
       !event.altKey &&
-      event.key.length === 1 &&
-      this.columns()[this.active().col].kind === "text"
+      !event.isComposing &&
+      event.key.length === 1
     ) {
       event.preventDefault();
       this.begin(this.active().row, this.active().col, event.key);
@@ -552,10 +630,15 @@ export class MasterSheetComponent {
       if (this.blocked.has(id)) continue;
       const original = this.rows().find((row) => row.id === id)!;
       try {
-        const row = await this.api.request<Shipment>(
+        const values = { ...patch };
+        for (const prefix of ["carrier_broker", "shipping_line"] as const) {
+          const key = prefix + "_id";
+          if (key in values) Object.assign(values, supplierValues(values[key], prefix, this.suppliers()));
+        }
+        const row = this.practice() ? this.practiceStore.save(original, values) : await this.api.request<Shipment>(
           `/shipments/${id}`,
           "PATCH",
-          { ...patch, expected_version: original.row_version },
+          { ...values, expected_version: original.row_version },
         );
         this.updated.emit(row);
         this.drafts.update((items) => {
@@ -586,7 +669,7 @@ export class MasterSheetComponent {
     this.saving.set(false);
     if (saved)
       this.notice.set(
-        `${saved} ${saved === 1 ? "fila guardada" : "filas guardadas"}.${this.dirtyCount() ? ` Quedan ${this.dirtyCount()} pendientes.` : ""}`,
+        `${saved} ${saved === 1 ? "fila guardada" : "filas guardadas"}${this.practice() ? " en este navegador" : ""}.${this.dirtyCount() ? ` Quedan ${this.dirtyCount()} pendientes.` : ""}`,
       );
   }
   async reloadRow(row: Shipment): Promise<void> {
@@ -601,10 +684,7 @@ export class MasterSheetComponent {
     this.saving.set(true);
     try {
       const fresh = await this.api.request<Shipment>(`/shipments/${row.id}`);
-      if (
-        fresh.owner_id !== row.owner_id ||
-        fresh.operation_code !== row.operation_code
-      )
+      if (fresh.owner_id !== row.owner_id)
         throw new Error("La fila no pertenece a este master.");
       this.updated.emit(fresh);
       this.drafts.update((items) => {
@@ -654,7 +734,7 @@ export class MasterSheetComponent {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `master-${this.operation()}-pagina-${this.offset() + 1}.csv`;
+    link.download = `master-${this.masterName()}-pagina-${this.offset() + 1}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -19,6 +20,7 @@ from app.auth import EntraTokenValidator
 from app.config import Settings
 from app.db import build_engine, build_session_factory
 from app.finance import router as finance_router
+from app.invoice_import import router as import_router
 from app.observability import RequestLoggingMiddleware, logger
 
 
@@ -33,8 +35,17 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        yield
-        engine.dispose()
+        try:
+            if settings.auth_mode == "development":
+                from app.local_schema import initialize_local
+
+                Path(make_url(settings.database_url.get_secret_value()).database).parent.mkdir(
+                    parents=True, exist_ok=True
+                )
+                initialize_local(engine, app.state.session_factory)
+            yield
+        finally:
+            engine.dispose()
 
     if not logger.handlers:
         handler = logging.StreamHandler()
@@ -53,9 +64,12 @@ def create_app(
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = build_session_factory(engine)
-    app.state.token_validator = EntraTokenValidator(settings, key_resolver)
+    app.state.token_validator = (
+        EntraTokenValidator(settings, key_resolver) if settings.auth_mode == "entra" else None
+    )
     app.include_router(router)
     app.include_router(finance_router)
+    app.include_router(import_router)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
@@ -67,6 +81,10 @@ def create_app(
     if settings.enforce_https:
         app.add_middleware(HTTPSRedirectMiddleware)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+    if settings.auth_mode == "development":
+        from app.local_access import LocalAccessMiddleware
+
+        app.add_middleware(LocalAccessMiddleware, origins=settings.allowed_origins)
     app.add_middleware(RequestLoggingMiddleware)
 
     @app.exception_handler(RequestValidationError)
@@ -105,11 +123,27 @@ def create_app(
     def ready(request: Request):
         try:
             with request.app.state.engine.connect() as connection:
-                versions = set(connection.scalars(text("SELECT version_num FROM alembic_version")))
-                if versions != heads:
-                    raise HTTPException(503, "Database migration version is not current")
+                if settings.auth_mode == "development":
+                    from app.local_schema import check_local_schema
+
+                    if not check_local_schema(connection):
+                        raise HTTPException(503, "Local database schema is not current")
+                else:
+                    versions = set(
+                        connection.scalars(text("SELECT version_num FROM alembic_version"))
+                    )
+                    if versions != heads:
+                        raise HTTPException(503, "Database migration version is not current")
         except SQLAlchemyError:
             raise HTTPException(503, "Database or migrations unavailable") from None
         return {"status": "ready"}
 
     return app
+
+
+def __getattr__(name):
+    # Support uvicorn app.main:app without loading ambient .env/settings when
+    # the production runtime imports only create_app with explicit configuration.
+    if name == "app":
+        return create_app()
+    raise AttributeError(name)

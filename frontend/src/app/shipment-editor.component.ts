@@ -11,6 +11,10 @@ import {
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import {
   Catalogs,
+  EXCEL_OPERATION_LABELS,
+  masterOperationValue,
+  masterStatusValue,
+  supplierValues,
   DEPARTMENTS,
   Identifier,
   OPERATIONS,
@@ -29,7 +33,6 @@ import {
 export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   @ViewChild("dialog") dialog!: ElementRef<HTMLDialogElement>;
   catalogs = input.required<Catalogs>();
-  masterOperation = input.required<string>();
   masterOwnerName = input.required<string>();
   suppliers = input<Supplier[]>([]);
   shipment = input<Shipment | null>(null);
@@ -45,6 +48,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   reload = output<void>();
   addIdentifier = output<{ kind: string; raw_value: string }>();
   status = STATUS;
+  excelOperations = EXCEL_OPERATION_LABELS;
   operations = OPERATIONS;
   processes = PROCESSES;
   departments = DEPARTMENTS;
@@ -53,9 +57,10 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   submitted = false;
   private fb = new FormBuilder().nonNullable;
   form = this.fb.group({
-    company_code: ["", Validators.required],
+    reference_raw: ["", Validators.maxLength(160)],
+    company_code: ["", [Validators.required, Validators.maxLength(32), Validators.pattern(/.*\S.*/)]],
     process_code: ["RM", Validators.required],
-    operation_code: ["LI", Validators.required],
+    operation_code: ["LI", [Validators.required, Validators.maxLength(100)]],
     reference_year: [
       new Date().getFullYear(),
       [
@@ -67,7 +72,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
     ],
     business_unit: ["", Validators.required],
     department_code: ["MAT", Validators.required],
-    status: ["DRAFT", Validators.required],
+    status: ["DRAFT", Validators.maxLength(100)],
     ship_date: [""],
     eta: [""],
     delivery_date: [""],
@@ -75,8 +80,8 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
     origin: ["", Validators.maxLength(150)],
     consignee: ["", Validators.maxLength(250)],
     destination: ["", Validators.maxLength(150)],
-    carrier_broker_id: [""],
-    shipping_line_id: [""],
+    carrier_broker_id: ["", Validators.maxLength(250)],
+    shipping_line_id: ["", Validators.maxLength(250)],
     plant_code: ["", Validators.maxLength(32)],
     comments: ["", Validators.maxLength(10000)],
     damaged_material: [false],
@@ -97,22 +102,30 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
             (key === "damaged_material" ? false : ""),
         ]),
       );
+      for (const prefix of ["carrier_broker", "shipping_line"] as const) {
+        const id = row[prefix === "carrier_broker" ? "carrier_broker_id" : "shipping_line_id"];
+        const manual = row[prefix === "carrier_broker" ? "carrier_broker_name" : "shipping_line_name"];
+        values[prefix + "_id"] = manual || this.suppliers().find(s => s.id === id)?.legal_name || id || "";
+      }
+      values["status"] = STATUS[row.status] ?? row.status;
+      values["operation_code"] = OPERATIONS[row.operation_code ?? ""] ?? row.operation_code ?? "";
       this.form.patchValue(values);
+      for (const key of ["process_code", "operation_code", "business_unit", "department_code", "reference_year"] as const) {
+        this.form.controls[key].removeValidators(Validators.required);
+        this.form.controls[key].updateValueAndValidity();
+      }
     } else
-      this.form.patchValue({
-        company_code: this.catalogs().company_codes[0] ?? "",
-        operation_code: this.masterOperation(),
-      });
+      this.form.patchValue({ company_code: "", operation_code: "" });
     if (this.readOnly()) this.form.disable();
   }
   ngAfterViewInit(): void {
     this.dialog.nativeElement.showModal();
   }
   get operation(): string {
-    return this.form.controls.operation_code.value;
+    return masterOperationValue(this.form.controls.operation_code.value);
   }
   get sea(): boolean {
-    return ["SI", "SE"].includes(this.operation);
+    return ["SI", "SE", "SEA IMPO", "SEA EXPO"].includes(this.operation.toUpperCase());
   }
   get compliance(): boolean {
     return ["VI", "VE", "A3", "F4", "F5", "R1"].includes(this.operation);
@@ -153,7 +166,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       this.form.controls.pfa_approval_code.setErrors({ required: true });
       return;
     }
-    const data: Record<string, unknown> = { ...values };
+    const data: Record<string, unknown> = { ...values, company_code: values.company_code.trim(), operation_code: masterOperationValue(values.operation_code), status: masterStatusValue(values.status) };
     for (const key of [
       "sender",
       "origin",
@@ -167,6 +180,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       "eta",
       "delivery_date",
       "pfa_approval_code",
+      "reference_raw",
     ]) {
       data[key] =
         typeof data[key] === "string"
@@ -176,24 +190,27 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
     if (values.expedited_status !== "APPROVED")
       data["pfa_approval_code"] = null;
     if (this.shipment()) {
-      for (const key of [
-        "company_code",
-        "process_code",
-        "operation_code",
-        "reference_year",
-        "business_unit",
-        "department_code",
-      ])
-        delete data[key];
+      for (const key of Object.keys(data)) {
+        const control = this.form.get(key);
+        const dependentApproval = key === "pfa_approval_code" && this.form.controls.expedited_status.dirty;
+        if (!control?.dirty && !dependentApproval) delete data[key];
+      }
+      if (data["reference_year"] === "") data["reference_year"] = null;
+      for (const key of ["process_code", "operation_code", "business_unit", "department_code"])
+        if (data[key] === "") data[key] = null;
       data["expected_version"] = this.shipment()!.row_version;
     } else {
       for (const key of [
         "damaged_material",
         "expedited_status",
         "pfa_approval_code",
+        "reference_raw",
       ])
         delete data[key];
-      if (!this.sea) data["shipping_line_id"] = null;
+    }
+    for (const prefix of ["carrier_broker", "shipping_line"] as const) {
+      const key = prefix + "_id";
+      if (key in data) Object.assign(data, supplierValues(data[key] as string | null, prefix, this.suppliers()));
     }
     this.saved.emit(data);
   }

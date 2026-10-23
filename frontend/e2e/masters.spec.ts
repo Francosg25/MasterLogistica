@@ -1,8 +1,26 @@
 import { expect, test, Page } from "@playwright/test";
 import { demoCatalogs, demoShipments } from "../src/app/demo";
+import { Supplier } from "../src/app/types";
 
 const cell = (page: Page, row: number, field: string) =>
   page.locator(`td[data-row="${row}"][data-field="${field}"]`);
+
+test("home navigation and expanded master preserve the sheet", async ({ page }) => {
+  await mock(page);
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Inicio", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tu espacio de trabajo." })).toBeVisible();
+  await page.screenshot({ path: "test-results/home.png", fullPage: true });
+  await page.locator(".home-grid").getByRole("button", { name: /Ver masters/ }).click();
+  const normal = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
+  await page.getByRole("button", { name: "Ampliar master" }).click();
+  await expect(page.getByRole("navigation", { name: "Secciones" })).toBeHidden();
+  const expanded = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
+  expect(expanded!.y).toBeLessThan(normal!.y);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await page.screenshot({ path: "test-results/master-expanded.png", fullPage: true });
+  await page.getByRole("button", { name: "Salir de vista ampliada" }).click();
+  await expect(page.getByRole("navigation", { name: "Secciones" })).toBeVisible();
+});
 async function pasteCells(
   page: Page,
   row: number,
@@ -36,6 +54,9 @@ async function mock(
     count?: number;
     mixed?: boolean;
     noMaster?: boolean;
+    collapsed?: boolean;
+    accessDenied?: boolean;
+    suppliers?: Supplier[];
   } = {},
 ) {
   let rows = options.empty
@@ -57,7 +78,7 @@ async function mock(
     : rows.map((row, i) => ({
         ...row,
         operation_code: "SI",
-        reference_raw: `RM1-${String(i + 1).padStart(4, "0")}SI26-T01-MAT`,
+        reference_raw: `RM1-${String(i + 1).padStart(4, "0")}SI26-M01-MAT`,
       }));
   let identifiers: {
     id: string;
@@ -86,7 +107,9 @@ async function mock(
         role: options.role ?? "OPERATOR",
         analyst_code: 1,
       });
-    if (path === "/references/catalogs") return json(demoCatalogs);
+    if (path === "/references/catalogs") return json({ ...demoCatalogs,
+      ...(options.accessDenied ? { master_access: { can_edit: false, can_create: false, edit_scope: "NONE", read_only_reason: "La edición operativa no está habilitada para esta sesión." } } : {}),
+    });
     if (path === "/masters/owners")
       return json(
         Array.from(
@@ -105,7 +128,7 @@ async function mock(
         ),
       );
     if (path === "/suppliers")
-      return json({ items: [], total: 0, limit: 100, offset: 0 });
+      return json({ items: options.suppliers ?? [], total: options.suppliers?.length ?? 0, limit: 100, offset: 0 });
     if (path.endsWith("/identifiers")) {
       if (req.method() === "POST") {
         const row = {
@@ -125,7 +148,7 @@ async function mock(
         id: "created-1",
         row_version: 1,
         owner_id: "owner-1",
-        reference_raw: `RM1-0009${body.operation_code}26-T01-MAT`,
+        reference_raw: `RM1-0009${body.operation_code}26-M01-MAT`,
       };
       rows = [row, ...rows];
       return json(row, 201);
@@ -178,20 +201,15 @@ async function mock(
     return json({ detail: "Unexpected request" }, 404);
   });
   await page.goto("/");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Masters de logística." }),
   ).toBeVisible();
   if (!options.noMaster) {
-    if (options.role === "MANAGER" || options.role === "SUPER_ADMIN")
-      await page
-        .getByLabel("Responsable del master", { exact: true })
-        .selectOption("owner-1");
     await page
-      .getByLabel("Tipo de operación del master", { exact: true })
-      .selectOption("SI");
-    await page
-      .getByRole("button", { name: "Abrir master", exact: true })
-      .click();
+      .getByLabel("Responsable del master", { exact: true })
+      .selectOption("owner-1");
+    if (!options.collapsed) await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
   }
   return requests;
 }
@@ -206,9 +224,7 @@ test("filters and reset retain the selected master", async ({ page }) => {
     .getByRole("button", { name: "Limpiar filtros", exact: true })
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
-  await expect(page.locator(".active-master")).toContainText(
-    "Marítimo · Importación",
-  );
+  await expect(page.getByLabel("Responsable del master", { exact: true })).toHaveValue("owner-1");
   await page.getByLabel("Estado", { exact: true }).selectOption("IN_TRANSIT");
   await page.getByRole("button", { name: "Aplicar", exact: true }).click();
   await expect(page.locator("tbody tr")).toHaveCount(2);
@@ -217,63 +233,36 @@ test("filters and reset retain the selected master", async ({ page }) => {
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(8);
 });
-test("five owner masters and operation types stay separated", async ({
-  page,
-}) => {
-  const requests = await mock(page, {
-    role: "MANAGER",
-    mixed: true,
-    noMaster: true,
-  });
-  expect(requests.some((req) => req.path === "/masters/shipments")).toBeFalsy();
+test("each responsible master contains its operations without mixing owners", async ({ page }) => {
+  const requests = await mock(page, { role: "MANAGER", mixed: true, noMaster: true });
+  expect(requests.some(req => req.path === "/masters/shipments")).toBeFalsy();
+  const selector = page.getByLabel("Responsable del master", { exact: true });
+  await expect(selector.locator("option")).toHaveCount(6);
+  await selector.selectOption("owner-1");
+  await expect(page.getByRole("button", { name: "Abrir master", exact: true })).toHaveCount(0);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await expect(page.locator("tbody")).toContainText("RM1-0001SI26");
+  await expect(page.locator("tbody")).toContainText("RM1-0002AI26");
+  await expect(page.locator("tbody")).not.toContainText("RM5-");
+  await selector.selectOption("owner-5");
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await expect(page.locator("tbody")).toContainText("RM5-0002AI26");
+  await expect(page.locator("tbody")).not.toContainText("RM1-");
+  await selector.selectOption("");
+  await expect(page.getByRole("heading", { name: "Selecciona un master para comenzar" })).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(0);
-  for (let i = 1; i <= 5; i++) {
-    await page
-      .getByLabel("Responsable del master", { exact: true })
-      .selectOption(`owner-${i}`);
-    await expect(page.locator("tbody tr")).toHaveCount(0);
-    await page
-      .getByLabel("Tipo de operación del master", { exact: true })
-      .selectOption("SI");
-    await page
-      .getByRole("button", { name: "Abrir master", exact: true })
-      .click();
-    await expect(page.locator("tbody tr")).toHaveCount(1);
-    await expect(page.locator("tbody tr").first()).toContainText(
-      `RM${i}-0001SI26`,
-    );
-    await page
-      .getByRole("button", { name: "Limpiar filtros", exact: true })
-      .click();
-    await expect(page.locator("tbody tr")).toHaveCount(1);
-  }
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("AI");
-  await expect(page.locator("tbody tr")).toHaveCount(0);
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator("tbody tr").first()).toContainText("RM5-0002AI26");
 });
-test("operator has no owner selector and no unscoped initial list", async ({
-  page,
-}) => {
+test("operator can select only their own master", async ({ page }) => {
   const requests = await mock(page, { mixed: true, noMaster: true });
-  expect(requests.some((req) => req.path === "/masters/shipments")).toBeFalsy();
-  await expect(
-    page.getByLabel("Responsable del master", { exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toBeDisabled();
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("SI");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator("tbody tr").first()).toContainText("RM1-0001SI26");
+  expect(requests.some(req => req.path === "/masters/shipments")).toBeFalsy();
+  const selector = page.getByLabel("Responsable del master", { exact: true });
+  await expect(selector.locator("option")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeDisabled();
+  await selector.selectOption("owner-1");
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await expect(page.locator("tbody")).not.toContainText("RM2-");
 });
-test("creates on server, never sends owner/reference, then attaches a pedimento", async ({
+test("creates in the selected master with manual company and an allowed BU, then attaches a pedimento", async ({
   page,
 }) => {
   const requests = await mock(page);
@@ -283,21 +272,25 @@ test("creates on server, never sends owner/reference, then attaches a pedimento"
     .getByRole("button", { name: "Crear embarque", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toContainText("Completa");
+  await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("SI");
+  await expect(dialog.getByLabel("Business unit *", { exact: true }).locator("option")).toHaveText(["Selecciona una BU", "M01", "M19", "M23", "M45", "M46"]);
   await dialog
     .getByLabel("Business unit *", { exact: true })
-    .selectOption("T01");
+    .selectOption("M01");
   await dialog
     .getByRole("button", { name: "Crear embarque", exact: true })
     .click();
   await expect(
-    dialog.getByRole("heading", { name: "RM1-0009SI26-T01-MAT" }),
+    dialog.getByRole("heading", { name: "RM1-0009SI26-M01-MAT" }),
   ).toBeVisible();
   const creation = requests.find(
     (r) => r.path === "/shipments" && r.method === "POST",
   )!;
-  expect(creation.body).not.toHaveProperty("owner_id");
+  expect(creation.body?.["owner_id"]).toBe("owner-1");
+  expect(creation.body?.["company_code"]).toBe("MXG");
   expect(creation.body).not.toHaveProperty("reference_raw");
-  expect(creation.body?.["business_unit"]).toBe("T01");
+  expect(creation.body?.["business_unit"]).toBe("M01");
   await dialog.getByLabel("Número de documento").fill("26 00 0000 0001234");
   await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
   await expect(dialog.locator(".identifier-list")).toContainText(
@@ -312,29 +305,17 @@ test("creates on server, never sends owner/reference, then attaches a pedimento"
     requests.filter((r) => r.method === "POST" && r.path === "/shipments"),
   ).toHaveLength(1);
 });
-test("creation uses the master operation and its specific fields", async ({
-  page,
-}) => {
+test("each shipment selects its own operation and specific fields", async ({ page }) => {
   await mock(page);
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByLabel("Tipo de operación", { exact: true }),
-  ).toHaveValue("Marítimo · Importación");
-  await expect(
-    dialog.getByLabel("Tipo de operación", { exact: true }),
-  ).toHaveAttribute("readonly", "");
+  const operation = dialog.getByLabel("Tipo de operación *", { exact: true });
+  await expect(operation).toHaveValue("");
+  await operation.fill("SI");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("R1");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await page.getByRole("button", { name: "Nuevo embarque" }).click();
-  await expect(dialog.getByLabel("Naviera", { exact: true })).toHaveCount(0);
-  await expect(
-    dialog.getByRole("heading", { name: "Seguimiento de la operación" }),
-  ).toBeVisible();
+  await operation.fill("R1");
+  await expect(dialog.getByLabel("Naviera", { exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("heading", { name: "Seguimiento de la operación" })).toBeVisible();
 });
 test("conflict preserves edits and requires explicit reload before saving", async ({
   page,
@@ -374,34 +355,21 @@ for (const role of ["MANAGER", "FINANCE"]) {
     ).toHaveCount(0);
   });
 }
-test("administrator cannot create into another owner's master", async ({
-  page,
-}) => {
+test("administrator can edit the consolidated master", async ({ page }) => {
   await mock(page, { role: "SUPER_ADMIN", mixed: true });
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toBeEnabled();
-  await page
-    .getByLabel("Responsable del master", { exact: true })
-    .selectOption("owner-2");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(
-    page.getByRole("button", { name: "Nuevo embarque" }),
-  ).toBeDisabled();
-  await page.locator(".reference-link").first().click();
-  await expect(
-    page.getByRole("dialog").getByLabel("Comentarios"),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeEnabled();
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  await page.locator(".reference-link").last().click();
+  await expect(page.getByRole("dialog").getByLabel("Comentarios")).toBeEnabled();
 });
 test("pagination retains filters", async ({ page }) => {
-  await mock(page, { count: 25 });
-  await expect(page.locator("tbody tr")).toHaveCount(20);
+  await mock(page, { count: 55 });
+  await expect(page.locator("tbody tr")).toHaveCount(50);
   await page.getByRole("button", { name: "Página siguiente" }).click();
   await expect(page.locator("tbody tr")).toHaveCount(5);
-  await expect(page.locator(".table-footer")).toContainText("21–25 de 25");
+  await expect(page.locator(".table-footer")).toContainText("51–55 de 55");
   await page.getByRole("button", { name: "Página anterior" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(20);
+  await expect(page.locator("tbody tr")).toHaveCount(50);
 });
 test("database errors do not masquerade as empty success", async ({ page }) => {
   await mock(page, { failure: true });
@@ -432,7 +400,6 @@ test("desktop and mobile render without script errors or page overflow", async (
     path: "test-results/masters-desktop.png",
     fullPage: true,
   });
-  await page.screenshot({ path: "docs/masters-preview.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   const controls = await page
     .locator(".filter-main > label, .filter-main > button")
@@ -471,6 +438,86 @@ test("desktop and mobile render without script errors or page overflow", async (
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.screenshot({ path: "test-results/masters-detail.png" });
   expect(errors).toEqual([]);
+});
+
+test("compact master gives records most of the window without expanding the view", async ({ page }) => {
+  await mock(page, { count: 60, collapsed: true });
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+    { width: 1280, height: 600 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const first = await page.locator("tbody tr").first().boundingBox();
+    const sheet = await page.locator(".sheet-scroll").boundingBox();
+    const footer = await page.locator(".table-footer").boundingBox();
+    expect(first!.y).toBeLessThan(240);
+    expect(sheet!.height - 60).toBeGreaterThan(viewport.height / 2);
+    expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height);
+    await expect(page.getByLabel("Responsable del master", { exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Secciones" })).toBeVisible();
+    await expect(page.locator("#master-filters")).toBeHidden();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  }
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.screenshot({ path: "docs/masters-preview.png", fullPage: true });
+});
+
+test("typing in a selected cell edits text, dates and catalog values immediately", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true, suppliers: [
+    { id: "supplier-1", code: "TR001", legal_name: "Transportes de prueba", is_active: true },
+  ] });
+  const firstRowTop = (await page.locator("tbody tr").first().boundingBox())!.y;
+  await cell(page, 0, "sender").click();
+  await page.keyboard.type("Proveedor escrito directamente");
+  await expect(page.getByLabel("Editar Remitente / Proveedor", { exact: true })).toHaveValue("Proveedor escrito directamente");
+  await page.keyboard.press("Enter");
+  await expect(cell(page, 1, "sender")).toBeFocused();
+
+  await cell(page, 0, "ship_date").click();
+  await page.keyboard.type("25/10/2026");
+  await page.keyboard.press("Tab");
+  await expect(cell(page, 0, "ship_date")).toHaveText("25/10/2026");
+  await expect(cell(page, 0, "eta")).toBeFocused();
+
+  await cell(page, 0, "status").click();
+  await page.keyboard.type("Entregado");
+  await page.keyboard.press("Tab");
+  await expect(cell(page, 0, "status")).toHaveText("Entregado");
+
+  await cell(page, 0, "carrier_broker_id").click();
+  await page.keyboard.type("TR001");
+  await page.keyboard.press("Enter");
+  await expect(cell(page, 0, "carrier_broker_id")).toHaveText("Transportes de prueba");
+  await expect(page.locator(".save-state")).toContainText("4 celdas sin guardar");
+  expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
+  await page.keyboard.press("Control+s");
+  await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
+  expect((await page.locator("tbody tr").first().boundingBox())!.y).toBe(firstRowTop);
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    sender: "Proveedor escrito directamente", ship_date: "2026-10-25", status: "DELIVERED",
+    carrier_broker_id: "supplier-1", carrier_broker_name: null, expected_version: 1,
+  });
+});
+
+test("date validation and Escape preserve the previous cell value", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true });
+  await cell(page, 0, "ship_date").click();
+  await page.keyboard.type("31/02/2026");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Fecha de embarque");
+  await expect(page.getByLabel("Editar Fecha de embarque", { exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
+  await cell(page, 0, "status").click();
+  await page.keyboard.type("Estado inexistente");
+  await page.keyboard.press("Escape");
+  await expect(cell(page, 0, "status")).toHaveText("En tránsito");
+  await cell(page, 0, "operation_code").click();
+  await page.keyboard.type("XX");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
+  expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
 });
 
 test("sheet stages keyboard edits and saves only changed fields with row versions", async ({
@@ -535,15 +582,15 @@ test("paste from Excel stages a rectangular range and undo restores it", async (
   expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
 });
 
-test("invalid dates, protected columns and oversized pastes do not partially stage changes", async ({
+test("invalid dates, catalog values and oversized pastes do not partially stage changes", async ({
   page,
 }) => {
   await mock(page);
   await pasteCells(page, 0, "ship_date", "12/10/2026\t31/02/2026");
   await expect(page.getByRole("alert")).toContainText("ETA");
   await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
-  await pasteCells(page, 0, "status", "Entregado\tT02");
-  await expect(page.getByRole("alert")).toContainText("solo lectura");
+  await pasteCells(page, 0, "status", "Entregado\tM99");
+  await expect(page.getByRole("alert")).toContainText("BU");
   await expect(cell(page, 0, "status")).toContainText("En tránsito");
   await pasteCells(page, 7, "sender", "A\nB");
   await expect(page.getByRole("alert")).toContainText("excede");
@@ -620,7 +667,7 @@ test("unconfirmed network writes are retained and not submitted twice", async ({
 test("pending edits survive a canceled master switch, refresh and page change", async ({
   page,
 }) => {
-  await mock(page, { count: 25 });
+  await mock(page, { role: "SUPER_ADMIN", count: 55, mixed: true });
   await pasteCells(page, 0, "origin", "Cambio pendiente");
   page.on("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Página siguiente" }).click();
@@ -628,11 +675,11 @@ test("pending edits survive a canceled master switch, refresh and page change", 
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
   await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("AI");
+    .getByLabel("Responsable del master", { exact: true })
+    .selectOption("owner-2");
   await expect(
-    page.getByLabel("Tipo de operación del master", { exact: true }),
-  ).toHaveValue("SI");
+    page.getByLabel("Responsable del master", { exact: true }),
+  ).toHaveValue("owner-1");
   await expect(cell(page, 0, "origin")).toHaveText("Cambio pendiente");
 });
 
@@ -641,6 +688,8 @@ test("read-only roles cannot stage or submit spreadsheet changes", async ({
 }) => {
   const requests = await mock(page, { role: "MANAGER" });
   await cell(page, 0, "origin").dblclick();
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await page.keyboard.type("Escritura no permitida");
   await expect(page.locator(".cell-input")).toHaveCount(0);
   await pasteCells(page, 0, "origin", "Cambio no permitido");
   await page.keyboard.press("Delete");
@@ -662,9 +711,9 @@ test("CSV exports the displayed page and neutralizes spreadsheet formulas", asyn
   const stream = await download.createReadStream();
   let csv = "";
   for await (const chunk of stream!) csv += chunk.toString();
-  expect(download.suggestedFilename()).toBe("master-SI-pagina-1.csv");
+  expect(download.suggestedFilename()).toBe("master-Analista de prueba-pagina-1.csv");
   expect(csv).toContain("'" + '=HYPERLINK(""https://example.com"")');
-  expect(csv).toContain("Referencia,Estado,BU,Fecha de embarque");
+  expect(csv).toContain("Referencia,Estado,BU,Tipo de operación,Empresa,Fecha de embarque");
   expect(csv.split("\r\n")).toHaveLength(9);
 });
 
@@ -695,4 +744,194 @@ test("cell actions support touch editing, Escape and save without leaving the ed
     .poll(() => requests.filter((r) => r.method === "PATCH").length)
     .toBe(1);
   await expect(cell(page, 0, "sender")).toHaveText("Proveedor final");
+});
+
+test("rapid arrow navigation scrolls within the grid and clears frozen headers", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mock(page, { count: 60, collapsed: true });
+  const sheet = page.locator(".sheet-scroll");
+  const size = await sheet.boundingBox();
+  expect(size!.height).toBeGreaterThan(340);
+  await cell(page, 0, "status").click();
+  for (let i = 0; i < 45; i++) await page.keyboard.down("ArrowDown");
+  await page.keyboard.up("ArrowDown");
+  await expect(cell(page, 45, "status")).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(cell(page, 45, "comments")).toBeFocused();
+  const visible = await cell(page, 45, "comments").evaluate(element => {
+    const viewport = element.closest(".sheet-scroll")!;
+    const box = viewport.getBoundingClientRect(), cell = element.getBoundingClientRect();
+    return cell.left >= viewport.querySelector("tbody .frozen")!.getBoundingClientRect().right &&
+      cell.right <= box.left + viewport.clientWidth + 1 && cell.top >= box.top + 60 &&
+      cell.bottom <= box.top + viewport.clientHeight + 1;
+  });
+  expect(visible).toBeTruthy();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 45, "status")).toBeFocused();
+  const left = await cell(page, 45, "status").boundingBox();
+  const frozen = await cell(page, 45, "reference_raw").boundingBox();
+  expect(left!.x).toBeGreaterThanOrEqual(frozen!.x + frozen!.width - 1);
+  await page.keyboard.press("Control+Home");
+  await expect(cell(page, 0, "reference_raw")).toBeFocused();
+  await page.screenshot({ path: "test-results/master-large.png", fullPage: true });
+});
+
+test("zoom and expanded layout retain pending edits and keep keyboard navigation usable", async ({ page }) => {
+  await mock(page, { collapsed: true });
+  await pasteCells(page, 0, "origin", "Edición conservada");
+  await page.getByLabel("Tamaño del master").selectOption("130");
+  await expect(cell(page, 0, "origin")).toBeFocused();
+  expect(await cell(page, 0, "origin").evaluate(e => parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThan(18);
+  await page.getByRole("button", { name: "Ampliar master", exact: true }).click();
+  await expect(cell(page, 0, "origin")).toHaveText("Edición conservada");
+  await cell(page, 0, "origin").click();
+  await page.keyboard.press("PageDown");
+  await expect(cell(page, 7, "origin")).toBeFocused();
+  await page.keyboard.press("PageUp");
+  await expect(cell(page, 0, "origin")).toBeFocused();
+  await page.screenshot({ path: "test-results/master-zoom.png", fullPage: true });
+});
+
+test("master explains server permissions instead of enabling editing from the displayed role", async ({ page }) => {
+  const requests = await mock(page, { accessDenied: true, collapsed: true });
+  await expect(page.locator(".sheet-access-reason")).toContainText("no está habilitada");
+  await cell(page, 0, "sender").dblclick();
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Guardar cambios" })).toHaveCount(0);
+  expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
+});
+
+test("wide cells at mobile zoom do not oscillate at the navigation boundary", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mock(page, { collapsed: true });
+  await page.getByLabel("Tamaño del master").selectOption("130");
+  await cell(page, 0, "status").click();
+  await page.keyboard.press("End");
+  await expect(cell(page, 0, "comments")).toBeFocused();
+  const left = await page.locator(".sheet-scroll").evaluate(e => e.scrollLeft);
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 0, "comments")).toBeFocused();
+  await expect.poll(() => page.locator(".sheet-scroll").evaluate(e => e.scrollLeft)).toBe(left);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("reference detail is accessible from the keyboard without trapping arrow navigation", async ({ page }) => {
+  await mock(page, { collapsed: true });
+  await cell(page, 0, "status").click();
+  await page.keyboard.press("ArrowLeft");
+  await expect(cell(page, 0, "reference_raw")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 0, "status")).toBeFocused();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Editar Referencia", { exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog").getByLabel("Comentarios", { exact: true })).toBeEnabled();
+});
+
+test("every master column allows editing and a pasted reference identity survives saving and refresh", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true });
+  await expect(page.locator('tbody tr:first-child td[aria-readonly="true"]')).toHaveCount(0);
+  await cell(page, 0, "reference_raw").click();
+  await page.keyboard.type("REFERENCIA MANUAL 2026");
+  await expect(page.getByLabel("Editar Referencia", { exact: true })).toHaveValue("REFERENCIA MANUAL 2026");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.keyboard.press("Control+z");
+  await pasteCells(page, 0, "reference_raw", "REFERENCIA MANUAL 2026\tProgramado\tM46\tR1\tMXT");
+  await expect(page.locator(".save-state")).toContainText("5 celdas sin guardar");
+  await cell(page, 0, "business_unit").dblclick();
+  await expect(page.getByLabel("Editar BU", { exact: true }).locator("option")).toHaveText(["Sin asignar", "M01", "M19", "M23", "M45", "M46"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    reference_raw: "REFERENCIA MANUAL 2026", status: "PLANNED", business_unit: "M46", operation_code: "R1", company_code: "MXT", expected_version: 1,
+  });
+  await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(cell(page, 0, "reference_raw").locator(".cell-text")).toHaveText("REFERENCIA MANUAL 2026");
+  await expect(cell(page, 0, "business_unit")).toHaveText("M46");
+  await expect(cell(page, 0, "operation_code")).toHaveText("Rectificación de pedimento");
+  await expect(cell(page, 0, "company_code")).toHaveText("MXT");
+});
+
+test("shipment detail edits reference and all identification fields instead of showing a locked strip", async ({ page }) => {
+  const requests = await mock(page);
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Referencia", { exact: true }).fill("REFERENCIA DEL DETALLE");
+  await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
+  await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M19");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("AI");
+  await dialog.getByLabel("Proceso *", { exact: true }).selectOption("AF");
+  await dialog.getByLabel("Departamento *", { exact: true }).selectOption("FIX");
+  await dialog.getByLabel("Año de operación *", { exact: true }).fill("2027");
+  await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "REFERENCIA DEL DETALLE" })).toBeVisible();
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    reference_raw: "REFERENCIA DEL DETALLE", company_code: "MXG", business_unit: "M19", operation_code: "AI",
+    process_code: "AF", department_code: "FIX", reference_year: 2027, expected_version: 1,
+  });
+});
+
+test("manual operation, status and supplier cells save and refresh without a catalog blocker", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true });
+  await cell(page, 0, "operation_code").dblclick();
+  const operation = page.getByLabel("Editar Tipo de operación", { exact: true });
+  await expect(operation).toHaveJSProperty("tagName", "INPUT");
+  await operation.fill("LAND IMPO");
+  await operation.press("Enter");
+  for (const [field, value] of [
+    ["status", "On Water-Loaded"],
+    ["carrier_broker_id", "Agente manual de prueba"],
+    ["shipping_line_id", "Naviera manual de prueba"],
+  ]) {
+    await cell(page, 0, field).dblclick();
+    await page.locator(".cell-input").fill(value);
+    await page.locator(".cell-input").press("Enter");
+  }
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    operation_code: "LAND IMPO", status: "On Water-Loaded",
+    carrier_broker_id: null, carrier_broker_name: "Agente manual de prueba",
+    shipping_line_id: null, shipping_line_name: "Naviera manual de prueba", expected_version: 1,
+  });
+  await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(cell(page, 0, "operation_code")).toHaveText("LAND IMPO");
+  await expect(cell(page, 0, "status")).toHaveText("On Water-Loaded");
+  await expect(cell(page, 0, "carrier_broker_id")).toHaveText("Agente manual de prueba");
+  await expect(cell(page, 0, "shipping_line_id")).toHaveText("Naviera manual de prueba");
+  await cell(page, 0, "operation_code").click();
+  await page.screenshot({ path: "test-results/masters-manual-preview.png", fullPage: true });
+  await cell(page, 0, "status").dblclick();
+  await page.getByLabel("Editar Estado", { exact: true }).fill("");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  expect(requests.filter(r => r.method === "PATCH").at(-1)?.body?.["status"]).toBe("");
+});
+
+test("shipment detail accepts manual operation, state and supplier names", async ({ page }) => {
+  const requests = await mock(page);
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("Operación especial de prueba");
+  await dialog.getByLabel("Estado", { exact: true }).fill("En despacho");
+  await dialog.getByLabel("Carrier / Agente aduanal", { exact: true }).fill("Agente temporal de prueba");
+  await dialog.getByLabel("Naviera", { exact: true }).fill("Naviera temporal de prueba");
+  await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialog.locator(".error")).toHaveCount(0);
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    operation_code: "Operación especial de prueba", status: "En despacho",
+    carrier_broker_id: null, carrier_broker_name: "Agente temporal de prueba",
+    shipping_line_id: null, shipping_line_name: "Naviera temporal de prueba", expected_version: 1,
+  });
 });

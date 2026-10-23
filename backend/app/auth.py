@@ -1,5 +1,6 @@
 """Validate delegated Entra v2 access tokens; authorize provisioned local identities."""
 
+import ssl
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -30,7 +31,10 @@ class EntraTokenValidator:
     def __init__(self, settings: Settings, key_resolver: Callable[[str], Any] | None = None):
         self.settings = settings
         # The JWKS endpoint is constructed from a validated tenant UUID, never from token claims.
-        self.jwks = PyJWKClient(settings.jwks_url, timeout=5, lifespan=300)
+        context = ssl.create_default_context()
+        if settings.entra_ca_bundle:
+            context.load_verify_locations(cafile=settings.entra_ca_bundle)
+        self.jwks = PyJWKClient(settings.jwks_url, timeout=5, lifespan=300, ssl_context=context)
         self.key_resolver = key_resolver or self._resolve_key
 
     def _resolve_key(self, token: str):
@@ -99,6 +103,16 @@ def current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: Session = Depends(get_session),
 ) -> User:
+    if request.app.state.settings.auth_mode == "development":
+        from app.local_access import local_request_allowed
+        from app.local_schema import LOCAL_USER
+
+        if not local_request_allowed(request.scope, request.app.state.settings.allowed_origins):
+            raise HTTPException(403, "Local identity requires a direct loopback connection")
+        user = session.get(User, LOCAL_USER)
+        if user is None or not user.is_active:
+            raise HTTPException(403, "Local development user is not available")
+        return user
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             401, "Bearer access token required", headers={"WWW-Authenticate": "Bearer"}
@@ -128,8 +142,12 @@ def operational_user(user: User = Depends(current_user)) -> User:
     return user
 
 
+def can_edit_masters(user: User) -> bool:
+    return user.role in {"OPERATOR", "SUPER_ADMIN"}
+
+
 def master_writer(user: User = Depends(current_user)) -> User:
-    if user.role not in {"OPERATOR", "SUPER_ADMIN"}:
+    if not can_edit_masters(user):
         raise HTTPException(403, "This role cannot modify operational masters")
     return user
 

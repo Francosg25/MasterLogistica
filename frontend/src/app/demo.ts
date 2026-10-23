@@ -26,7 +26,7 @@ export const demoCatalogs: Catalogs = {
     "R1",
   ],
   department_codes: ["MAT", "PRJ", "FIX", "MAI"],
-  business_units: { T01: "Unidad de ejemplo A", T02: "Unidad de ejemplo B" },
+  business_units: { M01: "M01", M19: "M19", M23: "M23", M45: "M45", M46: "M46" },
   company_codes: ["DEMO"],
   business_units_configured: true,
 };
@@ -92,12 +92,12 @@ export const demoShipments: Shipment[] = [
   id: `demo-${i}`,
   row_version: 1,
   owner_id: "demo",
-  reference_raw: `RM1-${String(i + 1).padStart(4, "0")}${operation}26-T0${(i % 2) + 1}-MAT`,
+  reference_raw: `RM1-${String(i + 1).padStart(4, "0")}${operation}26-${["M01", "M19"][i % 2]}-MAT`,
   company_code: "DEMO",
   process_code: "RM",
   operation_code: operation,
   reference_year: 2026,
-  business_unit: `T0${(i % 2) + 1}`,
+  business_unit: ["M01", "M19"][i % 2],
   department_code: "MAT",
   status,
   ship_date: `2026-10-${String(i + 1).padStart(2, "0")}`,
@@ -118,7 +118,7 @@ export const demoShipments: Shipment[] = [
 
 export const demoOwners: Owner[] = Array.from({ length: 5 }, (_, i) => ({
   id: `demo-owner-${i + 1}`,
-  display_name: `Integrante ${i + 1} · Demostración`,
+  display_name: ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"][i],
   analyst_code: i + 1,
 }));
 export const masterDemoShipments: Shipment[] = demoOwners.flatMap((owner, i) =>

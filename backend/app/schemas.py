@@ -7,13 +7,9 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 Role = Literal["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"]
 Process = Literal["RM", "AF", "FG", "CR", "FA"]
-Operation = Literal[
-    "AE", "AI", "SE", "SI", "LI", "LE", "PI", "PE", "VI", "VE", "A3", "F4", "F5", "R1"
-]
+Operation = Annotated[str, Field(min_length=1, max_length=100)]
 Department = Literal["PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"]
-ShipmentStatus = Literal[
-    "DRAFT", "PLANNED", "IN_TRANSIT", "AT_PORT", "CUSTOMS", "DELIVERED", "CANCELLED"
-]
+ShipmentStatus = Annotated[str, Field(max_length=100)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=4, allow_inf_nan=False)]
 ShortText = Annotated[str, Field(min_length=1, max_length=250)]
 
@@ -116,6 +112,7 @@ class PeriodRead(PeriodCreate):
 
 
 class ShipmentCreate(Schema):
+    owner_id: UUID | None = None
     company_code: Annotated[str, Field(min_length=1, max_length=32)]
     process_code: Process
     operation_code: Operation
@@ -132,12 +129,21 @@ class ShipmentCreate(Schema):
     destination: Annotated[str, Field(max_length=150)] | None = None
     carrier_broker_id: UUID | None = None
     shipping_line_id: UUID | None = None
+    carrier_broker_name: Annotated[str, Field(max_length=250)] | None = None
+    shipping_line_name: Annotated[str, Field(max_length=250)] | None = None
     plant_code: Annotated[str, Field(max_length=32)] | None = None
     comments: Annotated[str, Field(max_length=10000)] | None = None
 
 
 class ShipmentPatch(Schema):
     expected_version: Annotated[int, Field(ge=1)]
+    reference_raw: Annotated[str, Field(min_length=1, max_length=160)] | None = None
+    company_code: Annotated[str, Field(min_length=1, max_length=32)] | None = None
+    process_code: Process | None = None
+    operation_code: Operation | None = None
+    reference_year: Annotated[int, Field(ge=2000, le=2099)] | None = None
+    business_unit: Annotated[str, Field(pattern=r"^[A-Z0-9]{3}$")] | None = None
+    department_code: Department | None = None
     status: ShipmentStatus | None = None
     ship_date: date | None = None
     eta: date | None = None
@@ -148,6 +154,8 @@ class ShipmentPatch(Schema):
     destination: Annotated[str, Field(max_length=150)] | None = None
     carrier_broker_id: UUID | None = None
     shipping_line_id: UUID | None = None
+    carrier_broker_name: Annotated[str, Field(max_length=250)] | None = None
+    shipping_line_name: Annotated[str, Field(max_length=250)] | None = None
     plant_code: Annotated[str, Field(max_length=32)] | None = None
     comments: Annotated[str, Field(max_length=10000)] | None = None
     damaged_material: bool | None = None
@@ -157,9 +165,10 @@ class ShipmentPatch(Schema):
     @model_validator(mode="after")
     def required_values(self):
         if any(
-            getattr(self, n) is None for n in self.model_fields_set & {"status", "expedited_status"}
+            getattr(self, n) is None
+            for n in self.model_fields_set & {"status", "expedited_status", "company_code"}
         ):
-            raise ValueError("Status cannot be cleared")
+            raise ValueError("Company and status cannot be cleared")
         return self
 
 
@@ -188,6 +197,8 @@ class ShipmentRead(VersionedRead):
     destination: str | None
     carrier_broker_id: UUID | None
     shipping_line_id: UUID | None
+    carrier_broker_name: str | None
+    shipping_line_name: str | None
     plant_code: str | None
     comments: str | None
     damaged_material: bool | None
@@ -211,9 +222,10 @@ class IdentifierRead(Schema):
 class ProvisionCreate(Schema):
     shipment_id: UUID
     supplier_id: UUID
-    charge_code: Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Z0-9_-]+$")]
+    charge_code: Literal["FREIGHT", "BROKER", "STORAGE"]
     line_no: Annotated[int, Field(ge=1, le=2147483647)] = 1
-    month_accrued: date
+    provision_date: date | None = None
+    month_accrued: date | None = None
     amount: Money | None = None
     extra_charges: Money | None = None
     currency: Literal["USD", "MXN"] | None = None
@@ -221,6 +233,13 @@ class ProvisionCreate(Schema):
 
     @model_validator(mode="after")
     def financial_values(self):
+        if self.provision_date is not None:
+            month = self.provision_date.replace(day=1)
+            if self.month_accrued is not None and self.month_accrued != month:
+                raise ValueError("La fecha de provisión debe pertenecer al mes de origen")
+            self.month_accrued = month
+        if self.month_accrued is None:
+            raise ValueError("Captura la fecha de provisión")
         if self.month_accrued.day != 1:
             raise ValueError("Month accrued must be the first day of the month")
         validate_total(self.amount, self.extra_charges)
@@ -246,6 +265,7 @@ class ProvisionRead(VersionedRead):
     charge_code: str
     line_no: int
     month_accrued: date
+    provision_date: date | None
     status: str
     amount: Decimal | None
     extra_charges: Decimal | None

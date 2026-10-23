@@ -1,8 +1,7 @@
-"""MasterLogistica: propuesta de esquema PostgreSQL con SQLAlchemy 2.x.
+"""Shared SQLAlchemy entities and invariants for MasterLogistica.
 
-Modelo core de Fase 1 incorporado al backend de Fase 2.
-Las invariantes financieras entre varias filas pertenecen a fases posteriores.
-El esquema se versiona mediante Alembic; no se crea automáticamente al arrancar.
+PostgreSQL production schema is versioned by Alembic. The local development
+schema is initialized separately with SQLite-compatible types and constraints.
 """
 
 from __future__ import annotations
@@ -13,16 +12,15 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Computed,
     Date,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
     MetaData,
-    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -30,8 +28,13 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB as PostgresJSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
+
+from app.storage_types import ExactNumeric as Numeric
+from app.storage_types import UTCDateTime as DateTime
+
+JSONB = JSON().with_variant(PostgresJSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):
@@ -146,7 +149,7 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     reference_normalized: Mapped[str | None] = mapped_column(String(160))
     normalization_version: Mapped[str | None] = mapped_column(String(32))
     process_code: Mapped[str | None] = mapped_column(String(2))
-    operation_code: Mapped[str | None] = mapped_column(String(2))
+    operation_code: Mapped[str | None] = mapped_column(String(100))
     reference_year: Mapped[int | None] = mapped_column(Integer)
     reference_sequence: Mapped[int | None] = mapped_column(Integer)
     department_code: Mapped[str | None] = mapped_column(String(3))
@@ -155,7 +158,7 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     transport_mode: Mapped[str | None] = mapped_column(String(16))
     service_category: Mapped[str] = mapped_column(String(16), server_default="FREIGHT")
     direction: Mapped[str] = mapped_column(String(1))
-    status: Mapped[str] = mapped_column(String(24), server_default="DRAFT")
+    status: Mapped[str] = mapped_column(String(100), server_default="DRAFT")
     ship_date: Mapped[date | None] = mapped_column(Date)
     eta: Mapped[date | None] = mapped_column(Date)
     delivery_date: Mapped[date | None] = mapped_column(Date)
@@ -169,6 +172,8 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     shipping_line_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("suppliers.id", ondelete="RESTRICT")
     )
+    carrier_broker_name: Mapped[str | None] = mapped_column(String(250))
+    shipping_line_name: Mapped[str | None] = mapped_column(String(250))
     plant_code: Mapped[str | None] = mapped_column(String(32))
     business_unit: Mapped[str | None] = mapped_column(String(32))
     scs_security_status: Mapped[str | None] = mapped_column(String(64))
@@ -199,10 +204,6 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
         ),
         CheckConstraint("direction IN ('I','O','N')", name="ck_shipment_direction"),
         CheckConstraint(
-            "status IN ('DRAFT','PLANNED','IN_TRANSIT','AT_PORT','CUSTOMS','DELIVERED','CANCELLED')",
-            name="ck_shipment_status",
-        ),
-        CheckConstraint(
             "reference_normalized IS NULL OR (reference_raw IS NOT NULL AND normalization_version IS NOT NULL AND length(btrim(reference_normalized)) > 0)",
             name="ck_shipment_reference",
         ),
@@ -214,10 +215,6 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
         CheckConstraint(
             "process_code IS NULL OR process_code IN ('RM','AF','FG','DR','CR','FA')",
             name="ck_shipment_process",
-        ),
-        CheckConstraint(
-            "operation_code IS NULL OR operation_code IN ('AE','AI','SE','SI','LI','LE','PI','PE','VI','VE','A3','F4','F5','R1')",
-            name="ck_shipment_operation",
         ),
         CheckConstraint(
             "department_code IS NULL OR department_code IN ('PRJ','MAT','QUA','MAI','HUM','FIX','RAW','CTM','SCR')",
@@ -266,6 +263,7 @@ class Provision(IdentityMixin, VersionedMixin, Base):
     supplier_id: Mapped[UUID] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"))
     charge_code: Mapped[str] = mapped_column(String(40))
     line_no: Mapped[int] = mapped_column(Integer)
+    provision_date: Mapped[date | None] = mapped_column(Date)
     month_accrued: Mapped[date] = mapped_column(
         ForeignKey("accounting_periods.period_month", ondelete="RESTRICT")
     )
@@ -361,6 +359,7 @@ class Invoice(IdentityMixin, VersionedMixin, Base):
     uploaded_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     document_location: Mapped[str | None] = mapped_column(Text)
     document_sha256: Mapped[str | None] = mapped_column(String(64))
+    source_data: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     __table_args__ = (
         UniqueConstraint(
             "company_code", "supplier_id", "invoice_number_normalized", name="uq_supplier_invoice"

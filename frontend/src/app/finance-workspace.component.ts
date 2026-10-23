@@ -6,9 +6,12 @@ import {
   HostListener,
   inject,
   signal,
+  ViewChild,
 } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ApiError, ApiService } from "./api.service";
+import { InvoiceImportComponent } from "./invoice-import.component";
+import { ReferenceActivityComponent } from "./reference-activity.component";
 import {
   Catalogs,
   Owner,
@@ -30,13 +33,24 @@ import {
   Section,
 } from "./finance.types";
 
+interface ReferenceOption {
+  id: string;
+  reference: string;
+  company_code: string;
+  owner_name?: string;
+  business_unit?: string;
+}
+
 @Component({
   selector: "finance-workspace",
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, InvoiceImportComponent, ReferenceActivityComponent],
   templateUrl: "./finance-workspace.component.html",
 })
 export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
+  @ViewChild(InvoiceImportComponent) importer?: InvoiceImportComponent;
+  importOpen = signal(false);
+  activity = signal<{ id: string; reference: string } | null>(null);
   @Input({ required: true }) section!: Section;
   @Input({ required: true }) user!: User;
   @Input({ required: true }) catalogs!: Catalogs;
@@ -54,9 +68,15 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   totals = signal<CurrencyTotal[]>([]);
   report = signal<Report | null>(null);
   owners = signal<Pick<Owner, "id" | "display_name">[]>([]);
-  references = signal<
-    { id: string; reference: string; company_code: string }[]
-  >([]);
+  references = signal<ReferenceOption[]>([]);
+  referenceOpen = signal(false);
+  referenceLoading = signal(false);
+  referenceError = signal("");
+  activeReference = signal(-1);
+  selectedReference = signal<ReferenceOption | null>(null);
+  readonly concepts = ["FREIGHT", "BROKER", "STORAGE"];
+  private referenceTimer?: ReturnType<typeof setTimeout>;
+  private referenceController?: AbortController;
   total = signal(0);
   offset = signal(0);
   limit = 20;
@@ -83,7 +103,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     return this.section === "provisions"
       ? "Provisiones por referencia"
       : this.section === "invoices"
-        ? "Facturas y conciliación"
+        ? "Facturas"
         : "Historial de cambios";
   }
   get month() {
@@ -108,10 +128,10 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     supplier_id: ["", Validators.required],
     charge_code: [
       "FREIGHT",
-      [Validators.required, Validators.pattern(/^[A-Z0-9_-]+$/)],
+      [Validators.required, Validators.pattern(/^(FREIGHT|BROKER|STORAGE)$/)],
     ],
     line_no: [1, Validators.min(1)],
-    month_accrued: [this.currentMonth, Validators.required],
+    provision_date: [this.day, Validators.required],
     amount: ["", [Validators.required, Validators.min(0)]],
     extra_charges: ["0", [Validators.required, Validators.min(0)]],
     currency: ["USD", Validators.required],
@@ -148,6 +168,8 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     return this.invoiceForm.controls.lines;
   }
   ngOnChanges() {
+    this.expandedInvoice.set("");
+    this.importOpen.set(false);
     this.formOpen.set(false);
     this.reportOpen.set(false);
     this.report.set(null);
@@ -161,6 +183,9 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   ngOnDestroy() {
     this.controller?.abort();
+    this.referenceController?.abort();
+    clearTimeout(this.referenceTimer);
+    this.refRequest++;
     this.requestNumber++;
   }
   @HostListener("window:beforeunload", ["$event"])
@@ -172,6 +197,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   dirty() {
     return (
+      !!this.importer?.dirty() ||
       (this.formOpen() &&
         (this.section === "provisions"
           ? this.provisionForm.dirty
@@ -248,7 +274,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     this.applied = Object.fromEntries(
       keys.map((k) => [k, v[k as keyof typeof v]]).filter(([, v]) => !!v),
     );
-    if (this.section === "provisions") this.applied["month"] = this.month;
+    if (this.section !== "history") this.applied["month"] = this.month;
     this.offset.set(0);
     this.report.set(null);
     this.reportOpen.set(false);
@@ -278,7 +304,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
           : this.section === "invoices"
             ? "invoices"
             : "history";
-      const result = await this.api.request<
+      let result = await this.api.request<
         Page<Balance & InvoiceRow & HistoryRow> & { totals?: CurrencyTotal[] }
       >(
         `/finance/${route}?${this.query({ limit: String(this.limit), offset: String(this.offset()) })}`,
@@ -287,6 +313,20 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
         controller.signal,
       );
       if (generation !== this.requestNumber) return;
+      if (this.section === "provisions" && this.canWrite) {
+        let activated = false;
+        for (const row of result.items.filter(row => row.current_status === "DRAFT" && row.currency && Number(row.total_amount) > 0)) {
+          if (generation !== this.requestNumber) return;
+          try {
+            await this.api.request(`/finance/provisions/${row.id}/approve`, "POST", { expected_version: row.row_version });
+            activated = true;
+          } catch (e) {
+            this.notice.set("Una provisión anterior sigue pendiente: " + this.message(e));
+          }
+        }
+        if (activated) result = await this.api.request(`/finance/${route}?${this.query({ limit: String(this.limit), offset: String(this.offset()) })}`, "GET", undefined, controller.signal);
+        if (generation !== this.requestNumber) return;
+      }
       this.total.set(result.total);
       if (this.section === "provisions") {
         this.balances.set(result.items);
@@ -314,7 +354,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       supplier_id: "",
       charge_code: "FREIGHT",
       line_no: 1,
-      month_accrued: this.filters.controls.month.value,
+      provision_date: this.filters.controls.month.value === this.currentMonth ? this.day : "",
       amount: "",
       extra_charges: "0",
       currency: "USD",
@@ -331,6 +371,10 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     this.lines.push(this.newLine());
     this.invoiceForm.markAsPristine();
     this.formOpen.set(true);
+    this.references.set([]);
+    this.selectedReference.set(null);
+    this.referenceOpen.set(false);
+    this.referenceError.set("");
     this.error.set("");
   }
   closeForm() {
@@ -338,17 +382,69 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   async lookup(value: string) {
     const request = ++this.refRequest;
-    if (this.demo || value.trim().length < 2) {
+    this.referenceController?.abort();
+    if (this.demo) {
       this.references.set([]);
       return;
     }
+    const controller = new AbortController();
+    this.referenceController = controller;
+    this.referenceLoading.set(true);
+    this.referenceError.set("");
     try {
-      const rows = await this.api.request<
-        { id: string; reference: string; company_code: string }[]
-      >("/finance/references?q=" + encodeURIComponent(value));
+      const rows = await this.api.request<ReferenceOption[]>(
+        "/finance/references?q=" + encodeURIComponent(value.trim()), "GET", undefined, controller.signal,
+      );
       if (request === this.refRequest) this.references.set(rows);
-    } catch {
-      if (request === this.refRequest) this.references.set([]);
+    } catch (error) {
+      if (request === this.refRequest && !controller.signal.aborted) {
+        this.references.set([]);
+        this.referenceError.set("No se pudieron cargar las referencias. Vuelve a buscar.");
+      }
+    } finally {
+      if (request === this.refRequest) this.referenceLoading.set(false);
+    }
+  }
+  searchProvisionReferences(immediate = false) {
+    clearTimeout(this.referenceTimer);
+    this.refRequest++;
+    this.referenceController?.abort();
+    this.references.set([]);
+    this.referenceLoading.set(true);
+    this.activeReference.set(-1);
+    this.referenceOpen.set(true);
+    const value = this.provisionForm.controls.reference.value;
+    if (!immediate) this.selectedReference.set(null);
+    if (immediate) void this.lookup(value);
+    else this.referenceTimer = setTimeout(() => void this.lookup(value), 180);
+  }
+  selectReference(reference: ReferenceOption) {
+    this.provisionForm.controls.reference.setValue(reference.reference);
+    this.provisionForm.controls.reference.markAsDirty();
+    this.selectedReference.set(reference);
+    this.referenceOpen.set(false);
+    this.activeReference.set(-1);
+  }
+  referenceDetails(reference: ReferenceOption) {
+    return [reference.owner_name, reference.business_unit, reference.company_code].filter(Boolean).join(" · ");
+  }
+  referenceKey(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      this.referenceOpen.set(false);
+      event.preventDefault();
+    } else if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      if (!this.referenceOpen()) { this.searchProvisionReferences(true); return; }
+      const count = this.references().length;
+      if (count) this.activeReference.set((this.activeReference() + (event.key === "ArrowDown" ? 1 : -1) + count) % count);
+    } else if (event.key === "Enter" && this.referenceOpen() && this.activeReference() >= 0) {
+      event.preventDefault();
+      this.selectReference(this.references()[this.activeReference()]);
+    }
+  }
+  referenceBlur(event: FocusEvent) {
+    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+      this.referenceOpen.set(false);
     }
   }
   async write(action: () => Promise<unknown>, success: string) {
@@ -372,14 +468,6 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       this.busy.set(false);
     }
   }
-  async openPeriod() {
-    if (!this.filters.controls.month.value) return;
-    await this.write(
-      () =>
-        this.api.request("/finance/periods?period_month=" + this.month, "POST"),
-      "Periodo disponible para registrar movimientos.",
-    );
-  }
   async saveProvision() {
     if (this.provisionForm.invalid) {
       this.provisionForm.markAllAsTouched();
@@ -401,20 +489,14 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       await this.api.request("/finance/provisions", "POST", {
         ...data,
         shipment_id: reference.id,
-        month_accrued: v.month_accrued + "-01",
+        month_accrued: v.provision_date.slice(0, 7) + "-01",
       });
+      this.filters.controls.month.setValue(v.provision_date.slice(0, 7));
+      this.applied["month"] = this.month;
+      this.offset.set(0);
       this.provisionForm.markAsPristine();
       this.formOpen.set(false);
-    }, "Provisión guardada en borrador. Apruébala para incluirla en el saldo vivo.");
-  }
-  async approve(row: Balance) {
-    await this.write(
-      () =>
-        this.api.request(`/finance/provisions/${row.id}/approve`, "POST", {
-          expected_version: row.row_version,
-        }),
-      "Provisión aprobada. El saldo pendiente se arrastra automáticamente.",
-    );
+    }, "Provisión guardada y aprobada automáticamente.");
   }
   async saveInvoice() {
     if (this.invoiceForm.invalid) {
@@ -423,15 +505,22 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     }
     await this.write(async () => {
       const v = this.invoiceForm.getRawValue();
-      const row = await this.api.request<InvoiceRow>(
+      await this.api.request<InvoiceRow>(
         "/finance/invoices",
         "POST",
         { ...v, accounting_period: v.accounting_period + "-01" },
       );
+      this.filters.controls.month.setValue(v.accounting_period);
+      this.applied["month"] = this.month;
+      this.offset.set(0);
       this.invoiceForm.markAsPristine();
       this.formOpen.set(false);
-      this.expandedInvoice.set(row.id);
-    }, "Factura registrada y conciliada con las provisiones disponibles. Revisa el saldo por conciliar en su detalle.");
+      this.expandedInvoice.set("");
+    }, "Factura guardada. Su importe se aplicó a las provisiones disponibles.");
+  }
+  async invoiceImported() {
+    if (this.importer?.month) this.filters.controls.month.setValue(this.importer.month);
+    await this.apply();
   }
   async reconcile(row: InvoiceRow) {
     await this.write(

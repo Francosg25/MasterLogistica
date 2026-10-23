@@ -30,7 +30,7 @@ class EmptySession:
 
 @pytest.fixture
 def scoped_client(settings, rsa_key):
-    actor = SimpleNamespace(id=uuid4(), role="OPERATOR")
+    actor = SimpleNamespace(id=uuid4(), role="OPERATOR", analyst_code=1)
     db = EmptySession()
     app = create_app(settings, lambda token: rsa_key.public_key())
     app.dependency_overrides[current_user] = lambda: actor
@@ -40,13 +40,29 @@ def scoped_client(settings, rsa_key):
 
 
 @pytest.mark.parametrize("path", ["/masters/shipments", "/masters/summary"])
-@pytest.mark.parametrize("missing", ["owner_id", "operation_code"])
-def test_master_requires_owner_and_operation(scoped_client, path, missing):
+def test_master_includes_all_operations_of_selected_owner(scoped_client, path):
     client, actor, db = scoped_client
     params = {"owner_id": str(actor.id), "operation_code": "SI"}
-    params.pop(missing)
-    assert client.get("/api/v1" + path, params=params).status_code == 422
-    assert db.queries == []
+    params.pop("operation_code")
+    assert client.get("/api/v1" + path, params=params).status_code == 200
+    assert db.queries
+    for query in db.queries:
+        compiled = query.compile()
+        assert actor.id in compiled.params.values()
+        assert "shipments.operation_code =" not in str(compiled)
+
+
+@pytest.mark.parametrize("role", ["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"])
+def test_ownerless_master_retains_role_scope(scoped_client, role):
+    client, actor, db = scoped_client
+    actor.role = role
+    assert (
+        client.get("/api/v1/masters/shipments", params={"operation_code": "SI"}).status_code == 200
+    )
+    for statement in db.queries:
+        compiled = statement.compile()
+        assert "SI" in compiled.params.values()
+        assert (actor.id in compiled.params.values()) == (role in {"OPERATOR", "FINANCE"})
 
 
 @pytest.mark.parametrize("role", ["OPERATOR", "FINANCE"])
@@ -78,8 +94,8 @@ def test_master_queries_keep_explicit_owner_and_operation(scoped_client, path, r
         assert "shipments.operation_code =" in str(compiled)
 
 
-@pytest.mark.parametrize("operation", ["", "ALL", "SI,AI", "INVALID"])
-def test_master_rejects_combined_or_unknown_operations(scoped_client, operation):
+@pytest.mark.parametrize("operation", ["", "X" * 101])
+def test_master_rejects_empty_or_oversized_operation_filters(scoped_client, operation):
     client, actor, db = scoped_client
     assert (
         client.get(
@@ -89,6 +105,21 @@ def test_master_rejects_combined_or_unknown_operations(scoped_client, operation)
         == 422
     )
     assert db.queries == []
+
+
+@pytest.mark.parametrize("operation", ["LAND IMPO", "SEA EXPO", "SI,AI", "Operación manual"])
+def test_master_filters_manual_operations_literally(scoped_client, operation):
+    client, actor, db = scoped_client
+    assert (
+        client.get(
+            "/api/v1/masters/shipments",
+            params={"owner_id": str(actor.id), "operation_code": operation},
+        ).status_code
+        == 200
+    )
+    assert db.queries
+    for query in db.queries:
+        assert operation in query.compile().params.values()
 
 
 @pytest.mark.parametrize("role", ["FINANCE", "MANAGER"])
@@ -104,4 +135,54 @@ def test_readonly_operational_roles_cannot_write_through_api(scoped_client, role
     client, actor, db = scoped_client
     actor.role = role
     assert client.request(method, "/api/v1" + path, json={}).status_code == 403
+    assert db.queries == []
+
+
+@pytest.mark.parametrize(
+    "role,can_edit,scope",
+    [
+        ("OPERATOR", True, "OWN"),
+        ("SUPER_ADMIN", True, "ALL"),
+        ("MANAGER", False, "NONE"),
+        ("FINANCE", False, "NONE"),
+    ],
+)
+def test_catalog_explains_master_access_from_authenticated_role(
+    scoped_client, role, can_edit, scope
+):
+    client, actor, db = scoped_client
+    actor.role = role
+    response = client.get("/api/v1/references/catalogs", params={"role": "SUPER_ADMIN"})
+    assert response.status_code == 200
+    access = response.json()["master_access"]
+    assert access["can_edit"] is can_edit
+    assert access["can_create"] is can_edit
+    assert access["edit_scope"] == scope
+    assert bool(access["read_only_reason"]) is (not can_edit)
+    assert len(db.queries) == 1
+
+
+def test_operator_without_analyst_can_edit_but_cannot_create(scoped_client):
+    client, actor, _ = scoped_client
+    actor.analyst_code = None
+    access = client.get("/api/v1/references/catalogs").json()["master_access"]
+    assert access["can_edit"] is True
+    assert access["can_create"] is False
+
+
+def test_operator_cannot_create_in_another_responsibles_master(scoped_client):
+    client, actor, db = scoped_client
+    response = client.post(
+        "/api/v1/shipments",
+        json={
+            "owner_id": str(uuid4()),
+            "company_code": "MXG",
+            "process_code": "RM",
+            "operation_code": "SI",
+            "reference_year": 2026,
+            "business_unit": "M01",
+            "department_code": "MAT",
+        },
+    )
+    assert response.status_code == 403
     assert db.queries == []
