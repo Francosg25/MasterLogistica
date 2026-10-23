@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { Shipment, STATUS, OPERATIONS } from "./types";
+import { Shipment } from "./types";
 
 type Patch = Record<string, string | null>;
 interface PracticeStore {
@@ -14,10 +14,10 @@ export class MasterPracticeService {
   private seed: Shipment[] = [];
   private saved: PracticeStore = { version: 1, rows: {} };
   private readonly limits: Record<string, number> = {
-    reference_raw: 160, company_code: 32, business_unit: 3, operation_code: 2,
-    status: 32, ship_date: 10, eta: 10, delivery_date: 10,
+    reference_raw: 160, company_code: 32, business_unit: 3, operation_code: 100,
+    status: 100, ship_date: 10, eta: 10, delivery_date: 10,
     sender: 250, origin: 150, consignee: 250, destination: 150,
-    plant_code: 32, carrier_broker_id: 64, shipping_line_id: 64, comments: 10000,
+    plant_code: 32, carrier_broker_id: 64, shipping_line_id: 64, carrier_broker_name: 250, shipping_line_name: 250, comments: 10000,
   };
 
   start(examples: Shipment[]): Shipment[] {
@@ -46,13 +46,10 @@ export class MasterPracticeService {
       if (!Object.hasOwn(this.limits, key) ||
           (value !== null && (typeof value !== "string" || value.length > this.limits[key])))
         throw new Error("La práctica contiene un campo o valor no válido.");
-      if (key === "status" && (!value || !Object.hasOwn(STATUS, value)))
-        throw new Error("Selecciona un estado válido.");
+      if (key === "status" && value === null) throw new Error("El estado vacío se guarda como texto vacío.");
       if (key === "company_code" && !value?.trim()) throw new Error("Captura la empresa.");
       if (key === "business_unit" && value && !["M01", "M19", "M23", "M45", "M46"].includes(value))
         throw new Error("Selecciona una BU del catálogo.");
-      if (key === "operation_code" && value && !Object.hasOwn(OPERATIONS, value))
-        throw new Error("Selecciona un tipo de operación del catálogo.");
       if (["ship_date", "eta", "delivery_date"].includes(key) && value) {
         const date = new Date(`${value}T00:00:00Z`);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value)

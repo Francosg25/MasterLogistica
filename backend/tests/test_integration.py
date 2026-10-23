@@ -649,3 +649,9 @@ def test_individual_master_endpoints_never_mix_owners_or_operations(environment)
         .status_code
         == 403
     )
+
+
+def test_manual_master_values_preserve_links_and_audit(environment):
+    from tests.master_cases import assert_manual_master_capture
+
+    assert_manual_master_capture(environment)

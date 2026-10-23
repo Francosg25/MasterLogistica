@@ -7,13 +7,9 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 Role = Literal["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"]
 Process = Literal["RM", "AF", "FG", "CR", "FA"]
-Operation = Literal[
-    "AE", "AI", "SE", "SI", "LI", "LE", "PI", "PE", "VI", "VE", "A3", "F4", "F5", "R1"
-]
+Operation = Annotated[str, Field(min_length=1, max_length=100)]
 Department = Literal["PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"]
-ShipmentStatus = Literal[
-    "DRAFT", "PLANNED", "IN_TRANSIT", "AT_PORT", "CUSTOMS", "DELIVERED", "CANCELLED"
-]
+ShipmentStatus = Annotated[str, Field(max_length=100)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=4, allow_inf_nan=False)]
 ShortText = Annotated[str, Field(min_length=1, max_length=250)]
 
@@ -133,6 +129,8 @@ class ShipmentCreate(Schema):
     destination: Annotated[str, Field(max_length=150)] | None = None
     carrier_broker_id: UUID | None = None
     shipping_line_id: UUID | None = None
+    carrier_broker_name: Annotated[str, Field(max_length=250)] | None = None
+    shipping_line_name: Annotated[str, Field(max_length=250)] | None = None
     plant_code: Annotated[str, Field(max_length=32)] | None = None
     comments: Annotated[str, Field(max_length=10000)] | None = None
 
@@ -156,6 +154,8 @@ class ShipmentPatch(Schema):
     destination: Annotated[str, Field(max_length=150)] | None = None
     carrier_broker_id: UUID | None = None
     shipping_line_id: UUID | None = None
+    carrier_broker_name: Annotated[str, Field(max_length=250)] | None = None
+    shipping_line_name: Annotated[str, Field(max_length=250)] | None = None
     plant_code: Annotated[str, Field(max_length=32)] | None = None
     comments: Annotated[str, Field(max_length=10000)] | None = None
     damaged_material: bool | None = None
@@ -197,6 +197,8 @@ class ShipmentRead(VersionedRead):
     destination: str | None
     carrier_broker_id: UUID | None
     shipping_line_id: UUID | None
+    carrier_broker_name: str | None
+    shipping_line_name: str | None
     plant_code: str | None
     comments: str | None
     damaged_material: bool | None

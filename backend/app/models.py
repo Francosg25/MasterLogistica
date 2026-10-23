@@ -149,7 +149,7 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     reference_normalized: Mapped[str | None] = mapped_column(String(160))
     normalization_version: Mapped[str | None] = mapped_column(String(32))
     process_code: Mapped[str | None] = mapped_column(String(2))
-    operation_code: Mapped[str | None] = mapped_column(String(2))
+    operation_code: Mapped[str | None] = mapped_column(String(100))
     reference_year: Mapped[int | None] = mapped_column(Integer)
     reference_sequence: Mapped[int | None] = mapped_column(Integer)
     department_code: Mapped[str | None] = mapped_column(String(3))
@@ -158,7 +158,7 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     transport_mode: Mapped[str | None] = mapped_column(String(16))
     service_category: Mapped[str] = mapped_column(String(16), server_default="FREIGHT")
     direction: Mapped[str] = mapped_column(String(1))
-    status: Mapped[str] = mapped_column(String(24), server_default="DRAFT")
+    status: Mapped[str] = mapped_column(String(100), server_default="DRAFT")
     ship_date: Mapped[date | None] = mapped_column(Date)
     eta: Mapped[date | None] = mapped_column(Date)
     delivery_date: Mapped[date | None] = mapped_column(Date)
@@ -172,6 +172,8 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     shipping_line_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("suppliers.id", ondelete="RESTRICT")
     )
+    carrier_broker_name: Mapped[str | None] = mapped_column(String(250))
+    shipping_line_name: Mapped[str | None] = mapped_column(String(250))
     plant_code: Mapped[str | None] = mapped_column(String(32))
     business_unit: Mapped[str | None] = mapped_column(String(32))
     scs_security_status: Mapped[str | None] = mapped_column(String(64))
@@ -202,10 +204,6 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
         ),
         CheckConstraint("direction IN ('I','O','N')", name="ck_shipment_direction"),
         CheckConstraint(
-            "status IN ('DRAFT','PLANNED','IN_TRANSIT','AT_PORT','CUSTOMS','DELIVERED','CANCELLED')",
-            name="ck_shipment_status",
-        ),
-        CheckConstraint(
             "reference_normalized IS NULL OR (reference_raw IS NOT NULL AND normalization_version IS NOT NULL AND length(btrim(reference_normalized)) > 0)",
             name="ck_shipment_reference",
         ),
@@ -217,10 +215,6 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
         CheckConstraint(
             "process_code IS NULL OR process_code IN ('RM','AF','FG','DR','CR','FA')",
             name="ck_shipment_process",
-        ),
-        CheckConstraint(
-            "operation_code IS NULL OR operation_code IN ('AE','AI','SE','SI','LI','LE','PI','PE','VI','VE','A3','F4','F5','R1')",
-            name="ck_shipment_operation",
         ),
         CheckConstraint(
             "department_code IS NULL OR department_code IN ('PRJ','MAT','QUA','MAI','HUM','FIX','RAW','CTM','SCR')",

@@ -15,7 +15,7 @@ test("local configuration creates and edits real records without corporate login
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
-  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("SI");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("SI");
   await dialog.getByLabel("Proceso *", { exact: true }).selectOption("RM");
   await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M01");
   await dialog.getByLabel("Departamento *", { exact: true }).selectOption("MAT");
@@ -64,7 +64,7 @@ test("local responsible masters keep mixed operations separate and save exact pr
     await page.getByRole("button", { name: "Nuevo embarque" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Empresa *", { exact: true }).fill("MXT");
-    await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption(operation);
+    await dialog.getByLabel("Tipo de operación *", { exact: true }).fill(operation);
     await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M46");
     await dialog.getByLabel("Año de operación *", { exact: true }).fill("2026");
     await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
@@ -159,5 +159,44 @@ test("all identification cells and the detail form persist real corrections on t
   const persisted = await (await reopened.request.get(`/api/v1/shipments/${before.id}`)).json();
   expect(persisted).toMatchObject({ id: before.id, process_code: "AF", department_code: "FIX", reference_year: 2027, origin: before.origin, eta: before.eta });
   await reopened.screenshot({ path: "test-results/local/masters-all-editable.png", fullPage: true });
+  await context.close();
+});
+
+test("manual master capture survives a new browser and preserves catalog links when chosen again", async ({ page, browser }) => {
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  const owner = "f0000000-0000-0000-0000-000000000002";
+  await page.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
+  const rows = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items;
+  const before = rows[0];
+  const values: Record<string, string> = { operation_code: "LAND IMPO", status: "Outgated for Transload", carrier_broker_id: "Transportista libre de prueba", shipping_line_id: "Naviera libre de prueba" };
+  for (const [field, value] of Object.entries(values)) {
+    await page.locator(`td[data-row="0"][data-field="${field}"]`).dblclick();
+    await page.locator(".cell-input").fill(value);
+    await page.keyboard.press("Enter");
+  }
+  await page.locator('td[data-row="0"][data-field="ship_date"]').dblclick();
+  await page.getByLabel("Editar Fecha de embarque", { exact: true }).fill("1-8-2025");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  const path = `/api/v1/shipments/${before.id}`;
+  const after = await (await page.request.get(path)).json();
+  expect(after).toMatchObject({ id: before.id, reference_raw: before.reference_raw, ship_date: "2025-08-01", operation_code: values["operation_code"], status: values["status"], transport_mode: "LAND", direction: "I", carrier_broker_id: null, carrier_broker_name: values["carrier_broker_id"], shipping_line_id: null, shipping_line_name: values["shipping_line_id"] });
+  const context = await browser.newContext();
+  const reopened = await context.newPage();
+  await reopened.goto("http://127.0.0.1:4200/");
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
+  for (const [field, value] of Object.entries(values)) await expect(reopened.locator(`td[data-row="0"][data-field="${field}"]`)).toHaveText(value);
+  await reopened.locator('td[data-row="0"][data-field="carrier_broker_id"]').dblclick();
+  await reopened.getByLabel("Editar Carrier / Agente", { exact: true }).fill("Proveedor local de ejemplo");
+  await reopened.keyboard.press("Enter");
+  await reopened.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(reopened.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  const linked = await (await reopened.request.get(path)).json();
+  expect(linked.carrier_broker_id).toBe("f0000000-0000-0000-0000-000000000003");
+  expect(linked.carrier_broker_name).toBeNull();
+  expect(linked.shipping_line_name).toBe(values["shipping_line_id"]);
   await context.close();
 });

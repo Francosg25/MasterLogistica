@@ -24,6 +24,7 @@ export interface Catalogs {
   version: string;
   process_codes: string[];
   operation_codes: string[];
+  shipment_statuses?: string[];
   department_codes: string[];
   business_units: Record<string, string>;
   business_units_configured: boolean;
@@ -76,14 +77,16 @@ export interface Shipment {
   consignee: string | null;
   destination: string | null;
   carrier_broker_id: string | null;
+  carrier_broker_name?: string | null;
   shipping_line_id: string | null;
+  shipping_line_name?: string | null;
   plant_code: string | null;
   comments: string | null;
   damaged_material: boolean | null;
   expedited_status: string;
   pfa_approval_code: string | null;
 }
-export const STATUS: Record<string, string> = {
+export const STATUS: Record<string, string> = Object.assign(Object.create(null), {
   DRAFT: "Borrador",
   PLANNED: "Programado",
   IN_TRANSIT: "En tránsito",
@@ -91,8 +94,8 @@ export const STATUS: Record<string, string> = {
   CUSTOMS: "En aduana",
   DELIVERED: "Entregado",
   CANCELLED: "Cancelado",
-};
-export const OPERATIONS: Record<string, string> = {
+});
+export const OPERATIONS: Record<string, string> = Object.assign(Object.create(null), {
   AI: "Aéreo · Importación",
   AE: "Aéreo · Exportación",
   SI: "Marítimo · Importación",
@@ -107,7 +110,7 @@ export const OPERATIONS: Record<string, string> = {
   F4: "Cambio por CTM / Scrap",
   F5: "Cambio de régimen · Maquinaria",
   R1: "Rectificación de pedimento",
-};
+});
 export const PROCESSES: Record<string, string> = {
   RM: "Materia prima",
   AF: "Activo fijo",
@@ -126,3 +129,21 @@ export const DEPARTMENTS: Record<string, string> = {
   CTM: "Transferencia",
   SCR: "Scrap",
 };
+
+// Lists assist capture; manual labels stay exactly as entered.
+export const EXCEL_OPERATION_LABELS = ["LAND IMPO", "LAND EXPO", "AIR IMPO", "AIR EXPO", "SEA IMPO", "SEA EXPO"];
+export function masterOperationValue(value: string): string {
+  const text = value.trim();
+  return Object.keys(OPERATIONS).find(code => code.toLowerCase() === text.toLowerCase() || OPERATIONS[code].toLowerCase() === text.toLowerCase()) ?? text;
+}
+export function masterStatusValue(value: string): string {
+  const text = value.trim();
+  return Object.keys(STATUS).find(code => code.toLowerCase() === text.toLowerCase() || STATUS[code].toLowerCase() === text.toLowerCase()) ?? text;
+}
+export function supplierValues(value: string | null, prefix: "carrier_broker" | "shipping_line", suppliers: Supplier[]): Record<string, string | null> {
+  const text = (value ?? "").trim();
+  const matches = text ? suppliers.filter(s => s.is_active && [s.id, s.code, s.legal_name].some(v => v.toLowerCase() === text.toLowerCase())) : [];
+  return matches.length === 1
+    ? { [prefix + "_id"]: matches[0].id, [prefix + "_name"]: null }
+    : { [prefix + "_id"]: null, [prefix + "_name"]: text || null };
+}

@@ -11,7 +11,7 @@ import {
   signal,
 } from "@angular/core";
 import { ApiError, ApiService } from "./api.service";
-import { Shipment, STATUS, Supplier, OPERATIONS } from "./types";
+import { Shipment, STATUS, Supplier, OPERATIONS, EXCEL_OPERATION_LABELS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
 import { MasterPracticeService } from "./master-practice.service";
 
 interface Column {
@@ -80,15 +80,16 @@ export class MasterSheetComponent implements OnDestroy {
   tableWidth = computed(() => 44 + this.columns().reduce((sum, column) => sum + column.width * this.zoom() / 100, 0));
   ngOnDestroy(): void { cancelAnimationFrame(this.focusFrame); }
   readonly status = STATUS;
-  readonly statusCodes = Object.keys(STATUS);
+  get statusCodes(): string[] { return [...new Set([...Object.keys(STATUS), ...this.rows().map(row => row.status).filter(Boolean)])]; }
+  readonly excelOperations = EXCEL_OPERATION_LABELS;
   readonly operations = OPERATIONS;
   readonly operationCodes = Object.keys(OPERATIONS);
   private supplierNames = computed(() => new Map(this.suppliers().map(s => [s.id, s.legal_name])));
   readonly columns = computed<Column[]>(() => [
     { key: "reference_raw", label: "Referencia", width: 265, kind: "text", max: 160 },
-    { key: "status", label: "Estado", width: 144, kind: "status" },
+    { key: "status", label: "Estado", width: 144, kind: "status", max: 100 },
     { key: "business_unit", label: "BU", width: 75, kind: "unit" },
-    { key: "operation_code", label: "Tipo de operación", width: 190, kind: "operation" },
+    { key: "operation_code", label: "Tipo de operación", width: 190, kind: "operation", max: 100 },
     { key: "company_code", label: "Empresa", width: 130, kind: "text", max: 32, required: true },
     { key: "ship_date", label: "Fecha de embarque", width: 175, kind: "date" },
     { key: "eta", label: "ETA", width: 135, kind: "date" },
@@ -125,9 +126,9 @@ export class MasterSheetComponent implements OnDestroy {
       key: "carrier_broker_id",
       label: "Carrier / Agente",
       width: 200,
-      kind: "supplier",
+      kind: "supplier", max: 250,
     },
-    { key: "shipping_line_id", label: "Naviera", width: 200, kind: "supplier" },
+    { key: "shipping_line_id", label: "Naviera", width: 200, kind: "supplier", max: 250 },
     {
       key: "comments",
       label: "Comentarios",
@@ -160,10 +161,12 @@ export class MasterSheetComponent implements OnDestroy {
   }
   value(row: Shipment, column: Column): string {
     const patch = this.drafts()[row.id];
-    return String(
-      (patch && column.key in patch ? patch[column.key] : row[column.key]) ??
-        "",
-    );
+    if (patch && column.key in patch) return String(patch[column.key] ?? "");
+    if (column.kind === "supplier") {
+      const name = column.key === "carrier_broker_id" ? row.carrier_broker_name : row.shipping_line_name;
+      return String(row[column.key] || name || "");
+    }
+    return String(row[column.key] ?? "");
   }
   display(row: Shipment, column: Column): string {
     const value = this.value(row, column);
@@ -254,9 +257,7 @@ export class MasterSheetComponent implements OnDestroy {
     this.anchor.set({ row, col });
     this.directEntry.set(initial !== undefined);
     const column = this.columns()[col];
-    this.editValue = initial ?? (column.kind === "date"
-      ? this.display(this.rows()[row], column)
-      : this.value(this.rows()[row], column));
+    this.editValue = initial ?? this.display(this.rows()[row], column);
     this.editing.set({ row, col });
     // Render and focus before returning the first key event. Deferring focus
     // loses subsequent characters when typing quickly into a selected cell.
@@ -268,15 +269,9 @@ export class MasterSheetComponent implements OnDestroy {
   }
   private normalize(raw: string, column: Column): string | null {
     let value = raw.trim();
-    if (column.kind === "status") {
-      const code = Object.keys(STATUS).find(
-        (key) =>
-          key.toLowerCase() === value.toLowerCase() ||
-          STATUS[key].toLowerCase() === value.toLowerCase(),
-      );
-      if (!code) throw new Error("Estado: selecciona un valor del catálogo.");
-      return code;
-    }
+    if (column.max && value.length > column.max)
+      throw new Error(`${column.label}: máximo ${column.max} caracteres.`);
+    if (column.kind === "status") return masterStatusValue(value);
     if (!value) {
       if (column.required) throw new Error(`${column.label}: ingresa un valor.`);
       return null;
@@ -285,13 +280,9 @@ export class MasterSheetComponent implements OnDestroy {
       value = value.toUpperCase();
       if (!this.businessUnits().includes(value)) throw new Error("BU: selecciona M01, M19, M23, M45 o M46.");
     }
-    if (column.kind === "operation") {
-      const code = this.operationCodes.find(key => key.toLowerCase() === value.toLowerCase() || OPERATIONS[key].toLowerCase() === value.toLowerCase());
-      if (!code) throw new Error("Tipo de operación: selecciona un valor del catálogo.");
-      return code;
-    }
+    if (column.kind === "operation") return masterOperationValue(value);
     if (column.kind === "date") {
-      const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+      const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
       if (match)
         value = `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
       const date = new Date(`${value}T00:00:00Z`);
@@ -310,14 +301,8 @@ export class MasterSheetComponent implements OnDestroy {
             (v) => v.toLowerCase() === value.toLowerCase(),
           ),
       );
-      if (matches.length !== 1)
-        throw new Error(
-          `${column.label}: selecciona un proveedor activo del catálogo.`,
-        );
-      return matches[0].id;
+      return matches.length === 1 ? matches[0].id : value;
     }
-    if (column.max && value.length > column.max)
-      throw new Error(`${column.label}: máximo ${column.max} caracteres.`);
     return value;
   }
   private stage(cells: { row: number; col: number; value: string }[]): boolean {
@@ -645,10 +630,15 @@ export class MasterSheetComponent implements OnDestroy {
       if (this.blocked.has(id)) continue;
       const original = this.rows().find((row) => row.id === id)!;
       try {
-        const row = this.practice() ? this.practiceStore.save(original, patch) : await this.api.request<Shipment>(
+        const values = { ...patch };
+        for (const prefix of ["carrier_broker", "shipping_line"] as const) {
+          const key = prefix + "_id";
+          if (key in values) Object.assign(values, supplierValues(values[key], prefix, this.suppliers()));
+        }
+        const row = this.practice() ? this.practiceStore.save(original, values) : await this.api.request<Shipment>(
           `/shipments/${id}`,
           "PATCH",
-          { ...patch, expected_version: original.row_version },
+          { ...values, expected_version: original.row_version },
         );
         this.updated.emit(row);
         this.drafts.update((items) => {

@@ -286,10 +286,10 @@ La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipogra
 ## Edición del master
 
 - La vista normal reúne navegación, selección del responsable y acciones en una cabecera compacta. Los registros ocupan la mayor parte de la ventana; los filtros empiezan plegados y se abren con **Mostrar filtros**. **Tamaño** cambia texto, altura de filas y ancho de columnas a 100/115/130 % y conserva esa preferencia. **Ampliar master** aprovecha todavía más la ventana sin descartar cambios.
-- Haz clic en una celda editable y empieza a escribir para reemplazar su contenido, incluidos fechas, estados y proveedores. Las fechas se pueden escribir como `dd/mm/aaaa` o `aaaa-mm-dd`; estados y proveedores deben coincidir con su catálogo. Doble clic, Enter, F2 o **Editar celda** abre el valor actual (con lista para estados y proveedores). Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
+- Haz clic en una celda editable y empieza a escribir para reemplazar su contenido, incluidos fechas, estados y proveedores. Las fechas se pueden escribir como `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Tipo de operación, estado, transportista y naviera admiten texto manual; sus listas son sugerencias. Doble clic, Enter, F2 o **Editar celda** abre el valor actual. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
 - Mantener una flecha mueve la selección y desplaza únicamente el interior de la hoja. Encabezados y referencia fija no ocultan la celda activa. Inicio/Fin van al extremo de la fila; Ctrl+Inicio/Ctrl+Fin a los extremos de la página cargada; RePág/AvPág desplazan la selección una pantalla dentro de esa página.
 - Todas las columnas del master permiten editar y pegar valores, incluidas **Referencia**, **BU**, **Tipo de operación** y **Empresa**. Enter abre el editor de la celda; Ctrl+Enter o el botón ↗ de la referencia abre el detalle del embarque, donde también se puede modificar su identificación.
-- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa` o `aaaa-mm-dd`. Los estados y proveedores se validan contra sus catálogos. Un rango inválido se rechaza completo.
+- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Los valores de tipo de operación, estado y proveedores se pueden pegar aunque no existan en una lista. Las BU conservan M01, M19, M23, M45 y M46. Los errores de fecha o de tamaño de rango conservan el pegado sin aplicarlo parcialmente.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
 - Cada columna se modifica de manera independiente. La BU ofrece M01, M19, M23, M45 y M46; la empresa y la referencia admiten captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación.
@@ -299,6 +299,8 @@ La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipogra
 Los registros modificados permanecen visibles hasta actualizar o volver a aplicar los filtros.
 
 ![Master por responsable con datos de prueba locales](frontend/docs/masters-preview.png)
+
+Los tipos de operación y estados se guardan aunque no pertenezcan a una lista; también se conservan los nombres de transportista y naviera escritos a mano. Elegir después un proveedor conocido restablece su vínculo de catálogo.
 
 ## Provisiones, facturas e historial
 
@@ -336,7 +338,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere **0006_provision_date**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
+Esta versión requiere **0007_flexible_master**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -351,7 +353,7 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 
 ### Verificación de este bloque
 
-- Compilación Angular de producción correcta, **262 pruebas de backend sin integración externa** y **50 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **4 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
+- Compilación Angular de producción correcta, **274 pruebas de backend sin integración externa** y **52 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **5 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
@@ -380,6 +382,6 @@ Validación de la actualización XLSX: 177 pruebas de backend sin base externa y
 
 ![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)
 
-La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente de la versión 1 a la 2 conservando sus filas. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
+La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1 y 2 hasta la 3, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
 
 ![Captura de provisión con fecha exacta y concepto](frontend/docs/provision-date-preview.png)

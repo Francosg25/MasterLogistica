@@ -77,3 +77,21 @@ def test_identifier_normalization_preserves_leading_zeroes():
     assert normalize_identifier(" msku 123456-7 ") == "MSKU1234567"
     with pytest.raises(ValueError):
         normalize_identifier("??")
+
+
+@pytest.mark.parametrize(
+    "label,expected",
+    [
+        ("LAND IMPO", ("LAND", "FREIGHT", "I")),
+        ("LAND EXPO", ("LAND", "FREIGHT", "O")),
+        ("AIR IMPO", ("AIR", "FREIGHT", "I")),
+        ("AIR EXPO", ("AIR", "FREIGHT", "O")),
+        ("SEA IMPO", ("SEA", "FREIGHT", "I")),
+        ("SEA EXPO", ("SEA", "FREIGHT", "O")),
+        ("Operación manual", (None, "FREIGHT", "N")),
+    ],
+)
+def test_excel_operation_labels_keep_their_transport_classification(label, expected):
+    from app.references import operation_classification
+
+    assert operation_classification(label) == expected

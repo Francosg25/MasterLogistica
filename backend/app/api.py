@@ -36,6 +36,7 @@ from app.references import (
     generate_reference,
     normalize_identifier,
     normalize_reference,
+    operation_classification,
     parse_reference,
     reserve_manual_sequence,
 )
@@ -195,19 +196,23 @@ def reference_catalogs(request: Request, user: Actor, session: DB):
     can_edit = can_edit_masters(user)
     units_configured = bool(request.app.state.settings.business_units)
     analyst_assigned = getattr(user, "analyst_code", None) is not None
-    companies = select(Shipment.company_code).distinct()
+    companies = select(Shipment.company_code, Shipment.operation_code, Shipment.status).distinct()
     if user.role == "OPERATOR":
         companies = companies.where(Shipment.owner_id == user.id)
+    catalog_rows = session.execute(companies).all()
     return {
         "version": VERSION,
         "process_codes": sorted(PROCESSES),
-        "operation_codes": sorted(OPERATIONS),
+        "operation_codes": sorted(
+            set(OPERATIONS) | {r.operation_code for r in catalog_rows if r.operation_code}
+        ),
+        "shipment_statuses": sorted({r.status for r in catalog_rows if r.status}),
         "department_codes": sorted(DEPARTMENTS),
         "business_units": request.app.state.settings.business_units,
         "business_units_configured": bool(request.app.state.settings.business_units),
         "sequence_digits": 4,
         "company_codes": sorted(
-            set(request.app.state.settings.company_codes) | set(session.scalars(companies).all())
+            set(request.app.state.settings.company_codes) | {r.company_code for r in catalog_rows}
         ),
         "master_access": {
             "can_edit": can_edit,
@@ -365,6 +370,9 @@ def filtered_shipments(
         statement = statement.where(
             or_(
                 Shipment.reference_raw.icontains(value, autoescape=True),
+                Shipment.company_code.icontains(value, autoescape=True),
+                Shipment.carrier_broker_name.icontains(value, autoescape=True),
+                Shipment.shipping_line_name.icontains(value, autoescape=True),
                 Shipment.sender.icontains(value, autoescape=True),
                 Shipment.consignee.icontains(value, autoescape=True),
                 Shipment.id.in_(identifiers),
@@ -450,6 +458,21 @@ def shipment_detail(shipment_id: UUID, session: DB, user: Actor):
     return shipment_for(session, user, shipment_id)
 
 
+def shipment_supplier_values(session, values):
+    """Keep a catalog link or a manual name, never a stale link behind new text."""
+    for prefix in ("carrier_broker", "shipping_line"):
+        id_key, name_key = prefix + "_id", prefix + "_name"
+        if name_key in values:
+            values[name_key] = (values[name_key] or "").strip() or None
+            if values[name_key]:
+                values[id_key] = None
+        if id_key in values:
+            supplier_valid(session, values[id_key])
+            if name_key not in values or values[id_key]:
+                values[name_key] = None
+    return values
+
+
 @router.post("/shipments", response_model=ShipmentRead, status_code=201, tags=["Masters"])
 def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: MasterWriter):
     owner = user
@@ -464,8 +487,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         raise HTTPException(503, "An approved business unit catalog must be configured")
     if data.business_unit not in catalog:
         raise HTTPException(422, "Business unit is not in the approved catalog")
-    supplier_valid(session, data.carrier_broker_id)
-    supplier_valid(session, data.shipping_line_id)
+    values = shipment_supplier_values(session, data.model_dump(exclude={"owner_id"}))
     try:
         reference, sequence = generate_reference(
             session,
@@ -479,12 +501,12 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         )
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
-    mode, service, direction = OPERATIONS[data.operation_code]
+    mode, service, direction = operation_classification(data.operation_code)
     row = Shipment(
-        **data.model_dump(exclude={"owner_id"}),
+        **values,
         owner_id=owner.id,
         reference_raw=reference,
-        reference_normalized=reference,
+        reference_normalized=normalize_reference(reference),
         normalization_version=VERSION,
         reference_sequence=sequence,
         transport_mode=mode,
@@ -500,7 +522,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
             shipment_id=row.id,
             kind="REFERENCE",
             raw_value=reference,
-            normalized_value=reference,
+            normalized_value=normalize_reference(reference),
             normalization_version=VERSION,
         )
     )
@@ -591,8 +613,7 @@ def patch_shipment(
         and updates["business_unit"] not in request.app.state.settings.business_units
     ):
         raise HTTPException(422, "Selecciona M01, M19, M23, M45 o M46")
-    for field in {"carrier_broker_id", "shipping_line_id"} & updates.keys():
-        supplier_valid(session, updates[field])
+    shipment_supplier_values(session, updates)
     expedited = updates.get("expedited_status", row.expedited_status)
     approval = updates.get("pfa_approval_code", row.pfa_approval_code)
     if (expedited == "APPROVED") != bool(approval):
@@ -608,8 +629,8 @@ def patch_shipment(
         for key, value in updates.items():
             setattr(row, key, value)
         if "operation_code" in updates:
-            row.transport_mode, row.service_category, row.direction = OPERATIONS.get(
-                row.operation_code, (None, "FREIGHT", "N")
+            row.transport_mode, row.service_category, row.direction = operation_classification(
+                row.operation_code
             )
         if row.damaged_material and row.reference_normalized:
             add_reference_alias(session, row, "DMR")

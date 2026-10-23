@@ -182,7 +182,7 @@
                   ><select aria-label="Estado" formControlName="status">
                     <option value="">Todos los estados</option>
                     @for (code of statusCodes; track code) {
-                      <option [value]="code">{{ status[code] }}</option>
+                      <option [value]="code">{{ status[code] || code }}</option>
                     }
                   </select></label
                 >

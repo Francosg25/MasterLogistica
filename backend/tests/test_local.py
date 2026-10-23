@@ -712,3 +712,145 @@ def test_local_version_one_upgrade_preserves_provisions_without_inventing_a_day(
         assert row["provision_date"] is None
         assert row["month_accrued"] == "2026-10-01"
         assert Decimal(row["amount"]) == 500
+
+
+def test_local_manual_master_values_preserve_links_and_audit(local_financial_environment):
+    from tests.master_cases import assert_manual_master_capture
+
+    assert_manual_master_capture(local_financial_environment)
+
+
+@pytest.fixture
+def local_version_two_database(tmp_path, monkeypatch):
+    from sqlalchemy import CheckConstraint, String
+
+    from app import local_schema
+
+    current_metadata = local_schema.local_metadata
+
+    def previous_metadata():
+        metadata = current_metadata()
+        shipment = metadata.tables["shipments"]
+        shipment.c.operation_code.type = String(2)
+        shipment.c.status.type = String(24)
+        shipment.append_constraint(
+            CheckConstraint(
+                "operation_code IS NULL OR operation_code IN ('AE','AI','SE','SI','LI','LE','PI','PE','VI','VE','A3','F4','F5','R1')",
+                name="ck_shipment_operation",
+            )
+        )
+        shipment.append_constraint(
+            CheckConstraint(
+                "status IN ('DRAFT','PLANNED','IN_TRANSIT','AT_PORT','CUSTOMS','DELIVERED','CANCELLED')",
+                name="ck_shipment_status",
+            )
+        )
+        return metadata
+
+    path = tmp_path / "version-two.db"
+    settings = local_settings(path)
+    with monkeypatch.context() as patch:
+        patch.setattr(local_schema, "SCHEMA_VERSION", 2)
+        patch.setattr(local_schema, "local_metadata", previous_metadata)
+        app = create_app(settings)
+        with local_client(app) as client:
+            shipment = client.post(
+                "/api/v1/shipments",
+                json=dict(
+                    company_code="LOCAL",
+                    process_code="RM",
+                    operation_code="LI",
+                    reference_year=2026,
+                    business_unit="M01",
+                    department_code="MAT",
+                    status="CUSTOMS",
+                    comments="Conservar este registro",
+                ),
+            ).json()
+            provision = client.post(
+                "/api/v1/finance/provisions",
+                json=dict(
+                    shipment_id=shipment["id"],
+                    supplier_id=str(LOCAL_SUPPLIER),
+                    charge_code="FREIGHT",
+                    month_accrued="2026-10-01",
+                    amount="500",
+                    extra_charges="0",
+                    currency="USD",
+                ),
+            ).json()
+            with app.state.engine.begin() as connection:
+                connection.exec_driver_sql("ALTER TABLE shipments DROP COLUMN carrier_broker_name")
+                connection.exec_driver_sql("ALTER TABLE shipments DROP COLUMN shipping_line_name")
+                count = connection.exec_driver_sql(
+                    "SELECT count(*) FROM reconciliation_logs"
+                ).scalar_one()
+    return settings, path, shipment, provision, count
+
+
+def test_local_version_two_upgrade_preserves_financial_records(local_version_two_database):
+    settings, _, shipment, provision, count = local_version_two_database
+    app = create_app(settings)
+    with local_client(app) as client:
+        path = "/api/v1/shipments/" + shipment["id"]
+        stored = client.get(path).json()
+        assert stored["row_version"] == shipment["row_version"]
+        assert (stored["operation_code"], stored["status"], stored["comments"]) == (
+            "LI",
+            "CUSTOMS",
+            "Conservar este registro",
+        )
+        balance = client.get("/api/v1/finance/balances?month=2026-10-01").json()["items"][0]
+        assert balance["id"] == provision["id"] and Decimal(balance["closing_amount"]) == 500
+        with app.state.engine.begin() as connection:
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+            assert (
+                connection.exec_driver_sql("SELECT version FROM local_schema_version").scalar_one()
+                == 3
+            )
+            assert (
+                connection.exec_driver_sql("SELECT count(*) FROM reconciliation_logs").scalar_one()
+                == count
+            )
+        response = client.patch(
+            path,
+            json={
+                "expected_version": stored["row_version"],
+                "operation_code": "LAND IMPO",
+                "status": "En despacho",
+                "carrier_broker_name": "Transportista manual",
+            },
+        )
+        assert response.status_code == 200, response.text
+    with local_client(create_app(settings)) as client:
+        stored = client.get(path).json()
+        assert (stored["operation_code"], stored["status"], stored["carrier_broker_name"]) == (
+            "LAND IMPO",
+            "En despacho",
+            "Transportista manual",
+        )
+
+
+def test_local_version_two_upgrade_rolls_back_every_change(local_version_two_database, monkeypatch):
+    import sqlite3
+
+    from app import local_schema
+
+    settings, path, _, _, _ = local_version_two_database
+    upgrade = local_schema.upgrade_flexible_master
+
+    def interrupted(connection):
+        upgrade(connection)
+        raise RuntimeError("Simular una interrupción de actualización")
+
+    monkeypatch.setattr(local_schema, "upgrade_flexible_master", interrupted)
+    with pytest.raises(RuntimeError, match="interrupción"), local_client(create_app(settings)):
+        pass
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT version FROM local_schema_version").fetchone() == (2,)
+        assert connection.execute("SELECT operation_code, status FROM shipments").fetchone() == (
+            "LI",
+            "CUSTOMS",
+        )
+        columns = {r[1] for r in connection.execute("PRAGMA table_info(shipments)")}
+        assert "legacy_operation_code" not in columns and "carrier_broker_name" not in columns

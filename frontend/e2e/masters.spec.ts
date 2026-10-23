@@ -273,7 +273,7 @@ test("creates in the selected master with manual company and an allowed BU, then
     .click();
   await expect(dialog.getByRole("alert")).toContainText("Completa");
   await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
-  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("SI");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("SI");
   await expect(dialog.getByLabel("Business unit *", { exact: true }).locator("option")).toHaveText(["Selecciona una BU", "M01", "M19", "M23", "M45", "M46"]);
   await dialog
     .getByLabel("Business unit *", { exact: true })
@@ -311,9 +311,9 @@ test("each shipment selects its own operation and specific fields", async ({ pag
   const dialog = page.getByRole("dialog");
   const operation = dialog.getByLabel("Tipo de operación *", { exact: true });
   await expect(operation).toHaveValue("");
-  await operation.selectOption("SI");
+  await operation.fill("SI");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeVisible();
-  await operation.selectOption("R1");
+  await operation.fill("R1");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeEnabled();
   await expect(dialog.getByRole("heading", { name: "Seguimiento de la operación" })).toBeVisible();
 });
@@ -496,11 +496,11 @@ test("typing in a selected cell edits text, dates and catalog values immediately
   expect((await page.locator("tbody tr").first().boundingBox())!.y).toBe(firstRowTop);
   expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
     sender: "Proveedor escrito directamente", ship_date: "2026-10-25", status: "DELIVERED",
-    carrier_broker_id: "supplier-1", expected_version: 1,
+    carrier_broker_id: "supplier-1", carrier_broker_name: null, expected_version: 1,
   });
 });
 
-test("direct typing validates dates and catalogs and Escape restores the original cell", async ({ page }) => {
+test("date validation and Escape preserve the previous cell value", async ({ page }) => {
   const requests = await mock(page, { collapsed: true });
   await cell(page, 0, "ship_date").click();
   await page.keyboard.type("31/02/2026");
@@ -511,14 +511,10 @@ test("direct typing validates dates and catalogs and Escape restores the origina
   await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
   await cell(page, 0, "status").click();
   await page.keyboard.type("Estado inexistente");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert")).toContainText("catálogo");
   await page.keyboard.press("Escape");
   await expect(cell(page, 0, "status")).toHaveText("En tránsito");
   await cell(page, 0, "operation_code").click();
   await page.keyboard.type("XX");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert")).toContainText("Tipo de operación");
   await page.keyboard.press("Escape");
   await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
   expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
@@ -871,7 +867,7 @@ test("shipment detail edits reference and all identification fields instead of s
   await dialog.getByLabel("Referencia", { exact: true }).fill("REFERENCIA DEL DETALLE");
   await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
   await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M19");
-  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("AI");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("AI");
   await dialog.getByLabel("Proceso *", { exact: true }).selectOption("AF");
   await dialog.getByLabel("Departamento *", { exact: true }).selectOption("FIX");
   await dialog.getByLabel("Año de operación *", { exact: true }).fill("2027");
@@ -880,5 +876,62 @@ test("shipment detail edits reference and all identification fields instead of s
   expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
     reference_raw: "REFERENCIA DEL DETALLE", company_code: "MXG", business_unit: "M19", operation_code: "AI",
     process_code: "AF", department_code: "FIX", reference_year: 2027, expected_version: 1,
+  });
+});
+
+test("manual operation, status and supplier cells save and refresh without a catalog blocker", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true });
+  await cell(page, 0, "operation_code").dblclick();
+  const operation = page.getByLabel("Editar Tipo de operación", { exact: true });
+  await expect(operation).toHaveJSProperty("tagName", "INPUT");
+  await operation.fill("LAND IMPO");
+  await operation.press("Enter");
+  for (const [field, value] of [
+    ["status", "On Water-Loaded"],
+    ["carrier_broker_id", "Agente manual de prueba"],
+    ["shipping_line_id", "Naviera manual de prueba"],
+  ]) {
+    await cell(page, 0, field).dblclick();
+    await page.locator(".cell-input").fill(value);
+    await page.locator(".cell-input").press("Enter");
+  }
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    operation_code: "LAND IMPO", status: "On Water-Loaded",
+    carrier_broker_id: null, carrier_broker_name: "Agente manual de prueba",
+    shipping_line_id: null, shipping_line_name: "Naviera manual de prueba", expected_version: 1,
+  });
+  await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(cell(page, 0, "operation_code")).toHaveText("LAND IMPO");
+  await expect(cell(page, 0, "status")).toHaveText("On Water-Loaded");
+  await expect(cell(page, 0, "carrier_broker_id")).toHaveText("Agente manual de prueba");
+  await expect(cell(page, 0, "shipping_line_id")).toHaveText("Naviera manual de prueba");
+  await cell(page, 0, "operation_code").click();
+  await page.screenshot({ path: "test-results/masters-manual-preview.png", fullPage: true });
+  await cell(page, 0, "status").dblclick();
+  await page.getByLabel("Editar Estado", { exact: true }).fill("");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  expect(requests.filter(r => r.method === "PATCH").at(-1)?.body?.["status"]).toBe("");
+});
+
+test("shipment detail accepts manual operation, state and supplier names", async ({ page }) => {
+  const requests = await mock(page);
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("Operación especial de prueba");
+  await dialog.getByLabel("Estado", { exact: true }).fill("En despacho");
+  await dialog.getByLabel("Carrier / Agente aduanal", { exact: true }).fill("Agente temporal de prueba");
+  await dialog.getByLabel("Naviera", { exact: true }).fill("Naviera temporal de prueba");
+  await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialog.locator(".error")).toHaveCount(0);
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    operation_code: "Operación especial de prueba", status: "En despacho",
+    carrier_broker_id: null, carrier_broker_name: "Agente temporal de prueba",
+    shipping_line_id: null, shipping_line_name: "Naviera temporal de prueba", expected_version: 1,
   });
 });

@@ -34,6 +34,26 @@ OPERATIONS = {
     "F5": (None, "COMPLIANCE", "N"),
     "R1": (None, "COMPLIANCE", "N"),
 }
+# Labels used in the source masters. Unknown labels remain valid manual text.
+EXCEL_OPERATIONS = {
+    "LANDIMPO": "LI",
+    "LANDEXPO": "LE",
+    "AIRIMPO": "AI",
+    "AIREXPO": "AE",
+    "SEAIMPO": "SI",
+    "SEAEXPO": "SE",
+}
+
+
+def reference_operation(value: str) -> str:
+    cleaned = re.sub(r"\s+", "", unicodedata.normalize("NFKC", value)).upper()
+    return EXCEL_OPERATIONS.get(cleaned, cleaned)
+
+
+def operation_classification(value):
+    return OPERATIONS.get(reference_operation(value or ""), (None, "FREIGHT", "N"))
+
+
 PATTERN = re.compile(
     r"(?P<process>RM|AF|FG|CR|DR|FA)(?P<analyst>[1-9])-"
     r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5|R1)"
@@ -112,8 +132,11 @@ def generate_reference(
 ) -> tuple[str, int]:
     if user.analyst_code is None:
         raise ValueError("Assign an analyst code before creating operations")
-    if process not in PROCESSES or operation not in OPERATIONS or department not in DEPARTMENTS:
+    if process not in PROCESSES or department not in DEPARTMENTS:
         raise ValueError("Unsupported reference catalog code")
+    if not operation.strip() or len(operation) > 100:
+        raise ValueError("Capture an operation up to 100 characters")
+    operation = reference_operation(operation)
     if not 2000 <= year <= 2099 or not re.fullmatch(r"[A-Z0-9]{3}", business_unit, re.ASCII):
         raise ValueError("Invalid reference year or business unit")
     if not business_units or business_unit not in business_units:

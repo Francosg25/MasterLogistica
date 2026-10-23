@@ -94,8 +94,8 @@ def test_master_queries_keep_explicit_owner_and_operation(scoped_client, path, r
         assert "shipments.operation_code =" in str(compiled)
 
 
-@pytest.mark.parametrize("operation", ["", "ALL", "SI,AI", "INVALID"])
-def test_master_rejects_combined_or_unknown_operations(scoped_client, operation):
+@pytest.mark.parametrize("operation", ["", "X" * 101])
+def test_master_rejects_empty_or_oversized_operation_filters(scoped_client, operation):
     client, actor, db = scoped_client
     assert (
         client.get(
@@ -105,6 +105,21 @@ def test_master_rejects_combined_or_unknown_operations(scoped_client, operation)
         == 422
     )
     assert db.queries == []
+
+
+@pytest.mark.parametrize("operation", ["LAND IMPO", "SEA EXPO", "SI,AI", "Operación manual"])
+def test_master_filters_manual_operations_literally(scoped_client, operation):
+    client, actor, db = scoped_client
+    assert (
+        client.get(
+            "/api/v1/masters/shipments",
+            params={"owner_id": str(actor.id), "operation_code": operation},
+        ).status_code
+        == 200
+    )
+    assert db.queries
+    for query in db.queries:
+        assert operation in query.compile().params.values()
 
 
 @pytest.mark.parametrize("role", ["FINANCE", "MANAGER"])

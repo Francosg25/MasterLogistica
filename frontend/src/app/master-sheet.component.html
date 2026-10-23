@@ -162,7 +162,7 @@
               [title]="display(row, column) + (editable(r, c) ? ' · Haz clic y escribe para editar' : ' · Solo lectura')"
             >
               @if (isEditing(r, c)) {
-                @if (column.kind !== "text" && column.kind !== "date" && !directEntry()) {
+                @if (column.kind === "unit" && !directEntry()) {
                   <select
                     class="cell-input"
                     [attr.aria-label]="'Editar ' + column.label"
@@ -172,27 +172,8 @@
                     (keydown)="editorKey($event)"
                     (blur)="commit()"
                   >
-                    @if (column.kind === "status") {
-                      @for (code of statusCodes; track code) {
-                        <option [value]="code">{{ status[code] }}</option>
-                      }
-                    } @else if (column.kind === "operation") {
-                      <option value="">Sin asignar</option>
-                      @for (code of operationCodes; track code) { <option [value]="code">{{ operations[code] }}</option> }
-                    } @else if (column.kind === "unit") {
-                      <option value="">Sin asignar</option>
-                      @for (code of businessUnits(); track code) { <option [value]="code">{{ code }}</option> }
-                    } @else {
-                      <option value="">Sin asignar</option>
-                      @for (supplier of suppliers(); track supplier.id) {
-                        <option
-                          [value]="supplier.id"
-                          [disabled]="!supplier.is_active"
-                        >
-                          {{ supplier.legal_name }}
-                        </option>
-                      }
-                    }
+                    <option value="">Sin asignar</option>
+                    @for (code of businessUnits(); track code) { <option [value]="code">{{ code }}</option> }
                   </select>
                 } @else {
                   <input
@@ -239,12 +220,13 @@
 </div>
 <p class="sr-only" id="master-edit-help">Selecciona una celda y empieza a escribir para reemplazar su contenido. Doble clic o F2 permite modificar el valor actual. Enter confirma y baja una fila; Tab avanza de columna; Escape cancela. Guarda con Ctrl+S o Guardar cambios. Ctrl+Enter abre el detalle del embarque.</p>
 <datalist id="master-status-options">
-  @for (code of statusCodes; track code) { <option [value]="status[code]">{{ code }}</option> }
+  @for (code of statusCodes; track code) { <option [value]="status[code] || code">{{ code }}</option> }
 </datalist>
 <datalist id="master-unit-options">
   @for (code of businessUnits(); track code) { <option [value]="code"></option> }
 </datalist>
 <datalist id="master-operation-options">
+  @for (label of excelOperations; track label) { <option [value]="label"></option> }
   @for (code of operationCodes; track code) { <option [value]="code">{{ operations[code] }}</option> }
 </datalist>
 <datalist id="master-supplier-options">

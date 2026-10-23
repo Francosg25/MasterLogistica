@@ -104,7 +104,7 @@ export class AppComponent implements OnInit {
   }
   status = STATUS;
   operations = OPERATIONS;
-  statusCodes = Object.keys(STATUS);
+  get statusCodes(): string[] { return [...new Set([...Object.keys(STATUS), ...this.catalog()?.shipment_statuses ?? [], ...Object.keys(this.summary()?.by_status ?? {}).filter(Boolean)])]; }
   canWrite = computed(
     () =>
       !this.demo() &&
@@ -474,6 +474,10 @@ export class AppComponent implements OnInit {
     this.modal.set(false);
     this.detailRequest++;
   }
+  private rememberOperation(operation: string | null): void {
+    if (operation && this.catalog() && !this.catalog()!.operation_codes.includes(operation))
+      this.catalog.update(catalog => ({ ...catalog!, operation_codes: [...catalog!.operation_codes, operation] }));
+  }
   updateSheetRow(row: Shipment): void {
     if (this.demo() && this.practice()) this.demoRows = this.practiceStore.rows;
     const previous = this.rows().find((item) => item.id === row.id);
@@ -482,6 +486,7 @@ export class AppComponent implements OnInit {
       row.owner_id !== this.masterOwner()
     )
       return;
+    this.rememberOperation(row.operation_code);
     if (this.catalog() && !this.catalog()!.company_codes.includes(row.company_code)) {
       this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
     }
@@ -547,6 +552,7 @@ export class AppComponent implements OnInit {
         data,
       );
       this.selected.set(row);
+      this.rememberOperation(row.operation_code);
       this.editor?.form.patchValue({ reference_raw: row.reference_raw ?? "" });
       if (!this.catalog()!.company_codes.includes(row.company_code)) {
         this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));

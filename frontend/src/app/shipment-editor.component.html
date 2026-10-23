@@ -89,15 +89,7 @@
                 }
               </select></label
             >
-            <label
-              >Tipo de operación *<select
-                aria-label="Tipo de operación *"
-                formControlName="operation_code"
-              ><option value="">Selecciona una operación</option>
-                @for (code of catalogs().operation_codes; track code) {
-                  <option [value]="code">{{ code }} · {{ operations[code] || code }}</option>
-                }
-              </select></label>
+            <label>Tipo de operación *<input aria-label="Tipo de operación *" formControlName="operation_code" list="shipment-operation-options" maxlength="100" placeholder="Escribe o elige una operación" /></label>
             <label
               >Año de operación *<input
                 type="number"
@@ -145,13 +137,7 @@
           </h3>
         </div>
         <div class="form-grid">
-          <label
-            >Estado<select aria-label="Estado" formControlName="status">
-              @for (code of statusCodes; track code) {
-                <option [value]="code">{{ status[code] }}</option>
-              }
-            </select></label
-          >
+          <label>Estado<input aria-label="Estado" formControlName="status" list="shipment-status-options" maxlength="100" placeholder="Escribe o elige un estado" /></label>
           <label
             >Planta<input
               formControlName="plant_code"
@@ -191,32 +177,8 @@
           <label
             >Fecha de entrega<input type="date" formControlName="delivery_date"
           /></label>
-          <label
-            >Carrier / Agente aduanal<select
-              aria-label="Carrier / Agente aduanal"
-              formControlName="carrier_broker_id"
-            >
-              <option value="">Sin asignar</option>
-              @for (s of suppliers(); track s.id) {
-                <option [value]="s.id" [disabled]="!s.is_active">
-                  {{ s.legal_name }}{{ s.is_active ? "" : " (inactivo)" }}
-                </option>
-              }
-            </select></label
-          >
-            <label
-              >Naviera<select
-                aria-label="Naviera"
-                formControlName="shipping_line_id"
-              >
-                <option value="">Sin asignar</option>
-                @for (s of suppliers(); track s.id) {
-                  <option [value]="s.id" [disabled]="!s.is_active">
-                    {{ s.legal_name }}
-                  </option>
-                }
-              </select></label
-            >
+          <label>Carrier / Agente aduanal<input aria-label="Carrier / Agente aduanal" formControlName="carrier_broker_id" list="shipment-supplier-options" maxlength="250" placeholder="Escribe el nombre o elige uno" /></label>
+          <label>Naviera<input aria-label="Naviera" formControlName="shipping_line_id" list="shipment-supplier-options" maxlength="250" placeholder="Escribe el nombre o elige uno" /></label>
         </div>
         @if (shipment()) {
           <div class="section-title">
@@ -354,3 +316,14 @@
     </div>
   </footer>
 </dialog>
+
+<datalist id="shipment-operation-options">
+  @for (label of excelOperations; track label) { <option [value]="label"></option> }
+  @for (code of catalogs().operation_codes; track code) { <option [value]="code">{{ operations[code] || code }}</option> }
+</datalist>
+<datalist id="shipment-status-options">
+  @for (code of statusCodes; track code) { <option [value]="status[code]">{{ code }}</option> }
+</datalist>
+<datalist id="shipment-supplier-options">
+  @for (supplier of suppliers(); track supplier.id) { @if (supplier.is_active) { <option [value]="supplier.legal_name">{{ supplier.code }}</option> } }
+</datalist>

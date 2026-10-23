@@ -13,7 +13,7 @@ from sqlalchemy import CheckConstraint, DefaultClause, MetaData, inspect, select
 from app.models import Base, ReferenceCounter, Supplier, User
 from app.storage_types import ExactNumeric
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 LOCAL_TENANT = UUID("f0000000-0000-0000-0000-000000000001")
 LOCAL_USER = UUID("f0000000-0000-0000-0000-000000000002")
 LOCAL_SUPPLIER = UUID("f0000000-0000-0000-0000-000000000003")
@@ -150,6 +150,27 @@ def local_metadata():
     return metadata
 
 
+def upgrade_flexible_master(connection):
+    # Rename only the old constrained columns, then copy their values to free-text
+    # columns. This preserves the table, IDs, foreign keys, row versions and audit
+    # links; SQLite cannot drop a CHECK constraint without replacing its table.
+    inspector = inspect(connection)
+    columns = {c["name"] for c in inspector.get_columns("shipments")}
+    checks = {c["name"] for c in inspector.get_check_constraints("shipments")}
+    for name, constraint, definition in (
+        ("operation_code", "ck_shipment_operation", "VARCHAR(100)"),
+        ("status", "ck_shipment_status", "VARCHAR(100) NOT NULL DEFAULT 'DRAFT'"),
+    ):
+        legacy = "legacy_" + name
+        if constraint in checks and legacy not in columns:
+            connection.exec_driver_sql(f"ALTER TABLE shipments RENAME COLUMN {name} TO {legacy}")
+            connection.exec_driver_sql(f"ALTER TABLE shipments ADD COLUMN {name} {definition}")
+            connection.exec_driver_sql(f"UPDATE shipments SET {name} = {legacy}")
+    for name in ("carrier_broker_name", "shipping_line_name"):
+        if name not in columns:
+            connection.exec_driver_sql(f"ALTER TABLE shipments ADD COLUMN {name} VARCHAR(250)")
+
+
 def initialize_local(engine, session_factory):
     if engine.dialect.name != "sqlite":
         raise ValueError("Local initialization requires SQLite")
@@ -187,6 +208,10 @@ def initialize_local(engine, session_factory):
                     )
                 connection.exec_driver_sql("UPDATE local_schema_version SET version = 2")
                 version = [2]
+            if version == [2]:
+                upgrade_flexible_master(connection)
+                connection.exec_driver_sql("UPDATE local_schema_version SET version = 3")
+                version = [3]
             if version != [SCHEMA_VERSION]:
                 raise ValueError(
                     "La versión de la base local requiere una actualización explícita; conserva el archivo."
