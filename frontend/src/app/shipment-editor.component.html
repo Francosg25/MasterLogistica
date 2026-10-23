@@ -64,26 +64,10 @@
           <span>01</span>
           <h3>Identificación</h3>
         </div>
-        @if (shipment()) {
-          <div class="identity-strip">
-            <div>
-              <small>Empresa</small
-              ><strong>{{ shipment()?.company_code }}</strong>
-            </div>
-            <div>
-              <small>Operación</small
-              ><strong>{{ operations[operation] || operation }}</strong>
-            </div>
-            <div>
-              <small>BU / Departamento</small
-              ><strong
-                >{{ shipment()?.business_unit }} /
-                {{ shipment()?.department_code }}</strong
-              >
-            </div>
-          </div>
-        } @else {
           <div class="form-grid">
+            @if (shipment()) {
+              <label>Referencia<input aria-label="Referencia" formControlName="reference_raw" maxlength="160" /></label>
+            }
             <label
               >Empresa *<input
                 aria-label="Empresa *"
@@ -97,6 +81,7 @@
                 aria-label="Proceso *"
                 formControlName="process_code"
               >
+                @if (shipment()) { <option value="">Sin asignar</option> }
                 @for (code of catalogs().process_codes; track code) {
                   <option [value]="code">
                     {{ code }} · {{ processes[code] || code }}
@@ -127,6 +112,9 @@
                 formControlName="business_unit"
               >
                 <option value="">Selecciona una BU</option>
+                @if (shipment()?.business_unit && !unitCodes().includes(shipment()!.business_unit!)) {
+                  <option [value]="shipment()!.business_unit">{{ shipment()!.business_unit }}</option>
+                }
                 @for (code of unitCodes(); track code) {
                   <option [value]="code">
                     {{ code }}
@@ -139,6 +127,7 @@
                 aria-label="Departamento *"
                 formControlName="department_code"
               >
+                @if (shipment()) { <option value="">Sin asignar</option> }
                 @for (code of catalogs().department_codes; track code) {
                   <option [value]="code">
                     {{ code }} · {{ departments[code] || code }}
@@ -147,7 +136,6 @@
               </select></label
             >
           </div>
-        }
         <div class="section-title">
           <span>02</span>
           <h3>
@@ -216,7 +204,6 @@
               }
             </select></label
           >
-          @if (sea) {
             <label
               >Naviera<select
                 aria-label="Naviera"
@@ -230,7 +217,6 @@
                 }
               </select></label
             >
-          }
         </div>
         @if (shipment()) {
           <div class="section-title">
@@ -337,7 +323,7 @@
   <footer class="editor-footer">
     <span class="hint">{{
       shipment()
-        ? "La referencia conserva su identidad."
+        ? "Todos los campos del embarque se pueden modificar."
         : "* Campos obligatorios"
     }}</span>
     <div>

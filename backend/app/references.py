@@ -5,6 +5,7 @@ import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -132,6 +133,37 @@ def generate_reference(
         f"{process}{user.analyst_code}-{sequence:04d}{operation}{year % 100:02d}"
         f"-{business_unit}-{department}"
     ), sequence
+
+
+def normalize_reference(raw: str) -> str:
+    """Use the official key when recognized, otherwise accept the manual reference."""
+    try:
+        return parse_reference(raw).normalized
+    except ValueError:
+        return re.sub(r"\s+", "", unicodedata.normalize("NFKC", raw)).upper()
+
+
+def reserve_manual_sequence(session: Session, owner: User, raw: str) -> None:
+    """Keep automatic numbering ahead of a manually entered number for this owner."""
+    try:
+        parsed = parse_reference(raw)
+    except ValueError:
+        return
+    if parsed.analyst_code != owner.analyst_code or parsed.sequence > 9999:
+        return
+    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
+    statement = insert_row(ReferenceCounter).values(owner_id=owner.id, last_value=parsed.sequence)
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[ReferenceCounter.owner_id],
+            set_={
+                "last_value": case(
+                    (ReferenceCounter.last_value < parsed.sequence, parsed.sequence),
+                    else_=ReferenceCounter.last_value,
+                )
+            },
+        )
+    )
 
 
 def normalize_identifier(raw: str) -> str:

@@ -70,6 +70,208 @@ def test_local_api_persists_edits_versions_and_reference_sequence(tmp_path):
         assert history["items"][0]["changes"][0]["after"] == change["comments"]
 
 
+def test_local_all_master_fields_are_editable(local_financial_environment):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    row = create_shipment(e)
+    changes = dict(
+        reference_raw="Referencia manual / Norte 2026",
+        company_code="MXT",
+        business_unit="M46",
+        operation_code="SI",
+        process_code="AF",
+        reference_year=2027,
+        department_code="FIX",
+        status="PLANNED",
+        ship_date="2026-10-20",
+        eta="2026-10-25",
+        delivery_date="2026-10-27",
+        sender="Proveedor editado",
+        origin="Origen editado",
+        consignee="Cliente editado",
+        destination="Destino editado",
+        plant_code="P2",
+        carrier_broker_id=str(e["supplier_id"]),
+        shipping_line_id=str(e["supplier_id"]),
+        comments="Cambios completos desde el master",
+    )
+    path = "/api/v1/shipments/" + row["id"]
+    response = e["client"].patch(
+        path, headers=e["headers"]("one"), json={"expected_version": 1, **changes}
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["id"] == row["id"] and updated["row_version"] == 2
+    assert {key: updated[key] for key in changes} == changes
+    assert (updated["transport_mode"], updated["service_category"], updated["direction"]) == (
+        "SEA",
+        "FREIGHT",
+        "I",
+    )
+    assert updated["reference_normalized"] == "REFERENCIAMANUAL/NORTE2026"
+    assert e["client"].get(path, headers=e["headers"]("one")).json() == updated
+    aliases = e["client"].get(path + "/identifiers", headers=e["headers"]("one")).json()
+    assert {item["normalized_value"] for item in aliases} == {
+        row["reference_normalized"],
+        updated["reference_normalized"],
+    }
+    history = finance_cases.api(e, "get", "/history?action=SHIPMENT_UPDATED")["items"][0]
+    assert {item["field"] for item in history["changes"]} >= {
+        "reference_raw",
+        "company_code",
+        "business_unit",
+        "operation_code",
+    }
+
+
+def test_local_reference_edits_keep_financial_links_and_allow_old_and_new_references(
+    local_financial_environment,
+):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    row = create_shipment(e)
+    provision = finance_cases.provision(e, row)
+    first_invoice = finance_cases.invoice(e, row, "100")
+    response = e["client"].patch(
+        "/api/v1/shipments/" + row["id"],
+        headers=e["headers"]("one"),
+        json={
+            "expected_version": 1,
+            "reference_raw": "REF / MANUAL 2026",
+            "company_code": "MXT",
+            "business_unit": "M19",
+            "operation_code": "AI",
+        },
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    second = finance_cases.invoice(e, updated, "200", number="F-002", company_code="MXT")
+    third = finance_cases.invoice(
+        e,
+        {**updated, "reference_raw": row["reference_raw"]},
+        "200",
+        number="F-003",
+        company_code="MXT",
+    )
+    assert Decimal(second["applied_amount"]) == Decimal(third["applied_amount"]) == 200
+    old = next(
+        item
+        for item in finance_cases.api(e, "get", "/invoices")["items"]
+        if item["id"] == first_invoice["id"]
+    )
+    assert old["lines"][0]["shipment_id"] == row["id"]
+    balance = finance_cases.balances(e)["items"][0]
+    assert balance["id"] == provision["id"] and balance["status"] == "CLOSED"
+    assert Decimal(balance["closing_amount"]) == 0
+
+
+def test_local_reference_corrections_reject_duplicates_without_partial_edits(
+    local_financial_environment,
+):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    first, second = create_shipment(e), create_shipment(e)
+    renamed = e["client"].patch(
+        "/api/v1/shipments/" + first["id"],
+        headers=e["headers"]("one"),
+        json={"expected_version": 1, "reference_raw": "REFERENCIA-CORREGIDA"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    path = "/api/v1/shipments/" + second["id"]
+    for duplicate in ["referencia-corregida", first["reference_raw"]]:
+        response = e["client"].patch(
+            path,
+            headers=e["headers"]("one"),
+            json={"expected_version": 1, "reference_raw": duplicate, "company_code": "MXT"},
+        )
+        assert response.status_code == 422
+        actual = e["client"].get(path, headers=e["headers"]("one")).json()
+        assert actual["row_version"] == 1 and actual["company_code"] == second["company_code"]
+
+
+def test_local_manual_reference_reserves_future_number_without_moving_counter_back(
+    local_financial_environment,
+):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    row = create_shipment(e)
+    for version, number in [(1, 42), (2, 5)]:
+        response = e["client"].patch(
+            "/api/v1/shipments/" + row["id"],
+            headers=e["headers"]("one"),
+            json={"expected_version": version, "reference_raw": f"RM2-{number:04d}LI26-M23-MAT"},
+        )
+        assert response.status_code == 200, response.text
+    assert create_shipment(e)["reference_sequence"] == 43
+
+
+def test_local_optional_identity_cells_can_be_cleared_and_operation_reclassified(
+    local_financial_environment,
+):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    row = create_shipment(e)
+    path = "/api/v1/shipments/" + row["id"]
+    response = e["client"].patch(
+        path,
+        headers=e["headers"]("one"),
+        json={
+            "expected_version": 1,
+            "reference_raw": None,
+            "business_unit": None,
+            "operation_code": None,
+            "damaged_material": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert (
+        updated["reference_raw"]
+        is updated["reference_normalized"]
+        is updated["business_unit"]
+        is updated["operation_code"]
+        is None
+    )
+    assert (updated["transport_mode"], updated["service_category"], updated["direction"]) == (
+        None,
+        "FREIGHT",
+        "N",
+    )
+    for changes in [{"business_unit": "M99"}, {"company_code": None}]:
+        assert (
+            e["client"]
+            .patch(path, headers=e["headers"]("one"), json={"expected_version": 2, **changes})
+            .status_code
+            == 422
+        )
+
+
+def test_local_same_normalized_reference_without_existing_alias_is_saved_once(
+    local_financial_environment,
+):
+    from tests.test_integration import create_shipment
+
+    e = local_financial_environment
+    row = create_shipment(e)
+    with e["admin_engine"].begin() as connection:
+        connection.execute(text("DELETE FROM shipment_identifiers"))
+    response = e["client"].patch(
+        "/api/v1/shipments/" + row["id"],
+        headers=e["headers"]("one"),
+        json={
+            "expected_version": 1,
+            "reference_raw": row["reference_raw"].lower().replace("-", " - "),
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["reference_normalized"] == row["reference_normalized"]
+
+
 @pytest.fixture
 def local_financial_environment(tmp_path):
     """Reuse corporate financial cases with real SQL and role checks, no Entra network."""

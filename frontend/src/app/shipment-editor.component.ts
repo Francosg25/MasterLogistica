@@ -52,6 +52,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   submitted = false;
   private fb = new FormBuilder().nonNullable;
   form = this.fb.group({
+    reference_raw: ["", Validators.maxLength(160)],
     company_code: ["", [Validators.required, Validators.maxLength(32), Validators.pattern(/.*\S.*/)]],
     process_code: ["RM", Validators.required],
     operation_code: ["LI", Validators.required],
@@ -97,6 +98,10 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
         ]),
       );
       this.form.patchValue(values);
+      for (const key of ["process_code", "operation_code", "business_unit", "department_code", "reference_year"] as const) {
+        this.form.controls[key].removeValidators(Validators.required);
+        this.form.controls[key].updateValueAndValidity();
+      }
     } else
       this.form.patchValue({ company_code: "", operation_code: "" });
     if (this.readOnly()) this.form.disable();
@@ -163,6 +168,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       "eta",
       "delivery_date",
       "pfa_approval_code",
+      "reference_raw",
     ]) {
       data[key] =
         typeof data[key] === "string"
@@ -172,24 +178,23 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
     if (values.expedited_status !== "APPROVED")
       data["pfa_approval_code"] = null;
     if (this.shipment()) {
-      for (const key of [
-        "company_code",
-        "process_code",
-        "operation_code",
-        "reference_year",
-        "business_unit",
-        "department_code",
-      ])
-        delete data[key];
+      for (const key of Object.keys(data)) {
+        const control = this.form.get(key);
+        const dependentApproval = key === "pfa_approval_code" && this.form.controls.expedited_status.dirty;
+        if (!control?.dirty && !dependentApproval) delete data[key];
+      }
+      if (data["reference_year"] === "") data["reference_year"] = null;
+      for (const key of ["process_code", "operation_code", "business_unit", "department_code"])
+        if (data[key] === "") data[key] = null;
       data["expected_version"] = this.shipment()!.row_version;
     } else {
       for (const key of [
         "damaged_material",
         "expedited_status",
         "pfa_approval_code",
+        "reference_raw",
       ])
         delete data[key];
-      if (!this.sea) data["shipping_line_id"] = null;
     }
     this.saved.emit(data);
   }

@@ -317,7 +317,7 @@ test("each shipment selects its own operation and specific fields", async ({ pag
   await operation.selectOption("SI");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeVisible();
   await operation.selectOption("R1");
-  await expect(dialog.getByLabel("Naviera", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel("Naviera", { exact: true })).toBeEnabled();
   await expect(dialog.getByRole("heading", { name: "Seguimiento de la operación" })).toBeVisible();
 });
 test("conflict preserves edits and requires explicit reload before saving", async ({
@@ -519,9 +519,10 @@ test("direct typing validates dates and catalogs and Escape restores the origina
   await page.keyboard.press("Escape");
   await expect(cell(page, 0, "status")).toHaveText("En tránsito");
   await cell(page, 0, "operation_code").click();
-  await page.keyboard.press("A");
-  await expect(page.locator(".sheet-message")).toContainText("Tipo de operación: columna protegida");
-  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await page.keyboard.type("XX");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Tipo de operación");
+  await page.keyboard.press("Escape");
   await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
   expect(requests.filter(r => r.method === "PATCH")).toHaveLength(0);
 });
@@ -588,15 +589,15 @@ test("paste from Excel stages a rectangular range and undo restores it", async (
   expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(0);
 });
 
-test("invalid dates, protected columns and oversized pastes do not partially stage changes", async ({
+test("invalid dates, catalog values and oversized pastes do not partially stage changes", async ({
   page,
 }) => {
   await mock(page);
   await pasteCells(page, 0, "ship_date", "12/10/2026\t31/02/2026");
   await expect(page.getByRole("alert")).toContainText("ETA");
   await expect(cell(page, 0, "ship_date")).toHaveText("01/10/2026");
-  await pasteCells(page, 0, "status", "Entregado\tM19");
-  await expect(page.getByRole("alert")).toContainText("solo lectura");
+  await pasteCells(page, 0, "status", "Entregado\tM99");
+  await expect(page.getByRole("alert")).toContainText("BU");
   await expect(cell(page, 0, "status")).toContainText("En tránsito");
   await pasteCells(page, 7, "sender", "A\nB");
   await expect(page.getByRole("alert")).toContainText("excede");
@@ -832,6 +833,55 @@ test("reference detail is accessible from the keyboard without trapping arrow na
   await expect(cell(page, 0, "status")).toBeFocused();
   await page.keyboard.press("Home");
   await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Editar Referencia", { exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+Enter");
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByLabel("Comentarios", { exact: true })).toBeEnabled();
+});
+
+test("every master column allows editing and a pasted reference identity survives saving and refresh", async ({ page }) => {
+  const requests = await mock(page, { collapsed: true });
+  await expect(page.locator('tbody tr:first-child td[aria-readonly="true"]')).toHaveCount(0);
+  await cell(page, 0, "reference_raw").click();
+  await page.keyboard.type("REFERENCIA MANUAL 2026");
+  await expect(page.getByLabel("Editar Referencia", { exact: true })).toHaveValue("REFERENCIA MANUAL 2026");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.keyboard.press("Control+z");
+  await pasteCells(page, 0, "reference_raw", "REFERENCIA MANUAL 2026\tProgramado\tM46\tR1\tMXT");
+  await expect(page.locator(".save-state")).toContainText("5 celdas sin guardar");
+  await cell(page, 0, "business_unit").dblclick();
+  await expect(page.getByLabel("Editar BU", { exact: true }).locator("option")).toHaveText(["Sin asignar", "M01", "M19", "M23", "M45", "M46"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    reference_raw: "REFERENCIA MANUAL 2026", status: "PLANNED", business_unit: "M46", operation_code: "R1", company_code: "MXT", expected_version: 1,
+  });
+  await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(cell(page, 0, "reference_raw").locator(".cell-text")).toHaveText("REFERENCIA MANUAL 2026");
+  await expect(cell(page, 0, "business_unit")).toHaveText("M46");
+  await expect(cell(page, 0, "operation_code")).toHaveText("Rectificación de pedimento");
+  await expect(cell(page, 0, "company_code")).toHaveText("MXT");
+});
+
+test("shipment detail edits reference and all identification fields instead of showing a locked strip", async ({ page }) => {
+  const requests = await mock(page);
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Referencia", { exact: true }).fill("REFERENCIA DEL DETALLE");
+  await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
+  await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M19");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("AI");
+  await dialog.getByLabel("Proceso *", { exact: true }).selectOption("AF");
+  await dialog.getByLabel("Departamento *", { exact: true }).selectOption("FIX");
+  await dialog.getByLabel("Año de operación *", { exact: true }).fill("2027");
+  await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "REFERENCIA DEL DETALLE" })).toBeVisible();
+  expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
+    reference_raw: "REFERENCIA DEL DETALLE", company_code: "MXG", business_unit: "M19", operation_code: "AI",
+    process_code: "AF", department_code: "FIX", reference_year: 2027, expected_version: 1,
+  });
 });

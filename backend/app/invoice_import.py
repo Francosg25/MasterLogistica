@@ -20,7 +20,7 @@ from app.finance import FinanceWriter, commit, financial_json, lock_shipments, r
 from app.finance_schemas import InvoiceCreate
 from app.invoice_excel import normalized, read_consolidated
 from app.models import Invoice, Shipment, ShipmentIdentifier, Supplier
-from app.references import normalize_identifier, parse_reference
+from app.references import normalize_identifier, normalize_reference
 from app.schemas import Schema
 
 router = APIRouter(prefix="/api/v1/finance/import", tags=["Invoice import"])
@@ -56,10 +56,7 @@ class ImportRequest(Schema):
 
 
 def reference_key(value):
-    try:
-        return parse_reference(value).normalized
-    except ValueError:
-        return "".join(normalized(value).split())
+    return normalize_reference(value)
 
 
 def prepare(data, session, request):

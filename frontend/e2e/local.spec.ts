@@ -98,3 +98,44 @@ test("local responsible masters keep mixed operations separate and save exact pr
   await expect(page.locator(".finance-table tbody")).toContainText("23/10/2026");
   await expect(page.locator(".finance-table tbody")).toContainText("STORAGE");
 });
+
+test("all identification cells and the detail form persist real corrections on the same shipment", async ({ page, browser }) => {
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  const owner = "f0000000-0000-0000-0000-000000000002";
+  await page.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
+  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
+  const before = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items[0];
+  for (const [field, value] of [["reference_raw", "REFERENCIA MANUAL DE PRUEBA"], ["business_unit", "M19"], ["operation_code", "R1"], ["company_code", "MXT"]]) {
+    await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
+    await page.keyboard.type(value);
+    await page.keyboard.press("Enter");
+  }
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  const response = await page.request.get(`/api/v1/shipments/${before.id}`);
+  const after = await response.json();
+  expect(after).toMatchObject({ id: before.id, reference_raw: "REFERENCIA MANUAL DE PRUEBA", business_unit: "M19", operation_code: "R1", company_code: "MXT", service_category: "COMPLIANCE" });
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Referencia", { exact: true }).fill("REFERENCIA CORREGIDA EN DETALLE");
+  await dialog.getByLabel("Proceso *", { exact: true }).selectOption("AF");
+  await dialog.getByLabel("Departamento *", { exact: true }).selectOption("FIX");
+  await dialog.getByLabel("Año de operación *", { exact: true }).fill("2027");
+  await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "REFERENCIA CORREGIDA EN DETALLE" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
+  const context = await browser.newContext();
+  const reopened = await context.newPage();
+  await reopened.goto("http://127.0.0.1:4200/");
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
+  await reopened.getByRole("button", { name: "Abrir master", exact: true }).click();
+  await expect(reopened.locator('td[data-field="reference_raw"] .cell-text').first()).toHaveText("REFERENCIA CORREGIDA EN DETALLE");
+  await expect(reopened.locator('td[data-field="business_unit"]').first()).toHaveText("M19");
+  await expect(reopened.locator('td[data-field="company_code"]').first()).toHaveText("MXT");
+  const persisted = await (await reopened.request.get(`/api/v1/shipments/${before.id}`)).json();
+  expect(persisted).toMatchObject({ id: before.id, process_code: "AF", department_code: "FIX", reference_year: 2027, origin: before.origin, eta: before.eta });
+  await reopened.screenshot({ path: "test-results/local/masters-all-editable.png", fullPage: true });
+  await context.close();
+});

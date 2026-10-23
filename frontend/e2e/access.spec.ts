@@ -83,11 +83,20 @@ test("practice edits persist only in the browser, survive reopening and can be r
   await origin.dblclick();
   await page.getByLabel("Editar Origen", { exact: true }).fill("Origen ficticio modificado");
   await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  for (const [field, value] of [["reference_raw", "REFERENCIA DE PRACTICA"], ["company_code", "MXT"], ["business_unit", "M46"], ["operation_code", "R1"]]) {
+    await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
+    await page.keyboard.type(value);
+    await page.keyboard.press("Enter");
+  }
   await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
   await expect(page.locator(".sheet-message")).toContainText("en este navegador");
   await page.reload();
   await page.getByRole("button", { name: "Practicar con el master", exact: true }).click();
   await expect(origin).toHaveText("Origen ficticio modificado");
+  await expect(page.locator('td[data-row="0"][data-field="reference_raw"] .cell-text')).toHaveText("REFERENCIA DE PRACTICA");
+  await expect(page.locator('td[data-row="0"][data-field="company_code"]')).toHaveText("MXT");
+  await expect(page.locator('td[data-row="0"][data-field="business_unit"]')).toHaveText("M46");
+  await expect(page.locator('td[data-row="0"][data-field="operation_code"]')).toHaveText("Rectificación de pedimento");
   await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
   await expect(origin).toHaveText("Origen ficticio modificado");

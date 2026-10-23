@@ -1342,6 +1342,8 @@ textarea {
 .sheet-scroll { overscroll-behavior: contain; scroll-behavior: auto; overflow-anchor: none; }
 .spreadsheet .cell-input { font-size: inherit; }
 .spreadsheet .reference-link { font-size: inherit; }
+.spreadsheet td[data-field="reference_raw"] .cell-text { padding-right: 24px; }
+.spreadsheet td .reference-link { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 24px; height: 24px; text-align: center; border: 1px solid #dce1de; border-radius: 3px; color: var(--green); text-decoration: none; }
 .spreadsheet td .status { font-size: .86em; }
 .spreadsheet .cell-text { line-height: 1.4; }
 .master-toolbar { justify-content: flex-start; gap: 8px; margin-bottom: 6px; }

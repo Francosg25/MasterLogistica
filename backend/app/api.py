@@ -35,7 +35,9 @@ from app.references import (
     VERSION,
     generate_reference,
     normalize_identifier,
+    normalize_reference,
     parse_reference,
+    reserve_manual_sequence,
 )
 from app.schemas import (
     AuditRead,
@@ -507,17 +509,20 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
     )
 
 
-def add_reference_alias(session, row, suffix):
-    if row.reference_normalized is None:
-        raise HTTPException(
-            409, "Shipment requires a normalized base reference before adding aliases"
-        )
-    value = f"{row.reference_normalized}.{suffix}"
+def remember_reference(session, row, raw, normalized, version):
+    if any(
+        isinstance(item, ShipmentIdentifier)
+        and item.shipment_id == row.id
+        and item.kind == "REFERENCE"
+        and item.normalized_value == normalized
+        for item in session.new
+    ):
+        return
     existing = session.scalar(
         select(ShipmentIdentifier.id).where(
             ShipmentIdentifier.shipment_id == row.id,
             ShipmentIdentifier.kind == "REFERENCE",
-            ShipmentIdentifier.normalized_value == value,
+            ShipmentIdentifier.normalized_value == normalized,
         )
     )
     if existing is None:
@@ -525,11 +530,52 @@ def add_reference_alias(session, row, suffix):
             ShipmentIdentifier(
                 shipment_id=row.id,
                 kind="REFERENCE",
-                raw_value=value,
-                normalized_value=value,
-                normalization_version=row.normalization_version or VERSION,
+                raw_value=raw,
+                normalized_value=normalized,
+                normalization_version=version,
             )
         )
+
+
+def add_reference_alias(session, row, suffix):
+    if row.reference_normalized is None:
+        raise HTTPException(
+            409, "Shipment requires a normalized base reference before adding aliases"
+        )
+    value = f"{row.reference_normalized}.{suffix}"
+    remember_reference(session, row, value, value, row.normalization_version or VERSION)
+
+
+def edit_reference(session, row, raw):
+    normalized = normalize_reference(raw) if raw else None
+    if normalized and len(normalized) > 160:
+        raise HTTPException(422, "La referencia normalizada admite hasta 160 caracteres")
+    if normalized:
+        aliases = select(ShipmentIdentifier.shipment_id).where(
+            ShipmentIdentifier.kind == "REFERENCE",
+            ShipmentIdentifier.normalized_value == normalized,
+        )
+        if session.scalar(
+            select(Shipment.id).where(
+                Shipment.id != row.id,
+                or_(Shipment.reference_normalized == normalized, Shipment.id.in_(aliases)),
+            )
+        ):
+            raise HTTPException(422, "La referencia ya pertenece a otro embarque")
+    if row.reference_raw and row.reference_normalized:
+        remember_reference(
+            session,
+            row,
+            row.reference_raw,
+            row.reference_normalized,
+            row.normalization_version or VERSION,
+        )
+    row.reference_raw = raw
+    row.reference_normalized = normalized
+    row.normalization_version = VERSION if normalized else None
+    if normalized:
+        remember_reference(session, row, raw, normalized, VERSION)
+        reserve_manual_sequence(session, session.get(User, row.owner_id), raw)
 
 
 @router.patch("/shipments/{shipment_id}", response_model=ShipmentRead, tags=["Masters"])
@@ -539,6 +585,12 @@ def patch_shipment(
     row = shipment_for(session, user, shipment_id)
     version_matches(row, data.expected_version)
     updates = data.model_dump(exclude_unset=True, exclude={"expected_version"})
+    if (
+        updates.get("business_unit") is not None
+        and updates["business_unit"] != row.business_unit
+        and updates["business_unit"] not in request.app.state.settings.business_units
+    ):
+        raise HTTPException(422, "Selecciona M01, M19, M23, M45 o M46")
     for field in {"carrier_broker_id", "shipping_line_id"} & updates.keys():
         supplier_valid(session, updates[field])
     expedited = updates.get("expedited_status", row.expedited_status)
@@ -549,15 +601,21 @@ def patch_shipment(
             "Approved expedited status requires a PFA approval code; other statuses must clear it",
         )
     before = ShipmentRead.model_validate(row).model_dump(mode="json")
-    for key, value in updates.items():
-        setattr(row, key, value)
     # Avoid autoflush: all writes, constraints and audit commit are handled atomically below.
     with session.no_autoflush:
-        if row.damaged_material:
+        if "reference_raw" in updates and updates["reference_raw"] != row.reference_raw:
+            edit_reference(session, row, updates.pop("reference_raw"))
+        for key, value in updates.items():
+            setattr(row, key, value)
+        if "operation_code" in updates:
+            row.transport_mode, row.service_category, row.direction = OPERATIONS.get(
+                row.operation_code, (None, "FREIGHT", "N")
+            )
+        if row.damaged_material and row.reference_normalized:
             add_reference_alias(session, row, "DMR")
-        if expedited == "PENDING":
+        if expedited == "PENDING" and row.reference_normalized:
             add_reference_alias(session, row, "PFA")
-        elif expedited == "APPROVED":
+        elif expedited == "APPROVED" and row.reference_normalized:
             add_reference_alias(session, row, approval)
     return record_change(
         session,

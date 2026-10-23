@@ -248,7 +248,7 @@ def test_roles_claims_and_email_cannot_elevate_local_user(environment, token_fac
     assert e["client"].get("/api/v1/auth/me", headers=e["headers"]("one")).status_code == 403
 
 
-def test_stale_version_and_immutable_reference(environment):
+def test_stale_version_and_invalid_or_server_managed_fields(environment):
     e = environment
     row = create_shipment(e)
     path = "/api/v1/shipments/" + row["id"]
@@ -273,6 +273,31 @@ def test_stale_version_and_immutable_reference(environment):
             path, headers=e["headers"]("one"), json={"expected_version": 2, key: "change"}
         )
         assert response.status_code == 422
+
+
+def test_reference_bu_operation_and_company_are_editable_with_restricted_runtime_role(environment):
+    e = environment
+    row = create_shipment(e)
+    response = e["client"].patch(
+        "/api/v1/shipments/" + row["id"],
+        headers=e["headers"]("one"),
+        json={
+            "expected_version": 1,
+            "reference_raw": "RM1-1642SI26-M46-FIX",
+            "business_unit": "M46",
+            "operation_code": "SI",
+            "company_code": "MXT",
+        },
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["id"] == row["id"] and updated["row_version"] == 2
+    assert updated["business_unit"] == "M46" and updated["company_code"] == "MXT"
+    assert (
+        updated["transport_mode"] == "SEA"
+        and updated["reference_normalized"] == "RM1-1642SI26-M46-FIX"
+    )
+    assert create_shipment(e)["reference_sequence"] == 1643
 
 
 def test_dmr_pfa_aliases_do_not_change_base(environment):

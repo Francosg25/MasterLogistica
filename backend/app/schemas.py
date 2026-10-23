@@ -139,6 +139,13 @@ class ShipmentCreate(Schema):
 
 class ShipmentPatch(Schema):
     expected_version: Annotated[int, Field(ge=1)]
+    reference_raw: Annotated[str, Field(min_length=1, max_length=160)] | None = None
+    company_code: Annotated[str, Field(min_length=1, max_length=32)] | None = None
+    process_code: Process | None = None
+    operation_code: Operation | None = None
+    reference_year: Annotated[int, Field(ge=2000, le=2099)] | None = None
+    business_unit: Annotated[str, Field(pattern=r"^[A-Z0-9]{3}$")] | None = None
+    department_code: Department | None = None
     status: ShipmentStatus | None = None
     ship_date: date | None = None
     eta: date | None = None
@@ -158,9 +165,10 @@ class ShipmentPatch(Schema):
     @model_validator(mode="after")
     def required_values(self):
         if any(
-            getattr(self, n) is None for n in self.model_fields_set & {"status", "expedited_status"}
+            getattr(self, n) is None
+            for n in self.model_fields_set & {"status", "expedited_status", "company_code"}
         ):
-            raise ValueError("Status cannot be cleared")
+            raise ValueError("Company and status cannot be cleared")
         return self
 
 

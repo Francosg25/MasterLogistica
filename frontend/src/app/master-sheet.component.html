@@ -72,10 +72,8 @@
   @if (notice()) {
     <span class="sheet-cell-notice sheet-message" role="status" [title]="notice()">{{ notice() }}</span>
   }
-  @if (readOnly() || activeColumn().kind === "locked") {
-    <span class="locked-label">{{
-      readOnly() ? "Solo lectura" : "Columna protegida"
-    }}</span>
+  @if (readOnly()) {
+    <span class="locked-label">Solo lectura</span>
   } @else {
     <button
       class="button subtle"
@@ -164,7 +162,7 @@
               [title]="display(row, column) + (editable(r, c) ? ' · Haz clic y escribe para editar' : ' · Solo lectura')"
             >
               @if (isEditing(r, c)) {
-                @if ((column.kind === "status" || column.kind === "supplier") && !directEntry()) {
+                @if (column.kind !== "text" && column.kind !== "date" && !directEntry()) {
                   <select
                     class="cell-input"
                     [attr.aria-label]="'Editar ' + column.label"
@@ -178,6 +176,12 @@
                       @for (code of statusCodes; track code) {
                         <option [value]="code">{{ status[code] }}</option>
                       }
+                    } @else if (column.kind === "operation") {
+                      <option value="">Sin asignar</option>
+                      @for (code of operationCodes; track code) { <option [value]="code">{{ operations[code] }}</option> }
+                    } @else if (column.kind === "unit") {
+                      <option value="">Sin asignar</option>
+                      @for (code of businessUnits(); track code) { <option [value]="code">{{ code }}</option> }
                     } @else {
                       <option value="">Sin asignar</option>
                       @for (supplier of suppliers(); track supplier.id) {
@@ -196,7 +200,7 @@
                     type="text"
                     [attr.inputmode]="column.kind === 'date' ? 'numeric' : null"
                     [attr.placeholder]="column.kind === 'date' ? 'dd/mm/aaaa' : null"
-                    [attr.list]="column.kind === 'status' ? 'master-status-options' : column.kind === 'supplier' ? 'master-supplier-options' : null"
+                    [attr.list]="column.kind === 'status' ? 'master-status-options' : column.kind === 'supplier' ? 'master-supplier-options' : column.kind === 'unit' ? 'master-unit-options' : column.kind === 'operation' ? 'master-operation-options' : null"
                     [attr.aria-label]="'Editar ' + column.label"
                     [value]="editValue"
                     [attr.maxlength]="column.max ?? null"
@@ -207,14 +211,17 @@
                   />
                 }
               } @else if (c === 0) {
+                <span class="cell-text">{{ display(row, column) || "Sin referencia" }}</span>
                 <button
                   class="reference-link"
                   tabindex="-1"
                   (click)="$event.stopPropagation(); opened.emit(row)"
+                  (dblclick)="$event.stopPropagation()"
                   [disabled]="saving()"
+                  [attr.aria-label]="'Abrir detalle de ' + (value(row, column) || 'embarque sin referencia')"
                   [title]="'Abrir detalle y documentos de ' + row.reference_raw"
                 >
-                  {{ row.reference_raw || "Sin referencia" }}
+                  <span aria-hidden="true">↗</span>
                 </button>
               } @else if (column.kind === "status") {
                 <span class="status" [attr.data-status]="value(row, column)"
@@ -230,9 +237,15 @@
     </tbody>
   </table>
 </div>
-<p class="sr-only" id="master-edit-help">Selecciona una celda editable y empieza a escribir para reemplazar su contenido. Doble clic o F2 permite modificar el valor actual. Enter confirma y baja una fila; Tab avanza de columna; Escape cancela. Guarda con Ctrl+S o Guardar cambios.</p>
+<p class="sr-only" id="master-edit-help">Selecciona una celda y empieza a escribir para reemplazar su contenido. Doble clic o F2 permite modificar el valor actual. Enter confirma y baja una fila; Tab avanza de columna; Escape cancela. Guarda con Ctrl+S o Guardar cambios. Ctrl+Enter abre el detalle del embarque.</p>
 <datalist id="master-status-options">
   @for (code of statusCodes; track code) { <option [value]="status[code]">{{ code }}</option> }
+</datalist>
+<datalist id="master-unit-options">
+  @for (code of businessUnits(); track code) { <option [value]="code"></option> }
+</datalist>
+<datalist id="master-operation-options">
+  @for (code of operationCodes; track code) { <option [value]="code">{{ operations[code] }}</option> }
 </datalist>
 <datalist id="master-supplier-options">
   @for (supplier of suppliers(); track supplier.id) {

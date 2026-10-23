@@ -8,8 +8,6 @@ Matching requires reference, company, supplier, currency and charge to agree.
 
 import csv
 import io
-import re
-import unicodedata
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Annotated
@@ -39,7 +37,7 @@ from app.models import (
 from app.models import (
     ReconciliationAllocation as Allocation,
 )
-from app.references import normalize_identifier, parse_reference
+from app.references import normalize_identifier, normalize_reference
 from app.schemas import ProvisionCreate, ProvisionRead
 
 router = APIRouter(prefix="/api/v1/finance", tags=["Finance"])
@@ -472,10 +470,7 @@ def register_invoice(data, session, user, request, *, source_data=None, persist=
         raise HTTPException(409, "Esa factura ya está registrada para la empresa y proveedor")
     resolved = []
     for item in data.lines:
-        try:
-            value = parse_reference(item.reference).normalized
-        except ValueError:
-            value = re.sub(r"\s+", "", unicodedata.normalize("NFKC", item.reference)).upper()
+        value = normalize_reference(item.reference)
         ids = select(ShipmentIdentifier.shipment_id).where(
             ShipmentIdentifier.kind == "REFERENCE", ShipmentIdentifier.normalized_value == value
         )

@@ -483,6 +483,9 @@ export class AppComponent implements OnInit {
       row.owner_id !== this.masterOwner()
     )
       return;
+    if (this.catalog() && !this.catalog()!.company_codes.includes(row.company_code)) {
+      this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
+    }
     this.rows.update((items) =>
       items.map((item) => (item.id === row.id ? row : item)),
     );
@@ -545,6 +548,7 @@ export class AppComponent implements OnInit {
         data,
       );
       this.selected.set(row);
+      this.editor?.form.patchValue({ reference_raw: row.reference_raw ?? "" });
       if (!this.catalog()!.company_codes.includes(row.company_code)) {
         this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
       }

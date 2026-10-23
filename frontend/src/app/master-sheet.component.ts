@@ -18,8 +18,9 @@ interface Column {
   key: keyof Shipment;
   label: string;
   width: number;
-  kind: "text" | "date" | "status" | "supplier" | "locked";
+  kind: "text" | "date" | "status" | "supplier" | "unit" | "operation";
   max?: number;
+  required?: boolean;
 }
 type Changes = Record<string, Record<string, string | null>>;
 interface Position {
@@ -43,6 +44,7 @@ export class MasterSheetComponent implements OnDestroy {
   practice = input(false);
   offset = input(0);
   suppliers = input<Supplier[]>([]);
+  businessUnits = input<string[]>([]);
   masterName = input("");
   opened = output<Shipment>();
   activity = output<Shipment>();
@@ -79,13 +81,15 @@ export class MasterSheetComponent implements OnDestroy {
   ngOnDestroy(): void { cancelAnimationFrame(this.focusFrame); }
   readonly status = STATUS;
   readonly statusCodes = Object.keys(STATUS);
+  readonly operations = OPERATIONS;
+  readonly operationCodes = Object.keys(OPERATIONS);
   private supplierNames = computed(() => new Map(this.suppliers().map(s => [s.id, s.legal_name])));
   readonly columns = computed<Column[]>(() => [
-    { key: "reference_raw", label: "Referencia", width: 265, kind: "locked" },
+    { key: "reference_raw", label: "Referencia", width: 265, kind: "text", max: 160 },
     { key: "status", label: "Estado", width: 144, kind: "status" },
-    { key: "business_unit", label: "BU", width: 75, kind: "locked" },
-    { key: "operation_code", label: "Tipo de operación", width: 190, kind: "locked" },
-    { key: "company_code", label: "Empresa", width: 130, kind: "locked" },
+    { key: "business_unit", label: "BU", width: 75, kind: "unit" },
+    { key: "operation_code", label: "Tipo de operación", width: 190, kind: "operation" },
+    { key: "company_code", label: "Empresa", width: 130, kind: "text", max: 32, required: true },
     { key: "ship_date", label: "Fecha de embarque", width: 175, kind: "date" },
     { key: "eta", label: "ETA", width: 135, kind: "date" },
     {
@@ -123,16 +127,7 @@ export class MasterSheetComponent implements OnDestroy {
       width: 200,
       kind: "supplier",
     },
-    ...(this.rows().some(row => ["SI", "SE"].includes(row.operation_code ?? ""))
-      ? [
-          {
-            key: "shipping_line_id",
-            label: "Naviera",
-            width: 200,
-            kind: "supplier",
-          } as Column,
-        ]
-      : []),
+    { key: "shipping_line_id", label: "Naviera", width: 200, kind: "supplier" },
     {
       key: "comments",
       label: "Comentarios",
@@ -205,7 +200,6 @@ export class MasterSheetComponent implements OnDestroy {
       !this.saving() &&
       !!this.rows()[row] &&
       !!this.columns()[col] &&
-      this.columns()[col]?.kind !== "locked" &&
       !this.blocked.has(this.rows()[row]?.id)
     );
   }
@@ -250,7 +244,6 @@ export class MasterSheetComponent implements OnDestroy {
   begin(row: number, col: number, initial?: string): void {
     if (!this.editable(row, col)) {
       this.notice.set(this.readOnly() ? this.readOnlyReason() :
-        this.columns()[col]?.kind === "locked" ? `${this.columns()[col].label}: columna protegida. Se define al crear el embarque.` :
         "Esta fila está bloqueada. Revisa el aviso y recárgala antes de editar.");
       return;
     }
@@ -272,8 +265,6 @@ export class MasterSheetComponent implements OnDestroy {
     else if (control?.type === "text") control.setSelectionRange(control.value.length, control.value.length);
   }
   private normalize(raw: string, column: Column): string | null {
-    if (column.kind === "locked")
-      throw new Error(`${column.label}: columna protegida.`);
     let value = raw.trim();
     if (column.kind === "status") {
       const code = Object.keys(STATUS).find(
@@ -284,7 +275,19 @@ export class MasterSheetComponent implements OnDestroy {
       if (!code) throw new Error("Estado: selecciona un valor del catálogo.");
       return code;
     }
-    if (!value) return null;
+    if (!value) {
+      if (column.required) throw new Error(`${column.label}: ingresa un valor.`);
+      return null;
+    }
+    if (column.kind === "unit") {
+      value = value.toUpperCase();
+      if (!this.businessUnits().includes(value)) throw new Error("BU: selecciona M01, M19, M23, M45 o M46.");
+    }
+    if (column.kind === "operation") {
+      const code = this.operationCodes.find(key => key.toLowerCase() === value.toLowerCase() || OPERATIONS[key].toLowerCase() === value.toLowerCase());
+      if (!code) throw new Error("Tipo de operación: selecciona un valor del catálogo.");
+      return code;
+    }
     if (column.kind === "date") {
       const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
       if (match)
@@ -418,6 +421,11 @@ export class MasterSheetComponent implements OnDestroy {
     if (!this.rows().length || this.editing()) return;
     if (event.target instanceof HTMLButtonElement && !event.target.closest("td")) return;
     const command = event.ctrlKey || event.metaKey;
+    if (command && event.key === "Enter") {
+      event.preventDefault();
+      this.opened.emit(this.rows()[this.active().row]);
+      return;
+    }
     if (command && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void this.save();
@@ -460,10 +468,6 @@ export class MasterSheetComponent implements OnDestroy {
     }
     if (["Enter", "F2"].includes(event.key)) {
       event.preventDefault();
-      if (event.key === "Enter" && this.activeColumn().key === "reference_raw") {
-        this.opened.emit(this.rows()[this.active().row]);
-        return;
-      }
       this.begin(this.active().row, this.active().col);
       return;
     }
@@ -684,10 +688,7 @@ export class MasterSheetComponent implements OnDestroy {
     this.saving.set(true);
     try {
       const fresh = await this.api.request<Shipment>(`/shipments/${row.id}`);
-      if (
-        fresh.owner_id !== row.owner_id ||
-        fresh.operation_code !== row.operation_code
-      )
+      if (fresh.owner_id !== row.owner_id)
         throw new Error("La fila no pertenece a este master.");
       this.updated.emit(fresh);
       this.drafts.update((items) => {
