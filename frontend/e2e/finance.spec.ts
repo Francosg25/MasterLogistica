@@ -238,7 +238,7 @@ test("provision is saved with automatic approval and preserves unsaved navigatio
   const writes = await setup(page);
   await section(page, "Provisiones");
   await page
-    .getByRole("button", { name: "+ Nueva provisión", exact: true })
+    .getByRole("button", { name: "Nueva provisión", exact: true })
     .click();
   await page
     .getByLabel("Referencia del master")
@@ -294,7 +294,7 @@ test("manager has read-only finance and mobile contains tables", async ({
   await setup(page, "MANAGER");
   await section(page, "Provisiones");
   await expect(
-    page.getByRole("button", { name: "+ Nueva provisión" }),
+    page.getByRole("button", { name: "Nueva provisión" }),
   ).toHaveCount(0);
   await section(page, "Facturas");
   await expect(
@@ -344,7 +344,7 @@ test("production demo finance never calls operational endpoints", async ({
 test("provision reference picker lists existing references and supports keyboard selection", async ({ page }) => {
   await setup(page);
   await section(page, "Provisiones");
-  await page.getByRole("button", { name: "+ Nueva provisión", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva provisión", exact: true }).click();
   const input = page.getByRole("combobox", { name: "Referencia del master" });
   await input.focus();
   await expect(page.getByRole("listbox", { name: "Referencias disponibles" })).toBeVisible();

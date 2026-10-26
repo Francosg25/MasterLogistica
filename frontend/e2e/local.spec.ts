@@ -8,7 +8,7 @@ test("local configuration creates and edits real records without corporate login
     if (request.url().includes("/api/") && request.headers()["authorization"]) authorization.push(request.headers()["authorization"]);
   });
   await page.goto("/");
-  await expect(page.locator(".local-banner")).toContainText("SQLite");
+  await expect(page.locator(".local-banner")).toContainText("Guardado local");
   await expect(page.getByRole("heading", { name: "Acceso al sistema" })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await page.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
@@ -79,7 +79,7 @@ test("local responsible masters keep mixed operations separate and save exact pr
   await navigation.getByRole("button", { name: "Provisiones", exact: true }).click();
   await page.getByLabel("Mes contable").fill("2026-10");
   await page.getByRole("button", { name: "Consultar", exact: true }).click();
-  await page.getByRole("button", { name: "+ Nueva provisión", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva provisión", exact: true }).click();
   const referenceInput = page.getByRole("combobox", { name: "Referencia del master" });
   await referenceInput.fill(reference);
   const option = page.getByRole("option", { name: new RegExp(reference) });

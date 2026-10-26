@@ -283,6 +283,10 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. El master se carga automáticamente al seleccionar al responsable. La demostración sigue siendo de solo lectura.
 
+La presentación comparte una paleta de grises con acento azul, navegación con iconos SVG locales, controles uniformes y estados con texto y color. Inicio, masters, provisiones, facturas, historial y formularios usan la misma jerarquía visual. Los colores, superficies y bordes se centralizan en `frontend/src/styles.css`; los iconos están en `icon.component.ts`. Se respetan las preferencias de movimiento reducido y contraste alto. El acceso por teclado incluye **Ir al contenido**.
+
+El master mantiene las filas como área principal incluso en ventanas de 1280 × 600. La barra superior conserva selección de responsable, filtros plegables y edición de celdas. Las fuentes son las del sistema y los iconos se incluyen en la aplicación.
+
 ## Edición del master
 
 - La vista normal reúne navegación, selección del responsable y acciones en una cabecera compacta. Los registros ocupan la mayor parte de la ventana; los filtros empiezan plegados y se abren con **Mostrar filtros**. **Tamaño** cambia texto, altura de filas y ancho de columnas a 100/115/130 % y conserva esa preferencia. **Ampliar master** aprovecha todavía más la ventana sin descartar cambios.

@@ -8,7 +8,7 @@ const cell = (page: Page, row: number, field: string) =>
 test("home navigation and expanded master preserve the sheet", async ({ page }) => {
   await mock(page);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Inicio", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Tu espacio de trabajo." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Centro de logística" })).toBeVisible();
   await page.screenshot({ path: "test-results/home.png", fullPage: true });
   await page.locator(".home-grid").getByRole("button", { name: /Ver masters/ }).click();
   const normal = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
@@ -203,7 +203,7 @@ async function mock(
   await page.goto("/");
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Masters de logística." }),
+    page.getByRole("heading", { name: "Masters de logística" }),
   ).toBeVisible();
   if (!options.noMaster) {
     await page

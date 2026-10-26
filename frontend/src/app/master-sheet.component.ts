@@ -13,6 +13,7 @@ import {
 import { ApiError, ApiService } from "./api.service";
 import { Shipment, STATUS, Supplier, OPERATIONS, EXCEL_OPERATION_LABELS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
 import { MasterPracticeService } from "./master-practice.service";
+import { IconComponent } from "./icon.component";
 
 interface Column {
   key: keyof Shipment;
@@ -31,6 +32,7 @@ interface Position {
 @Component({
   selector: "master-sheet",
   standalone: true,
+  imports: [IconComponent],
   templateUrl: "./master-sheet.component.html",
 })
 export class MasterSheetComponent implements OnDestroy {

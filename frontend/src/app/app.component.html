@@ -34,6 +34,7 @@
     </section>
   </main>
 } @else {
+  <a class="skip-link" href="#main">Ir al contenido</a>
   <div class="workspace" [class.master-workspace]="section() === 'masters'" [class.compact-workspace]="section() !== 'home'" [class.finance-page]="section() !== 'home' && section() !== 'masters'" [class.sheet-focus]="focusedSheet() && section() === 'masters'">
     <ng-template #sectionNavigation>
       <nav class="workspace-nav" aria-label="Secciones">
@@ -45,40 +46,37 @@
             (click)="changeSection(item.id)"
             [disabled]="saving() || sheet?.saving() || finance?.busy()"
           >
-            {{ item.label }}
+            <app-icon [name]="item.icon" />{{ item.label }}
           </button>
         }
       </nav>
     </ng-template>
     <header class="topbar">
-      <div class="wordmark">
-        <span class="brand-mark">M</span><strong>MasterLogistica</strong
-        ><span class="product-section">Logística</span>
-      </div>
-      @if (section() !== 'home') {
-        <ng-container [ngTemplateOutlet]="sectionNavigation" />
-      }
+      <button class="wordmark brand-button" (click)="changeSection('home')" aria-label="Inicio de MasterLogistica" [disabled]="saving() || sheet?.saving() || finance?.busy()">
+        <span class="brand-mark">M</span><strong>MasterLogistica</strong>
+      </button>
+      <ng-container [ngTemplateOutlet]="sectionNavigation" />
       <div class="account">
         @if (auth.local && !demo() && section() !== 'home') {
-          <span class="local-banner" title="Guardado en la base de esta computadora (SQLite)">Guardado local</span>
+          <span class="local-banner" title="Los cambios se guardan en esta computadora.">Guardado local</span>
         }
-        <span
+        <span class="user-avatar" aria-hidden="true">{{ userInitials() }}</span>
+        <span class="account-name"
           >{{ user()?.display_name }}<small>{{ roleName() }}</small></span
         ><button
-          class="button subtle"
+          class="button subtle account-exit"
+          [attr.aria-label]="demo() ? 'Salir de demo' : auth.local ? 'Reiniciar sesión local' : 'Salir'"
+          [title]="demo() ? 'Salir de demo' : auth.local ? 'Reiniciar sesión local' : 'Salir'"
           (click)="logout()"
           [disabled]="sheet?.saving()"
         >
-          {{ demo() ? "Salir de demo" : auth.local ? "Reiniciar sesión local" : "Salir" }}
+          <app-icon name="sign-out" /><span class="account-action-label">{{ demo() ? "Salir de demo" : auth.local ? "Reiniciar sesión local" : "Salir" }}</span>
         </button>
       </div>
     </header>
-    @if (section() === 'home') {
-      <ng-container [ngTemplateOutlet]="sectionNavigation" />
-    }
-    <main class="main-content" id="main">
+    <main class="main-content" id="main" tabindex="-1">
       @if (auth.local && !demo() && section() === 'home') {
-        <div class="local-banner">Desarrollo local · Guardado en la base de esta computadora (SQLite)</div>
+        <div class="local-banner home-local">Guardado local · Los cambios se guardan en esta computadora.</div>
       }
       @if (demo()) {
         <div class="demo-banner">
@@ -91,19 +89,20 @@
       }
       @if (section() === "home") {
         <section class="home-page" aria-label="Inicio de logística">
-          <p class="home-eyebrow">MASTERLOGISTICA</p>
-          <h1>Tu espacio de trabajo.</h1>
-          <p>Consulta los masters, sigue las provisiones y concilia la facturación.</p>
+          <p class="home-eyebrow">OPERACIÓN LOGÍSTICA</p>
+          <h1>Centro de logística</h1>
+          <p>Selecciona el área en la que vas a trabajar.</p>
           <div class="home-grid">
-            <button (click)="changeSection('masters')"><span>01</span><h2>Masters</h2><p>Selecciona al responsable para trabajar en su tabla. Consulta los movimientos de cada referencia.</p><strong>Ver masters →</strong></button>
-            <button (click)="changeSection('provisions')"><span>02</span><h2>Provisiones</h2><p>Consulta saldos vivos, importes aplicados y el mes de origen de cada provisión.</p><strong>Ver provisiones →</strong></button>
-            <button (click)="changeSection('invoices')"><span>03</span><h2>Facturas</h2><p>Importa el consolidado de Excel y aplica USD AMOUNT a las referencias provisionadas.</p><strong>Ver facturas →</strong></button>
-            <button (click)="changeSection('history')"><span>04</span><h2>Historial</h2><p>Revisa quién agregó, modificó o canceló un movimiento y consulta los valores anteriores.</p><strong>Consultar cambios →</strong></button>
+            <button class="module-primary" (click)="changeSection('masters')"><span class="module-icon"><app-icon name="grid" /></span><h2>Masters</h2><p>Trabaja en el master de tu responsable y consulta cada referencia.</p><strong>Ver masters <app-icon name="arrow" /></strong></button>
+            <button (click)="changeSection('provisions')"><span class="module-icon"><app-icon name="wallet" /></span><h2>Provisiones</h2><p>Revisa saldos, importes aplicados y provisiones de meses anteriores.</p><strong>Ver provisiones <app-icon name="arrow" /></strong></button>
+            <button (click)="changeSection('invoices')"><span class="module-icon"><app-icon name="document" /></span><h2>Facturas</h2><p>Carga tu Excel y consulta los importes aplicados a cada referencia.</p><strong>Ver facturas <app-icon name="arrow" /></strong></button>
+            <button (click)="changeSection('history')"><span class="module-icon"><app-icon name="history" /></span><h2>Historial</h2><p>Consulta quién modificó cada dato y revisa sus valores anteriores.</p><strong>Consultar cambios <app-icon name="arrow" /></strong></button>
           </div>
+          <aside class="home-tip"><app-icon name="keyboard" /><div><strong>Trabaja como en Excel</strong><p>Escribe en las celdas, pega un rango y guarda con <kbd>Ctrl</kbd> + <kbd>S</kbd>.</p></div></aside>
         </section>
       } @else if (section() === "masters") {
         <div class="workspace-heading master-toolbar">
-          <h1 [class.sr-only]="masterReady() && !focusedSheet()">{{ focusedSheet() && masterReady() ? 'Master de ' + ownerName(masterOwner()) : 'Masters de logística.' }}</h1>
+          <h1 [class.sr-only]="masterReady() && !focusedSheet()">{{ focusedSheet() && masterReady() ? 'Master de ' + ownerName(masterOwner()) : 'Masters de logística' }}</h1>
           <section class="master-selector" aria-label="Selección de master">
             <form [formGroup]="masterSelection">
               <label
@@ -130,16 +129,16 @@
           </section>
           <div class="master-toolbar-actions">
             @if (masterReady()) {
-              <button class="button subtle filter-toggle" (click)="filtersVisible.set(!filtersVisible())" [attr.aria-expanded]="filtersVisible()" aria-controls="master-filters">{{ filtersVisible() ? 'Ocultar filtros' : 'Mostrar filtros' }}</button>
+              <button class="button subtle filter-toggle" (click)="filtersVisible.set(!filtersVisible())" [attr.aria-expanded]="filtersVisible()" aria-controls="master-filters"><app-icon name="filter" />{{ filtersVisible() ? 'Ocultar filtros' : 'Mostrar filtros' }}</button>
             }
-            <button class="button secondary" (click)="focusedSheet.set(!focusedSheet())">{{ focusedSheet() ? 'Salir de vista ampliada' : 'Ampliar master' }}</button>
+            <button class="button secondary" (click)="focusedSheet.set(!focusedSheet())"><app-icon name="expand" />{{ focusedSheet() ? 'Salir de vista ampliada' : 'Ampliar master' }}</button>
             @if (canWrite()) {
               <button
                 class="button primary"
                 [disabled]="!canCreate() || sheet?.saving()"
                 (click)="openCreate()"
               >
-                <span aria-hidden="true">+</span> Nuevo embarque
+                <app-icon name="plus" /> Nuevo embarque
               </button>
             }
           </div>
@@ -160,7 +159,7 @@
             <p class="error" role="alert">{{ error() }}</p>
           }
           <div class="master-placeholder">
-            <span class="empty-sheet-icon" aria-hidden="true">▦</span>
+            <span class="empty-sheet-icon" aria-hidden="true"><app-icon name="grid" /></span>
             <h2>Selecciona un master para comenzar</h2>
             <p>
               Selecciona a DENI, MAG, NAT, ANDREA o ALEXA según tus permisos.
@@ -171,7 +170,7 @@
             <form id="master-filters" class="filters" [hidden]="!filtersVisible()" [formGroup]="filters" (ngSubmit)="apply()">
               <div class="filter-main">
                 <label class="search-label"
-                  ><span class="sr-only">Buscar</span
+                  ><app-icon name="search" /><span class="sr-only">Buscar</span
                   ><input
                     formControlName="q"
                     placeholder="Buscar referencia, documento o empresa"
@@ -293,7 +292,7 @@
             }
             <footer class="table-footer">
               <span class="sheet-tab"
-                ><span aria-hidden="true">▦</span> {{ ownerName(masterOwner()) }} ·
+                ><app-icon name="grid" /> {{ ownerName(masterOwner()) }} ·
                 Vista de operaciones</span
               >
               <span

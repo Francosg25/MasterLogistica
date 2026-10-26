@@ -12,6 +12,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ApiError, ApiService } from "./api.service";
 import { InvoiceImportComponent } from "./invoice-import.component";
 import { ReferenceActivityComponent } from "./reference-activity.component";
+import { IconComponent } from "./icon.component";
 import {
   Catalogs,
   Owner,
@@ -44,7 +45,7 @@ interface ReferenceOption {
 @Component({
   selector: "finance-workspace",
   standalone: true,
-  imports: [ReactiveFormsModule, InvoiceImportComponent, ReferenceActivityComponent],
+  imports: [ReactiveFormsModule, InvoiceImportComponent, ReferenceActivityComponent, IconComponent],
   templateUrl: "./finance-workspace.component.html",
 })
 export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {

@@ -6,11 +6,11 @@
     </div>
     <div class="finance-buttons">
       @if (canWrite && section === 'provisions') {
-        <button class="button primary" (click)="openForm()" [disabled]="busy() || formOpen()">+ Nueva provisión</button>
+        <button class="button primary" (click)="openForm()" [disabled]="busy() || formOpen()"><app-icon name="plus" />Nueva provisión</button>
       }
       @if (canWrite && section === 'invoices') {
-        <button class="button primary" (click)="importOpen.set(true)" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()">Cargar Excel</button>
-        <button class="button secondary" (click)="openForm()" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()">Agregar factura</button>
+        <button class="button primary" (click)="importOpen.set(true)" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()"><app-icon name="upload" />Cargar Excel</button>
+        <button class="button secondary" (click)="openForm()" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()"><app-icon name="plus" />Agregar factura</button>
       }
       @if (section !== 'history') {
         <details class="finance-tools"><summary>Más opciones</summary>

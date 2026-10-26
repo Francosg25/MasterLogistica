@@ -8,6 +8,7 @@ import {
 } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
 import { NgTemplateOutlet } from "@angular/common";
+import { IconComponent, IconName } from "./icon.component";
 import { ApiError, ApiService } from "./api.service";
 import { FinanceWorkspaceComponent } from "./finance-workspace.component";
 import { Section } from "./finance.types";
@@ -35,6 +36,7 @@ import {
   imports: [
     ReactiveFormsModule,
     NgTemplateOutlet,
+    IconComponent,
     ShipmentEditorComponent,
     MasterSheetComponent,
     FinanceWorkspaceComponent,
@@ -46,12 +48,12 @@ export class AppComponent implements OnInit {
   activity = signal<Shipment | null>(null);
   @ViewChild(FinanceWorkspaceComponent) finance?: FinanceWorkspaceComponent;
   section = signal<Section>("home");
-  readonly sections: { id: Section; label: string }[] = [
-    { id: "home", label: "Inicio" },
-    { id: "masters", label: "Masters" },
-    { id: "provisions", label: "Provisiones" },
-    { id: "invoices", label: "Facturas" },
-    { id: "history", label: "Historial" },
+  readonly sections: { id: Section; label: string; icon: IconName }[] = [
+    { id: "home", label: "Inicio", icon: "home" },
+    { id: "masters", label: "Masters", icon: "grid" },
+    { id: "provisions", label: "Provisiones", icon: "wallet" },
+    { id: "invoices", label: "Facturas", icon: "document" },
+    { id: "history", label: "Historial", icon: "history" },
   ];
   changeSection(section: Section) {
     if (section === this.section() || this.saving() || this.sheet?.saving())
@@ -67,6 +69,7 @@ export class AppComponent implements OnInit {
   private practiceStore = inject(MasterPracticeService);
   phase = signal<"loading" | "login" | "workspace">("loading");
   user = signal<User | null>(null);
+  userInitials = computed(() => (this.user()?.display_name ?? "M").trim().split(/\s+/).slice(0, 2).map(part => part[0] ?? "").join("").toUpperCase());
   demo = signal(false);
   practice = signal(false);
   filtersVisible = signal(false);

@@ -6,7 +6,7 @@
         (click)="save()"
         [disabled]="saving() || (!dirtyCount() && !editing())"
       >
-        {{ saving() ? "Guardando…" : "Guardar cambios" }}
+        <app-icon name="save" />{{ saving() ? "Guardando…" : "Guardar cambios" }}
         @if (dirtyCount()) {
           <span class="button-count">{{ dirtyCount() }}</span>
         }
@@ -16,7 +16,7 @@
         (click)="undo()"
         [disabled]="saving() || !canUndo"
       >
-        Deshacer
+        <app-icon name="undo" />Deshacer
       </button>
       <button
         class="button subtle"
@@ -40,9 +40,9 @@
       @for (size of zoomLevels; track size) { <option [value]="size">{{ size }}%</option> }
     </select>
   </label>
-  <button class="button secondary" (click)="activity.emit(rows()[active().row])" [disabled]="saving() || !rows()[active().row]">Movimientos de referencia</button>
+  <button class="button secondary" (click)="activity.emit(rows()[active().row])" [disabled]="saving() || !rows()[active().row]"><app-icon name="history" />Movimientos de referencia</button>
   <button class="button subtle" (click)="exportPage()" [disabled]="saving()">
-    Exportar página CSV
+    <app-icon name="download" />Exportar página CSV
   </button>
 </div>
 @if (readOnly()) {
