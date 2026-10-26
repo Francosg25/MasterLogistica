@@ -17,6 +17,22 @@ pytest_plugins = ["tests.test_integration"]
 D = Decimal
 
 
+@pytest.mark.integration
+def test_reference_picker_company_filter_preserves_owner_scope(environment):
+    e = environment
+    owned = create_shipment(e, company_code="MXG")
+    foreign = create_shipment(e, "two", company_code="MXG")
+    other_company = create_shipment(e, company_code="MXT")
+    path = "/references?company_code=MXG"
+    assert {r["id"] for r in api(e, "get", path)} == {owned["id"], foreign["id"]}
+    assert [r["id"] for r in api(e, "get", path, role="one")] == [owned["id"]]
+    assert [r["id"] for r in api(e, "get", "/references?company_code=MXT", role="one")] == [
+        other_company["id"]
+    ]
+    assert api(e, "get", path + "&q=" + other_company["reference_raw"]) == []
+    api(e, "get", "/references?company_code=" + "X" * 33, expected=422)
+
+
 def api(e, method, path, data=None, role="finance", expected=200):
     response = getattr(e["client"], method)(
         "/api/v1/finance" + path,

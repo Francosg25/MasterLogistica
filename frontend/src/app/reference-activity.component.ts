@@ -1,3 +1,4 @@
+import { conceptLabel } from "./finance.types";
 import { AfterViewInit, Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, inject, signal } from "@angular/core";
 import { ApiService } from "./api.service";
 import { EVENTS, FIELDS, FINANCE_STATUS, HistoryRow } from "./finance.types";
@@ -13,6 +14,7 @@ interface Activity {
   templateUrl: "./reference-activity.component.html",
 })
 export class ReferenceActivityComponent implements AfterViewInit, OnDestroy {
+  readonly conceptLabel = conceptLabel;
   @Input() shipmentId = "";
   @Input() reference = "";
   @Input() demo = false;

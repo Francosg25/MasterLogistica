@@ -1,3 +1,4 @@
+import { conceptLabel } from "./finance.types";
 import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, inject, signal, computed } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "./api.service";
@@ -17,6 +18,7 @@ interface Preview {
   templateUrl: "./invoice-import.component.html",
 })
 export class InvoiceImportComponent implements OnChanges {
+  readonly conceptLabel = conceptLabel;
   @Input() suppliers: Supplier[] = [];
   @Input() companies: string[] = [];
   @Input() month = "";

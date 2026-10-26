@@ -310,6 +310,8 @@ Los tipos de operación y estados se guardan aunque no pertenezcan a una lista; 
 
 El menú principal incorpora **Provisiones**, **Facturas** e **Historial**. La demostración incluye ejemplos financieros ficticios de octubre de 2026 y continúa siendo de solo lectura.
 
+La captura de facturas ofrece **FREIGHT, BROKER, STORAGE y OTROS**. OTROS usa el concepto `OTHER` del consolidado; la importación acepta ambas etiquetas. El buscador de referencias se abre al entrar al campo, filtra por la empresa de la factura y permite seleccionar con flechas y Enter. Cada línea conserva su propia referencia y su concepto. La referencia completa se muestra debajo del campo y puede ocupar varias líneas. Los filtros de finanzas e historial distribuyen los campos sin comprimir sus opciones.
+
 ### Flujo financiero
 
 1. En **Provisiones**, pulsa **Nueva provisión**, selecciona una referencia, proveedor, concepto **FREIGHT**, **BROKER** o **STORAGE**, fecha, moneda e importe. **Guardar provisión** la aprueba automáticamente y la incorpora al saldo. Los cargos extra y la línea de costo están en **Más datos**. Los borradores completos anteriores se activan al consultar la tabla con acceso de Finanzas o Administración.
@@ -357,7 +359,7 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 
 ### Verificación de este bloque
 
-- Compilación Angular de producción correcta, **274 pruebas de backend sin integración externa** y **52 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **5 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
+- Compilación Angular de producción correcta, **279 pruebas de backend sin integración externa** y **54 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **5 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
@@ -374,7 +376,7 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 5. Usa **Mostrar** para consultar **Listas**, **Revisar**, **Ya registradas** u **Otros meses**. Solo las listas se pueden guardar. El periodo contable se prepara automáticamente si es nuevo.
 6. **Guardar N facturas** registra y aplica los importes por lotes de hasta 100 facturas. Cada lote es atómico. Si falla un lote, los anteriores confirmados permanecen guardados; la vista previa reconoce sus facturas al reintentar.
 
-La identidad de factura usa compañía, proveedor y folio normalizado. El concepto se toma del primer `TYPE` (Freight, Broker, Storage u Other); se respeta cada concepto sin sumarlos entre sí. La referencia debe coincidir de manera única con un embarque o alias registrado. Un movimiento `PAQUETERIA` sin referencia concreta necesita corregirse o vincularse antes de importar.
+La identidad de factura usa compañía, proveedor y folio normalizado. El concepto se toma del primer `TYPE` (Freight, Broker, Storage y Other/OTROS); se respeta cada concepto sin sumarlos entre sí. La referencia debe coincidir de manera única con un embarque o alias registrado. Un movimiento `PAQUETERIA` sin referencia concreta necesita corregirse o vincularse antes de importar.
 
 **El importe conciliable es la columna `USD AMOUNT` completa**, redondeada a cuatro decimales según la precisión del sistema. No se recalculan fórmulas ni tipos de cambio. Un resultado de fórmula sin valor guardado requiere abrir, recalcular y guardar el Excel. `TOTAL`, subtotal, impuestos, moneda original, fórmula USD, fila, nombre y huella del archivo quedan guardados como evidencia. La columna interna `net_amount` contiene la base conciliable; `source_data.amount_basis = USD_AMOUNT` distingue las importaciones de la captura manual neta. El reporte CSV incluye esta base.
 

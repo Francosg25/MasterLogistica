@@ -3,6 +3,16 @@
     <div><h2>Cargar facturas de Excel</h2><p class="hint">Elige el archivo, revisa las facturas y guarda las que están listas.</p></div>
     <button class="button subtle" (click)="close()" [disabled]="busy()">Volver a facturas</button>
   </div>
+  <details class="import-guide">
+    <summary>¿Cómo se relacionan las facturas?</summary>
+    <ol>
+      <li>Busca la referencia del Excel en el master de la empresa indicada. También reconoce sus referencias anteriores registradas.</li>
+      <li>Revisa proveedor, concepto y el importe completo de USD AMOUNT. FREIGHT, BROKER, STORAGE y OTROS se mantienen separados.</li>
+      <li>Muestra las facturas listas, las que necesitan revisión y las que ya están registradas. Elige <strong>Guardar facturas</strong> para confirmar las listas.</li>
+      <li>Al guardar, aplica el importe a las provisiones compatibles en USD. Lo que no tenga provisión disponible queda pendiente.</li>
+    </ol>
+    <p>Usa el consolidado .xlsx con la hoja CONSOLIDADO y su año. Una referencia que no existe requiere corregirse o registrarse en el master antes de importar.</p>
+  </details>
   <div class="import-controls">
     <label>Mes del consolidado<input type="month" [(ngModel)]="month" (ngModelChange)="invalidate()" [disabled]="busy()" required /></label>
     <label class="import-file">Archivo consolidado (.xlsx)<input type="file" accept=".xlsx" (change)="choose($event)" [disabled]="busy()" /></label>
@@ -26,8 +36,8 @@
           <td><strong>{{ group.invoice_number || 'Sin folio' }}</strong></td>
           <td>{{ group.supplier_name }}<small>{{ group.company }}</small></td>
           <td>
-            @if (group.rows.length === 1) { {{ group.rows[0].reference }}<small>{{ group.rows[0].charge_code }}</small> }
-            @else { <details><summary>{{ group.rows.length }} referencias</summary>@for (row of group.rows; track row.row) { <p>{{ row.reference }} · {{ row.charge_code }} · {{ money(row.usd_amount) }} USD</p> }</details> }
+            @if (group.rows.length === 1) { {{ group.rows[0].reference }}<small>{{ conceptLabel(group.rows[0].charge_code) }}</small> }
+            @else { <details><summary>{{ group.rows.length }} referencias</summary>@for (row of group.rows; track row.row) { <p>{{ row.reference }} · {{ conceptLabel(row.charge_code) }} · {{ money(row.usd_amount) }} USD</p> }</details> }
           </td>
           <td class="number">{{ money(group.usd_amount) }}</td>
           <td>{{ labels[group.status] }}@for (issue of group.issues; track $index) { <p class="import-issue">{{ issue }}</p> }</td>

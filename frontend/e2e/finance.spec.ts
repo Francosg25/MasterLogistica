@@ -401,3 +401,85 @@ test("complete provisions saved before automatic approval activate without an ap
   await expect(page.locator(".finance-status")).toHaveText("Viva");
   expect(approvals).toBe(1);
 });
+
+test("invoice references are visible and each line saves its selected concept", async ({ page }) => {
+  const writes = await setup(page);
+  const longReference = "RM1-REFERENCIA-COMPLETA-" + "IMPORTACION-TERRESTRE-".repeat(4) + "M01-MAT";
+  const references = [
+    { id: "ref-long", reference: longReference, company_code: "DEMO", owner_name: "DENI", business_unit: "M01" },
+    { id: "ref-second", reference: "RM2-SEGUNDA-REFERENCIA-M19-MAT", company_code: "DEMO", owner_name: "MAG", business_unit: "M19" },
+  ];
+  const queries: string[] = [];
+  await page.route("**/api/v1/finance/references?**", route => {
+    queries.push(new URL(route.request().url()).searchParams.get("company_code") ?? "");
+    return route.fulfill({ json: references });
+  });
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Agregar factura", exact: true }).click();
+  await page.getByLabel("Folio de factura").fill("F-OTHER");
+  await page.getByLabel("Proveedor de factura", { exact: true }).selectOption("supplier-1");
+  const first = page.getByRole("combobox", { name: "Referencia 1", exact: true });
+  await first.focus();
+  await page.getByRole("option", { name: new RegExp(longReference) }).click();
+  await expect(first).toHaveValue(longReference);
+  await expect(page.locator(".reference-current strong")).toHaveText(longReference);
+  await expect(page.getByLabel("Concepto 1", { exact: true }).locator("option")).toHaveText(["FREIGHT", "BROKER", "STORAGE", "OTROS"]);
+  await page.getByLabel("Concepto 1", { exact: true }).selectOption({ label: "OTROS" });
+  await page.getByLabel("Neto 1", { exact: true }).fill("125.1234");
+  await page.getByRole("button", { name: "+ Otra referencia", exact: true }).click();
+  const second = page.getByRole("combobox", { name: "Referencia 2", exact: true });
+  await second.focus();
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveCount(2);
+  await second.press("ArrowDown");
+  await second.press("ArrowDown");
+  await second.press("Enter");
+  await expect(second).toHaveValue(references[1].reference);
+  await expect(first).toHaveValue(longReference);
+  await page.getByLabel("Concepto 2", { exact: true }).selectOption("BROKER");
+  await page.getByLabel("Neto 2", { exact: true }).fill("200");
+  for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    expect(await page.locator(".reference-current strong").first().evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  }
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.screenshot({ path: "test-results/invoice-capture-references.png", fullPage: true });
+  await page.getByRole("button", { name: "Guardar factura", exact: true }).click();
+  await expect(page.locator(".success")).toContainText("Factura guardada");
+  const payload = writes.find(w => w.path === "/finance/invoices")!.body;
+  expect(payload.lines.map((line: any) => [line.reference, line.charge_code, line.net_amount])).toEqual([
+    [longReference, "OTHER", "125.1234"], [references[1].reference, "BROKER", "200"],
+  ]);
+  expect(queries.length).toBeGreaterThanOrEqual(2);
+  expect(queries.every(company => company === "DEMO")).toBeTruthy();
+});
+
+test("reference searches keep the latest result and closing a line cancels its suggestions", async ({ page }) => {
+  await setup(page);
+  let finishSlow!: () => void;
+  const slow = new Promise<void>(resolve => finishSlow = resolve);
+  let slowStarted = false;
+  await page.route("**/api/v1/finance/references?**", async route => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    if (q === "LENTA") { slowStarted = true; await slow; }
+    await route.fulfill({ json: [{ id: q || "initial", reference: q === "LENTA" ? "REF-ANTERIOR" : "REF-ACTUAL", company_code: "DEMO" }] }).catch(() => {});
+  });
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Agregar factura", exact: true }).click();
+  const input = page.getByRole("combobox", { name: "Referencia 1", exact: true });
+  await input.fill("LENTA");
+  await expect.poll(() => slowStarted).toBeTruthy();
+  await input.fill("RAPIDA");
+  await expect(page.getByRole("option", { name: /REF-ACTUAL/ })).toBeVisible();
+  finishSlow();
+  await expect(page.getByRole("option", { name: /REF-ANTERIOR/ })).toHaveCount(0);
+  await input.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "+ Otra referencia", exact: true }).click();
+  const second = page.getByRole("combobox", { name: "Referencia 2", exact: true });
+  await second.focus();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await page.getByRole("button", { name: "Quitar línea 2", exact: true }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Referencia 1", exact: true })).toHaveValue("RAPIDA");
+});

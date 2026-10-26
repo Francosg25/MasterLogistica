@@ -13,6 +13,7 @@ import { ApiError, ApiService } from "./api.service";
 import { InvoiceImportComponent } from "./invoice-import.component";
 import { ReferenceActivityComponent } from "./reference-activity.component";
 import { IconComponent } from "./icon.component";
+import { ReferencePickerComponent } from "./reference-picker.component";
 import {
   Catalogs,
   Owner,
@@ -25,6 +26,8 @@ import {
 import {
   Balance,
   CurrencyTotal,
+  INVOICE_CONCEPTS,
+  conceptLabel,
   EVENTS,
   FIELDS,
   FINANCE_STATUS,
@@ -34,18 +37,10 @@ import {
   Section,
 } from "./finance.types";
 
-interface ReferenceOption {
-  id: string;
-  reference: string;
-  company_code: string;
-  owner_name?: string;
-  business_unit?: string;
-}
-
 @Component({
   selector: "finance-workspace",
   standalone: true,
-  imports: [ReactiveFormsModule, InvoiceImportComponent, ReferenceActivityComponent, IconComponent],
+  imports: [ReactiveFormsModule, InvoiceImportComponent, ReferenceActivityComponent, IconComponent, ReferencePickerComponent],
   templateUrl: "./finance-workspace.component.html",
 })
 export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
@@ -69,15 +64,9 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   totals = signal<CurrencyTotal[]>([]);
   report = signal<Report | null>(null);
   owners = signal<Pick<Owner, "id" | "display_name">[]>([]);
-  references = signal<ReferenceOption[]>([]);
-  referenceOpen = signal(false);
-  referenceLoading = signal(false);
-  referenceError = signal("");
-  activeReference = signal(-1);
-  selectedReference = signal<ReferenceOption | null>(null);
   readonly concepts = ["FREIGHT", "BROKER", "STORAGE"];
-  private referenceTimer?: ReturnType<typeof setTimeout>;
-  private referenceController?: AbortController;
+  readonly invoiceConcepts = INVOICE_CONCEPTS;
+  readonly conceptLabel = conceptLabel;
   total = signal(0);
   offset = signal(0);
   limit = 20;
@@ -142,7 +131,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       reference: ["", Validators.required],
       charge_code: [
         "FREIGHT",
-        [Validators.required, Validators.pattern(/^[A-Z0-9_-]+$/)],
+        [Validators.required, Validators.pattern(/^(FREIGHT|BROKER|STORAGE|OTHER)$/)],
       ],
       net_amount: ["", [Validators.required, Validators.min(0.0001)]],
       tax_amount: ["0", [Validators.required, Validators.min(0)]],
@@ -162,7 +151,6 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     reason: ["", [Validators.required, Validators.minLength(3)]],
   });
   private requestNumber = 0;
-  private refRequest = 0;
   private controller?: AbortController;
   private applied: Record<string, string> = {};
   get lines() {
@@ -184,9 +172,6 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   ngOnDestroy() {
     this.controller?.abort();
-    this.referenceController?.abort();
-    clearTimeout(this.referenceTimer);
-    this.refRequest++;
     this.requestNumber++;
   }
   @HostListener("window:beforeunload", ["$event"])
@@ -372,81 +357,10 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     this.lines.push(this.newLine());
     this.invoiceForm.markAsPristine();
     this.formOpen.set(true);
-    this.references.set([]);
-    this.selectedReference.set(null);
-    this.referenceOpen.set(false);
-    this.referenceError.set("");
     this.error.set("");
   }
   closeForm() {
     if (this.canLeave()) this.formOpen.set(false);
-  }
-  async lookup(value: string) {
-    const request = ++this.refRequest;
-    this.referenceController?.abort();
-    if (this.demo) {
-      this.references.set([]);
-      return;
-    }
-    const controller = new AbortController();
-    this.referenceController = controller;
-    this.referenceLoading.set(true);
-    this.referenceError.set("");
-    try {
-      const rows = await this.api.request<ReferenceOption[]>(
-        "/finance/references?q=" + encodeURIComponent(value.trim()), "GET", undefined, controller.signal,
-      );
-      if (request === this.refRequest) this.references.set(rows);
-    } catch (error) {
-      if (request === this.refRequest && !controller.signal.aborted) {
-        this.references.set([]);
-        this.referenceError.set("No se pudieron cargar las referencias. Vuelve a buscar.");
-      }
-    } finally {
-      if (request === this.refRequest) this.referenceLoading.set(false);
-    }
-  }
-  searchProvisionReferences(immediate = false) {
-    clearTimeout(this.referenceTimer);
-    this.refRequest++;
-    this.referenceController?.abort();
-    this.references.set([]);
-    this.referenceLoading.set(true);
-    this.activeReference.set(-1);
-    this.referenceOpen.set(true);
-    const value = this.provisionForm.controls.reference.value;
-    if (!immediate) this.selectedReference.set(null);
-    if (immediate) void this.lookup(value);
-    else this.referenceTimer = setTimeout(() => void this.lookup(value), 180);
-  }
-  selectReference(reference: ReferenceOption) {
-    this.provisionForm.controls.reference.setValue(reference.reference);
-    this.provisionForm.controls.reference.markAsDirty();
-    this.selectedReference.set(reference);
-    this.referenceOpen.set(false);
-    this.activeReference.set(-1);
-  }
-  referenceDetails(reference: ReferenceOption) {
-    return [reference.owner_name, reference.business_unit, reference.company_code].filter(Boolean).join(" · ");
-  }
-  referenceKey(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      this.referenceOpen.set(false);
-      event.preventDefault();
-    } else if (["ArrowDown", "ArrowUp"].includes(event.key)) {
-      event.preventDefault();
-      if (!this.referenceOpen()) { this.searchProvisionReferences(true); return; }
-      const count = this.references().length;
-      if (count) this.activeReference.set((this.activeReference() + (event.key === "ArrowDown" ? 1 : -1) + count) % count);
-    } else if (event.key === "Enter" && this.referenceOpen() && this.activeReference() >= 0) {
-      event.preventDefault();
-      this.selectReference(this.references()[this.activeReference()]);
-    }
-  }
-  referenceBlur(event: FocusEvent) {
-    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
-      this.referenceOpen.set(false);
-    }
   }
   async write(action: () => Promise<unknown>, success: string) {
     if (!this.canWrite || this.busy()) return;

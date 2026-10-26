@@ -164,6 +164,8 @@ def read_consolidated(content):
                     issued = None
                     problems.append("Revisar INVOICE DATE; usa una fecha Excel o dd/mm/aaaa")
                 concept = normalized(get("TYPE"))
+                if concept == "OTROS":
+                    concept = "OTHER"
                 if concept not in {"FREIGHT", "BROKER", "STORAGE", "OTHER"}:
                     problems.append("Concepto TYPE no reconocido")
                 if not get("INVOICE #"):

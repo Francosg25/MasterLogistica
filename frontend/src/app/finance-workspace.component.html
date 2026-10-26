@@ -34,7 +34,7 @@
   @if (notice()) {
     <div class="success" role="status">{{ notice() }}</div>
   }
-  <form class="finance-filters" [formGroup]="filters" (ngSubmit)="apply()">
+  <form class="finance-filters" [class.history-filters]="section === 'history'" [formGroup]="filters" (ngSubmit)="apply()">
     @if (section !== "history") {
       <label
         >Mes contable<input
@@ -61,7 +61,7 @@
         >Operación<select formControlName="operation_code">
           <option value="">Todas</option>
           @for (code of catalogs.operation_codes; track code) {
-            <option [value]="code">{{ code }} · {{ operations[code] }}</option>
+            <option [value]="code">{{ operations[code] || code }}</option>
           }
         </select></label
       >
@@ -70,7 +70,7 @@
       <label
         >Usuario<input
           formControlName="actor"
-          placeholder="Nombre de quien realizó el cambio"
+          placeholder="Nombre o correo"
       /></label>
       <label
         >Acción<select formControlName="action">
@@ -129,11 +129,6 @@
       borradores no afectan los totales. Liquidada = saldo cero por facturación.
     </p>
   }
-  <datalist id="finance-references">
-    @for (ref of references(); track ref.id) {
-      <option [value]="ref.reference">{{ ref.company_code }}</option>
-    }
-  </datalist>
   @if (formOpen() && canWrite) {
     <section class="finance-entry" aria-label="Captura financiera">
       <div class="workspace-heading">
@@ -152,41 +147,7 @@
         <form [formGroup]="provisionForm" (ngSubmit)="saveProvision()">
           <fieldset [disabled]="busy()">
             <div class="finance-form-grid">
-              <div class="wide reference-picker" (focusout)="referenceBlur($event)">
-                <label for="provision-reference">Referencia del master</label>
-                <input id="provision-reference"
-                  formControlName="reference"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-controls="provision-reference-options"
-                  [attr.aria-expanded]="referenceOpen()"
-                  [attr.aria-activedescendant]="referenceOpen() && activeReference() >= 0 ? 'reference-option-' + activeReference() : null"
-                  autocomplete="off"
-                  (focus)="searchProvisionReferences(true)"
-                  (input)="searchProvisionReferences()"
-                  (keydown)="referenceKey($event)"
-                  required
-                  maxlength="160"
-                  placeholder="Busca o selecciona una referencia existente"
-                />
-                @if (selectedReference(); as ref) {
-                  <small>{{ referenceDetails(ref) }}</small>
-                }
-                @if (referenceOpen()) {
-                  <div class="reference-options" id="provision-reference-options" role="listbox" aria-label="Referencias disponibles" [attr.aria-busy]="referenceLoading()">
-                    @if (referenceLoading()) {<p role="status">Buscando referencias…</p>}
-                    @else if (referenceError()) {<p role="alert">{{ referenceError() }}</p>}
-                    @else {
-                      @for (ref of references(); track ref.id; let i = $index) {
-                        <button type="button" role="option" tabindex="-1" [id]="'reference-option-' + i" [attr.aria-selected]="activeReference() === i" (mousedown)="$event.preventDefault()" (click)="selectReference(ref)">
-                          <strong>{{ ref.reference }}</strong><small>{{ referenceDetails(ref) }}</small>
-                        </button>
-                      } @empty {<p>No hay referencias disponibles para esta búsqueda.</p>}
-                      @if (references().length >= 30) {<p>Se muestran 30 coincidencias. Escribe más para precisar la búsqueda.</p>}
-                    }
-                  </div>
-                }
-              </div>
+              <reference-picker class="wide" [control]="provisionForm.controls.reference" label="Referencia del master" />
               <label
                 >Proveedor<select
                   aria-label="Proveedor"
@@ -320,22 +281,19 @@
             <div formArrayName="lines">
               @for (line of lines.controls; track line; let i = $index) {
                 <div class="invoice-line-form" [formGroupName]="i">
-                  <label
-                    >Referencia {{ i + 1
-                    }}<input
-                      formControlName="reference"
-                      list="finance-references"
-                      (input)="lookup(line.controls.reference.value)"
-                      required
-                      maxlength="160"
-                  /></label>
-                  <label
-                    >Concepto {{ i + 1
-                    }}<input
-                      formControlName="charge_code"
-                      maxlength="40"
-                      required
-                  /></label>
+                  <reference-picker class="invoice-reference" [control]="line.controls.reference" [label]="'Referencia ' + (i + 1)" [companyCode]="invoiceForm.controls.company_code.value" />
+                  <button
+                    class="button subtle"
+                    type="button"
+                    [disabled]="lines.length === 1"
+                    (click)="lines.removeAt(i); invoiceForm.markAsDirty()"
+                    [attr.aria-label]="'Quitar línea ' + (i + 1)"
+                  >
+                    Quitar
+                  </button>
+                  <label class="invoice-concept">Concepto {{ i + 1 }}<select formControlName="charge_code" [attr.aria-label]="'Concepto ' + (i + 1)" required>
+                    @for (concept of invoiceConcepts; track concept.value) { <option [value]="concept.value">{{ concept.label }}</option> }
+                  </select></label>
                   <label
                     >Neto {{ i + 1
                     }}<input
@@ -358,15 +316,6 @@
                       title="Usa punto decimal y hasta cuatro decimales"
                       required
                   /></label>
-                  <button
-                    class="button subtle"
-                    type="button"
-                    [disabled]="lines.length === 1"
-                    (click)="lines.removeAt(i); invoiceForm.markAsDirty()"
-                    [attr.aria-label]="'Quitar línea ' + (i + 1)"
-                  >
-                    Quitar
-                  </button>
                 </div>
               }
             </div>
@@ -469,7 +418,7 @@
           <tbody>
             @for (row of balances(); track row.id) {
               <tr>
-                <td>
+                <td class="reference-cell">
                   <button class="reference-link" (click)="activity.set({id: row.shipment_id || row.id, reference: row.reference})">{{ row.reference }}</button><small
                     >{{ row.owner_name }} · {{ row.operation_code }}</small
                   >
@@ -477,7 +426,7 @@
                 <td>
                   {{ row.supplier_name
                   }}<small
-                    >{{ row.charge_code }} · Línea {{ row.line_no }}</small
+                    >{{ conceptLabel(row.charge_code) }} · Línea {{ row.line_no }}</small
                   >
                 </td>
                 <td>{{ row.provision_date ? row.provision_date!.split('-').reverse().join('/') : row.month_accrued.slice(0, 7) }}@if (!row.provision_date) {<small>Día no registrado</small>}</td>
@@ -559,7 +508,7 @@
                       @for (line of row.lines; track line.id) {
                         <p>
                           <button class="reference-link" [disabled]="!demo && !line.shipment_id" (click)="activity.set({id: line.shipment_id || line.id, reference: line.reference})">{{ line.reference }}</button> ·
-                          {{ line.charge_code }} · Importe
+                          {{ conceptLabel(line.charge_code) }} · Importe
                           {{ money(line.net_amount) }} {{ row.currency }} ·
                           Aplicado {{ money(line.applied_amount) }} · Pendiente
                           {{ money(line.pending_amount) }}
@@ -728,7 +677,7 @@
           <tbody>
             @for (m of data.movements; track $index) {
               <tr>
-                <td>{{ m.reference }}</td>
+                <td class="reference-cell">{{ m.reference }}</td>
                 <td>{{ m.invoice_number }}</td>
                 <td>{{ m.supplier_name }}</td>
                 <td>{{ m.month_accrued?.slice(0, 7) }}</td>
@@ -765,7 +714,7 @@
           <tbody>
             @for (m of data.pending_invoices; track $index) {
               <tr>
-                <td>{{ m.reference }}</td>
+                <td class="reference-cell">{{ m.reference }}</td>
                 <td>{{ m.invoice_number }}</td>
                 <td>{{ m.supplier_name }}</td>
                 <td>{{ m.period_month.slice(0, 7) }}</td>

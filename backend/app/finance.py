@@ -342,11 +342,18 @@ def owners(session: DB, user: Actor):
 
 
 @router.get("/references")
-def references(session: DB, user: Actor, q: Annotated[str, Query(max_length=160)] = ""):
+def references(
+    session: DB,
+    user: Actor,
+    q: Annotated[str, Query(max_length=160)] = "",
+    company_code: Annotated[str | None, Query(min_length=1, max_length=32)] = None,
+):
     statement = finance_scope(
         select(Shipment).where(Shipment.status != "CANCELLED", Shipment.reference_raw.is_not(None)),
         user,
     )
+    if company_code is not None:
+        statement = statement.where(Shipment.company_code == company_code)
     if q.strip():
         value = q.strip()
         aliases = select(ShipmentIdentifier.shipment_id).where(

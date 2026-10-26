@@ -110,7 +110,7 @@ test("saving an invoice applies an automatically approved provision without extr
   await page.getByRole("combobox", { name: "Empresa de factura", exact: true }).selectOption(shipment.company_code);
   await page.getByLabel("Fecha de factura", { exact: true }).fill("2026-10-23");
   await page.getByLabel("Referencia 1", { exact: true }).fill(provision.reference);
-  await page.getByLabel("Concepto 1", { exact: true }).fill("STORAGE");
+  await page.getByLabel("Concepto 1", { exact: true }).selectOption("STORAGE");
   await page.getByLabel("Neto 1", { exact: true }).fill("500");
   await page.getByRole("button", { name: "Guardar factura", exact: true }).click();
   await expect(page.locator(".finance-status")).toHaveText("Aplicada");

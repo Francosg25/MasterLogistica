@@ -1,4 +1,13 @@
 export type Section = "home" | "masters" | "provisions" | "invoices" | "history";
+export const INVOICE_CONCEPTS = [
+  { value: "FREIGHT", label: "FREIGHT" },
+  { value: "BROKER", label: "BROKER" },
+  { value: "STORAGE", label: "STORAGE" },
+  { value: "OTHER", label: "OTROS" },
+];
+export function conceptLabel(value: string): string {
+  return INVOICE_CONCEPTS.find(concept => concept.value === value)?.label ?? value;
+}
 export interface Balance {
   shipment_id?: string;
   id: string;

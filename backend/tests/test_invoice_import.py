@@ -103,6 +103,33 @@ def test_parser_uses_full_cached_usd_amount_without_recalculation():
     assert row["issue_date"] == "2026-10-10"
 
 
+@pytest.mark.parametrize("concept", ["OTHER", "Other", "OTROS", "otros"])
+def test_other_labels_share_the_import_concept(concept):
+    row = read_consolidated(
+        workbook(
+            rows=[
+                [
+                    "JE_MX",
+                    "Example Test Carrier",
+                    concept,
+                    "REF-EXAMPLE",
+                    "F-OTHER",
+                    "10/10/2026",
+                    "OCTUBRE",
+                    "USD",
+                    "100",
+                    "100",
+                    "100",
+                    "0",
+                    "SEA IMPO",
+                ]
+            ]
+        )
+    )["rows"][0]
+    assert row["charge_code"] == "OTHER"
+    assert row["usd_amount"] == "100.0000" and not row["errors"]
+
+
 @pytest.mark.parametrize("usd", ["", "NaN", "Infinity", "-20", "0", "#DIV/0!"])
 def test_invalid_amounts_require_review(usd):
     assert read_consolidated(workbook(usd=usd))["rows"][0]["errors"]
