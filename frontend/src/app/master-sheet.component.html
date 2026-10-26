@@ -6,7 +6,7 @@
         (click)="save()"
         [disabled]="saving() || (!dirtyCount() && !editing())"
       >
-        {{ saving() ? "Guardando…" : "Guardar cambios" }}
+        <app-icon name="save" />{{ saving() ? "Guardando…" : "Guardar cambios" }}
         @if (dirtyCount()) {
           <span class="button-count">{{ dirtyCount() }}</span>
         }
@@ -16,7 +16,7 @@
         (click)="undo()"
         [disabled]="saving() || !canUndo"
       >
-        Deshacer
+        <app-icon name="undo" />Deshacer
       </button>
       <button
         class="button subtle"
@@ -34,15 +34,22 @@
           : "Sin cambios pendientes"
     }}</span>
   </div>
+  @if (practice()) { <span class="practice-label">Práctica · Guardado local</span> }
+  <label class="sheet-zoom">Tamaño
+    <select aria-label="Tamaño del master" [value]="zoom()" (change)="setZoom($any($event.target).value)">
+      @for (size of zoomLevels; track size) { <option [value]="size">{{ size }}%</option> }
+    </select>
+  </label>
+  <button class="button secondary" (click)="activity.emit(rows()[active().row])" [disabled]="saving() || !rows()[active().row]"><app-icon name="history" />Movimientos de referencia</button>
   <button class="button subtle" (click)="exportPage()" [disabled]="saving()">
-    Exportar página CSV
+    <app-icon name="download" />Exportar página CSV
   </button>
 </div>
+@if (readOnly()) {
+  <p class="sheet-access-reason">{{ readOnlyReason() }}</p>
+}
 @if (error()) {
   <p class="error sheet-message" role="alert">{{ error() }}</p>
-}
-@if (notice()) {
-  <p class="success sheet-message" role="status">{{ notice() }}</p>
 }
 @for (row of rows(); track row.id) {
   @if (issues()[row.id]) {
@@ -61,11 +68,12 @@
 <div class="formula-bar">
   <span class="cell-address">{{ address() }}</span
   ><span class="formula-label">{{ activeColumn().label }}</span>
-  <input aria-label="Contenido de celda" readonly [value]="activeValue()" />
-  @if (readOnly() || activeColumn().kind === "locked") {
-    <span class="locked-label">{{
-      readOnly() ? "Solo lectura" : "Columna protegida"
-    }}</span>
+  <input aria-label="Contenido de celda" readonly [value]="activeValue()" [placeholder]="editable(active().row, active().col) ? 'Selecciona la celda y escribe para editar' : ''" />
+  @if (notice()) {
+    <span class="sheet-cell-notice sheet-message" role="status" [title]="notice()">{{ notice() }}</span>
+  }
+  @if (readOnly()) {
+    <span class="locked-label">Solo lectura</span>
   } @else {
     <button
       class="button subtle"
@@ -78,6 +86,8 @@
 </div>
 <div
   class="sheet-scroll"
+  [style.--sheet-font-size]="14 * zoom() / 100 + 'px'"
+  [style.--sheet-row-height]="40 * zoom() / 100 + 'px'"
   role="region"
   aria-label="Hoja del master"
   (copy)="copy($event)"
@@ -85,15 +95,17 @@
 >
   <table
     class="spreadsheet"
+    [style.width.px]="tableWidth()"
     role="grid"
     aria-label="Embarques del master"
+    aria-describedby="master-edit-help"
     [attr.aria-readonly]="readOnly()"
     [attr.aria-busy]="saving()"
   >
     <colgroup>
       <col style="width: 44px" />
       @for (column of columns(); track column.key) {
-        <col [style.width.px]="column.width" />
+        <col [style.width.px]="column.width * zoom() / 100" />
       }
     </colgroup>
     <thead>
@@ -136,6 +148,7 @@
               [attr.data-field]="column.key"
               [attr.tabindex]="isActive(r, c) ? 0 : -1"
               [attr.aria-label]="column.label + ', fila ' + (offset() + r + 1)"
+              [attr.aria-description]="c === 0 ? 'Pulsa Enter para abrir el detalle del embarque.' : null"
               [attr.aria-selected]="isSelected(r, c)"
               [attr.aria-readonly]="!editable(r, c)"
               [class.frozen]="c === 0"
@@ -146,10 +159,10 @@
               (click)="pick(r, c, $event.shiftKey)"
               (dblclick)="begin(r, c)"
               (keydown)="key($event)"
-              [title]="display(row, column)"
+              [title]="display(row, column) + (editable(r, c) ? ' · Haz clic y escribe para editar' : ' · Solo lectura')"
             >
               @if (isEditing(r, c)) {
-                @if (column.kind === "status" || column.kind === "supplier") {
+                @if (column.kind === "unit" && !directEntry()) {
                   <select
                     class="cell-input"
                     [attr.aria-label]="'Editar ' + column.label"
@@ -159,26 +172,16 @@
                     (keydown)="editorKey($event)"
                     (blur)="commit()"
                   >
-                    @if (column.kind === "status") {
-                      @for (code of statusCodes; track code) {
-                        <option [value]="code">{{ status[code] }}</option>
-                      }
-                    } @else {
-                      <option value="">Sin asignar</option>
-                      @for (supplier of suppliers(); track supplier.id) {
-                        <option
-                          [value]="supplier.id"
-                          [disabled]="!supplier.is_active"
-                        >
-                          {{ supplier.legal_name }}
-                        </option>
-                      }
-                    }
+                    <option value="">Sin asignar</option>
+                    @for (code of businessUnits(); track code) { <option [value]="code">{{ code }}</option> }
                   </select>
                 } @else {
                   <input
                     class="cell-input"
-                    [type]="column.kind === 'date' ? 'date' : 'text'"
+                    type="text"
+                    [attr.inputmode]="column.kind === 'date' ? 'numeric' : null"
+                    [attr.placeholder]="column.kind === 'date' ? 'dd/mm/aaaa' : null"
+                    [attr.list]="column.kind === 'status' ? 'master-status-options' : column.kind === 'supplier' ? 'master-supplier-options' : column.kind === 'unit' ? 'master-unit-options' : column.kind === 'operation' ? 'master-operation-options' : null"
                     [attr.aria-label]="'Editar ' + column.label"
                     [value]="editValue"
                     [attr.maxlength]="column.max ?? null"
@@ -189,13 +192,17 @@
                   />
                 }
               } @else if (c === 0) {
+                <span class="cell-text">{{ display(row, column) || "Sin referencia" }}</span>
                 <button
                   class="reference-link"
+                  tabindex="-1"
                   (click)="$event.stopPropagation(); opened.emit(row)"
+                  (dblclick)="$event.stopPropagation()"
                   [disabled]="saving()"
+                  [attr.aria-label]="'Abrir detalle de ' + (value(row, column) || 'embarque sin referencia')"
                   [title]="'Abrir detalle y documentos de ' + row.reference_raw"
                 >
-                  {{ row.reference_raw || "Sin referencia" }}
+                  <span aria-hidden="true">↗</span>
                 </button>
               } @else if (column.kind === "status") {
                 <span class="status" [attr.data-status]="value(row, column)"
@@ -211,3 +218,19 @@
     </tbody>
   </table>
 </div>
+<p class="sr-only" id="master-edit-help">Selecciona una celda y empieza a escribir para reemplazar su contenido. Doble clic o F2 permite modificar el valor actual. Enter confirma y baja una fila; Tab avanza de columna; Escape cancela. Guarda con Ctrl+S o Guardar cambios. Ctrl+Enter abre el detalle del embarque.</p>
+<datalist id="master-status-options">
+  @for (code of statusCodes; track code) { <option [value]="status[code] || code">{{ code }}</option> }
+</datalist>
+<datalist id="master-unit-options">
+  @for (code of businessUnits(); track code) { <option [value]="code"></option> }
+</datalist>
+<datalist id="master-operation-options">
+  @for (label of excelOperations; track label) { <option [value]="label"></option> }
+  @for (code of operationCodes; track code) { <option [value]="code">{{ operations[code] }}</option> }
+</datalist>
+<datalist id="master-supplier-options">
+  @for (supplier of suppliers(); track supplier.id) {
+    @if (supplier.is_active) { <option [value]="supplier.legal_name">{{ supplier.code }}</option> }
+  }
+</datalist>

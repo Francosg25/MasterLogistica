@@ -32,8 +32,7 @@
   </header>
   <div class="editor-content">
     <p class="master-context">
-      Master de {{ masterOwnerName() }} ·
-      {{ operations[masterOperation()] || masterOperation() }}
+      Master de {{ masterOwnerName() }}
     </p>
     @if (readOnly()) {
       <div class="notice">
@@ -65,41 +64,24 @@
           <span>01</span>
           <h3>Identificación</h3>
         </div>
-        @if (shipment()) {
-          <div class="identity-strip">
-            <div>
-              <small>Empresa</small
-              ><strong>{{ shipment()?.company_code }}</strong>
-            </div>
-            <div>
-              <small>Operación</small
-              ><strong>{{ operations[operation] || operation }}</strong>
-            </div>
-            <div>
-              <small>BU / Departamento</small
-              ><strong
-                >{{ shipment()?.business_unit }} /
-                {{ shipment()?.department_code }}</strong
-              >
-            </div>
-          </div>
-        } @else {
           <div class="form-grid">
+            @if (shipment()) {
+              <label>Referencia<input aria-label="Referencia" formControlName="reference_raw" maxlength="160" /></label>
+            }
             <label
-              >Empresa *<select
+              >Empresa *<input
                 aria-label="Empresa *"
                 formControlName="company_code"
-              >
-                @for (code of catalogs().company_codes; track code) {
-                  <option [value]="code">{{ code }}</option>
-                }
-              </select></label
+                maxlength="32"
+                placeholder="Captura la empresa como aparece en el master"
+              /><small>Captura manual de la empresa del movimiento.</small></label
             >
             <label
               >Proceso *<select
                 aria-label="Proceso *"
                 formControlName="process_code"
               >
+                @if (shipment()) { <option value="">Sin asignar</option> }
                 @for (code of catalogs().process_codes; track code) {
                   <option [value]="code">
                     {{ code }} · {{ processes[code] || code }}
@@ -107,12 +89,7 @@
                 }
               </select></label
             >
-            <label
-              >Tipo de operación<input
-                aria-label="Tipo de operación"
-                [value]="operations[masterOperation()] || masterOperation()"
-                readonly
-            /></label>
+            <label>Tipo de operación *<input aria-label="Tipo de operación *" formControlName="operation_code" list="shipment-operation-options" maxlength="100" placeholder="Escribe o elige una operación" /></label>
             <label
               >Año de operación *<input
                 type="number"
@@ -127,9 +104,12 @@
                 formControlName="business_unit"
               >
                 <option value="">Selecciona una BU</option>
+                @if (shipment()?.business_unit && !unitCodes().includes(shipment()!.business_unit!)) {
+                  <option [value]="shipment()!.business_unit">{{ shipment()!.business_unit }}</option>
+                }
                 @for (code of unitCodes(); track code) {
                   <option [value]="code">
-                    {{ code }} · {{ catalogs().business_units[code] }}
+                    {{ code }}
                   </option>
                 }
               </select></label
@@ -139,6 +119,7 @@
                 aria-label="Departamento *"
                 formControlName="department_code"
               >
+                @if (shipment()) { <option value="">Sin asignar</option> }
                 @for (code of catalogs().department_codes; track code) {
                   <option [value]="code">
                     {{ code }} · {{ departments[code] || code }}
@@ -147,7 +128,6 @@
               </select></label
             >
           </div>
-        }
         <div class="section-title">
           <span>02</span>
           <h3>
@@ -157,13 +137,7 @@
           </h3>
         </div>
         <div class="form-grid">
-          <label
-            >Estado<select aria-label="Estado" formControlName="status">
-              @for (code of statusCodes; track code) {
-                <option [value]="code">{{ status[code] }}</option>
-              }
-            </select></label
-          >
+          <label>Estado<input aria-label="Estado" formControlName="status" list="shipment-status-options" maxlength="100" placeholder="Escribe o elige un estado" /></label>
           <label
             >Planta<input
               formControlName="plant_code"
@@ -203,34 +177,8 @@
           <label
             >Fecha de entrega<input type="date" formControlName="delivery_date"
           /></label>
-          <label
-            >Carrier / Agente aduanal<select
-              aria-label="Carrier / Agente aduanal"
-              formControlName="carrier_broker_id"
-            >
-              <option value="">Sin asignar</option>
-              @for (s of suppliers(); track s.id) {
-                <option [value]="s.id" [disabled]="!s.is_active">
-                  {{ s.legal_name }}{{ s.is_active ? "" : " (inactivo)" }}
-                </option>
-              }
-            </select></label
-          >
-          @if (sea) {
-            <label
-              >Naviera<select
-                aria-label="Naviera"
-                formControlName="shipping_line_id"
-              >
-                <option value="">Sin asignar</option>
-                @for (s of suppliers(); track s.id) {
-                  <option [value]="s.id" [disabled]="!s.is_active">
-                    {{ s.legal_name }}
-                  </option>
-                }
-              </select></label
-            >
-          }
+          <label>Carrier / Agente aduanal<input aria-label="Carrier / Agente aduanal" formControlName="carrier_broker_id" list="shipment-supplier-options" maxlength="250" placeholder="Escribe el nombre o elige uno" /></label>
+          <label>Naviera<input aria-label="Naviera" formControlName="shipping_line_id" list="shipment-supplier-options" maxlength="250" placeholder="Escribe el nombre o elige uno" /></label>
         </div>
         @if (shipment()) {
           <div class="section-title">
@@ -337,7 +285,7 @@
   <footer class="editor-footer">
     <span class="hint">{{
       shipment()
-        ? "La referencia conserva su identidad."
+        ? "Todos los campos del embarque se pueden modificar."
         : "* Campos obligatorios"
     }}</span>
     <div>
@@ -368,3 +316,14 @@
     </div>
   </footer>
 </dialog>
+
+<datalist id="shipment-operation-options">
+  @for (label of excelOperations; track label) { <option [value]="label"></option> }
+  @for (code of catalogs().operation_codes; track code) { <option [value]="code">{{ operations[code] || code }}</option> }
+</datalist>
+<datalist id="shipment-status-options">
+  @for (code of statusCodes; track code) { <option [value]="status[code]">{{ code }}</option> }
+</datalist>
+<datalist id="shipment-supplier-options">
+  @for (supplier of suppliers(); track supplier.id) { @if (supplier.is_active) { <option [value]="supplier.legal_name">{{ supplier.code }}</option> } }
+</datalist>

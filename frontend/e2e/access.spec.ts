@@ -35,14 +35,11 @@ test("production build uses real access flow and offers an isolated read-only pr
   await page.getByRole("button", { name: "Ver demostración" }).click();
   await expect(page.locator(".demo-banner")).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await page
     .getByLabel("Responsable del master", { exact: true })
     .selectOption("demo-owner-1");
-  await page
-    .getByLabel("Tipo de operación del master", { exact: true })
-    .selectOption("SI");
-  await page.getByRole("button", { name: "Abrir master", exact: true }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody tr").first()).toContainText("01/10/2026");
   await expect(
     page.getByRole("button", { name: "Nuevo embarque" }),
@@ -69,4 +66,80 @@ test("production build uses real access flow and offers an isolated read-only pr
   ).toBeVisible();
   expect(apiCalls).toHaveLength(1);
   expect(errors).toEqual([]);
+});
+
+test("practice edits persist only in the browser, survive reopening and can be reset", async ({ page }) => {
+  const apiCalls: string[] = [];
+  await page.route("**/api/v1/**", route => {
+    apiCalls.push(route.request().method() + " " + route.request().url());
+    return route.fulfill({ json: { enabled: false, authority: null, frontend_client_id: null, scope: null } });
+  });
+  await page.goto("http://127.0.0.1:4301/");
+  await page.getByRole("button", { name: "Practicar con el master", exact: true }).click();
+  await expect(page.locator(".demo-banner")).toContainText("Guardado en este navegador");
+  const origin = page.locator('td[data-row="0"][data-field="origin"]');
+  await expect(page.locator("tbody tr")).toHaveCount(50);
+  await origin.dblclick();
+  await page.getByLabel("Editar Origen", { exact: true }).fill("Origen ficticio modificado");
+  await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  for (const [field, value] of [["reference_raw", "REFERENCIA DE PRACTICA"], ["company_code", "MXT"], ["business_unit", "M46"], ["operation_code", "R1"]]) {
+    await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
+    await page.keyboard.type(value);
+    await page.keyboard.press("Enter");
+  }
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".sheet-message")).toContainText("en este navegador");
+  await page.reload();
+  await page.getByRole("button", { name: "Practicar con el master", exact: true }).click();
+  await expect(origin).toHaveText("Origen ficticio modificado");
+  await expect(page.locator('td[data-row="0"][data-field="reference_raw"] .cell-text')).toHaveText("REFERENCIA DE PRACTICA");
+  await expect(page.locator('td[data-row="0"][data-field="company_code"]')).toHaveText("MXT");
+  await expect(page.locator('td[data-row="0"][data-field="business_unit"]')).toHaveText("M46");
+  await expect(page.locator('td[data-row="0"][data-field="operation_code"]')).toHaveText("Rectificación de pedimento");
+  await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
+  await page.getByRole("button", { name: "Actualizar", exact: true }).click();
+  await expect(origin).toHaveText("Origen ficticio modificado");
+  await page.getByRole("button", { name: "Ampliar master", exact: true }).click();
+  await expect(page.locator(".practice-label")).toBeVisible();
+  await page.screenshot({ path: "test-results/practice-master.png", fullPage: true });
+  await page.getByRole("button", { name: "Salir de vista ampliada", exact: true }).click();
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Restablecer práctica", exact: true }).click();
+  await expect(origin).toHaveText("Shanghái, CN");
+  expect(apiCalls.every(call => call.startsWith("GET ") && call.endsWith("/auth/config"))).toBeTruthy();
+  await page.getByRole("button", { name: "Salir de demo", exact: true }).click();
+  await page.getByRole("button", { name: "Ver demostración", exact: true }).click();
+  await expect(page.locator(".demo-banner")).toContainText("Solo lectura");
+});
+
+test("practice retains unsaved cells when browser storage cannot confirm the write", async ({ page }) => {
+  await page.route("**/api/v1/**", route => route.fulfill({ json: { enabled: false } }));
+  await page.goto("http://127.0.0.1:4301/");
+  await page.getByRole("button", { name: "Practicar con el master", exact: true }).click();
+  await page.locator('td[data-row="0"][data-field="origin"]').dblclick();
+  await page.getByLabel("Editar Origen", { exact: true }).fill("Conservar este cambio");
+  await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === "masterlogistica.master-practice.v1") throw new DOMException("Storage full", "QuotaExceededError");
+      return setItem.call(this, key, value);
+    };
+  });
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.getByRole("alert")).toContainText("No se pudo guardar en este navegador");
+  await expect(page.locator(".save-state")).toContainText("1 celdas sin guardar");
+  await expect(page.locator('td[data-row="0"][data-field="origin"]')).toHaveText("Conservar este cambio");
+});
+
+test("corrupted practice reports the problem and can recover without touching the API", async ({ page }) => {
+  await page.route("**/api/v1/**", route => route.fulfill({ json: { enabled: false } }));
+  await page.goto("http://127.0.0.1:4301/");
+  await page.evaluate(() => localStorage.setItem("masterlogistica.master-practice.v1", "invalid stored data"));
+  await page.getByRole("button", { name: "Practicar con el master", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("No se pudo leer la práctica guardada");
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Restablecer práctica", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(50);
+  await expect(page.getByRole("button", { name: "Guardar cambios", exact: false })).toBeDisabled();
 });

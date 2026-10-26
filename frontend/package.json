@@ -23,9 +23,12 @@
   },
   "devDependencies": {
     "@angular/build": "21.2.25",
-    "@angular/cli": "21.2.25",
+    "@angular/cli": "21.2.27",
     "@angular/compiler-cli": "21.2.25",
     "@playwright/test": "1.58.2",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "rollup": "4.63.4"
   }
 }

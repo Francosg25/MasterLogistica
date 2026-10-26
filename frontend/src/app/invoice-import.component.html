@@ -1,0 +1,57 @@
+<section class="import-panel" aria-label="Importar consolidado">
+  <div class="workspace-heading">
+    <div><h2>Cargar facturas de Excel</h2><p class="hint">Elige el archivo, revisa las facturas y guarda las que están listas.</p></div>
+    <button class="button subtle" (click)="close()" [disabled]="busy()">Volver a facturas</button>
+  </div>
+  <details class="import-guide">
+    <summary>¿Cómo se relacionan las facturas?</summary>
+    <ol>
+      <li>Busca la referencia del Excel en el master de la empresa indicada. También reconoce sus referencias anteriores registradas.</li>
+      <li>Revisa proveedor, concepto y el importe completo de USD AMOUNT. FREIGHT, BROKER, STORAGE y OTROS se mantienen separados.</li>
+      <li>Muestra las facturas listas, las que necesitan revisión y las que ya están registradas. Elige <strong>Guardar facturas</strong> para confirmar las listas.</li>
+      <li>Al guardar, aplica el importe a las provisiones compatibles en USD. Lo que no tenga provisión disponible queda pendiente.</li>
+    </ol>
+    <p>Usa el consolidado .xlsx con la hoja CONSOLIDADO y su año. Una referencia que no existe requiere corregirse o registrarse en el master antes de importar.</p>
+  </details>
+  <div class="import-controls">
+    <label>Mes del consolidado<input type="month" [(ngModel)]="month" (ngModelChange)="invalidate()" [disabled]="busy()" required /></label>
+    <label class="import-file">Archivo consolidado (.xlsx)<input type="file" accept=".xlsx" (change)="choose($event)" [disabled]="busy()" /></label>
+    @if (filename) { <button class="button secondary" (click)="analyze()" [disabled]="busy() || !month">Revisar archivo</button> }
+  </div>
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="success" role="status">{{ notice() }}</p> }
+  @if (busy()) { <p role="status">Revisando el Excel…</p> }
+  @if (stale()) { <p class="notice">Los datos cambiaron. Pulsa Revisar archivo antes de guardar.</p> }
+  @if (preview(); as p) {
+    <div class="import-review-bar">
+      <span>{{ filename }} · {{ p.counts['READY'] }} listas · {{ p.counts['REVIEW'] }} por revisar</span>
+      <label>Mostrar<select aria-label="Mostrar facturas del Excel" [ngModel]="filter()" (ngModelChange)="filter.set($event); offset.set(0)">
+        @for (s of statuses; track s) { <option [value]="s">{{ labels[s] }} ({{ p.counts[s] }})</option> }
+      </select></label>
+      <button class="button primary" [disabled]="busy() || stale() || !p.counts['READY']" (click)="confirm()">Guardar {{ p.counts['READY'] }} facturas</button>
+    </div>
+    <div class="finance-scroll"><table class="finance-table import-table"><thead><tr><th>Factura</th><th>Proveedor / empresa</th><th>Referencia</th><th class="number">Importe USD</th><th>Estado</th></tr></thead><tbody>
+      @for (group of visible(); track group.key) {
+        <tr>
+          <td><strong>{{ group.invoice_number || 'Sin folio' }}</strong></td>
+          <td>{{ group.supplier_name }}<small>{{ group.company }}</small></td>
+          <td>
+            @if (group.rows.length === 1) { {{ group.rows[0].reference }}<small>{{ conceptLabel(group.rows[0].charge_code) }}</small> }
+            @else { <details><summary>{{ group.rows.length }} referencias</summary>@for (row of group.rows; track row.row) { <p>{{ row.reference }} · {{ conceptLabel(row.charge_code) }} · {{ money(row.usd_amount) }} USD</p> }</details> }
+          </td>
+          <td class="number">{{ money(group.usd_amount) }}</td>
+          <td>{{ labels[group.status] }}@for (issue of group.issues; track $index) { <p class="import-issue">{{ issue }}</p> }</td>
+        </tr>
+      } @empty { <tr><td colspan="5">No hay facturas en este estado.</td></tr> }
+    </tbody></table></div>
+    <div class="table-footer"><span>{{ filtered().length }} facturas · {{ filtered().length ? offset() + 1 : 0 }}–{{ offset() + visible().length }}</span><div class="pagination"><button class="button subtle" [disabled]="offset() === 0" (click)="offset.set(offset() - 20)">Anterior</button><button class="button subtle" [disabled]="offset() + 20 >= filtered().length" (click)="offset.set(offset() + 20)">Siguiente</button></div></div>
+    @if (p.counts['REVIEW']) {
+      <p class="hint">Las facturas por revisar no se guardan. Corrige las filas indicadas en el Excel y vuelve a cargarlo.</p>
+      <details class="import-mappings"><summary>Corregir nombres del Excel</summary>
+        <p class="hint">Úsalo si una empresa o proveedor tiene un nombre distinto en el Excel. Después pulsa Revisar archivo.</p>
+        <div class="import-controls">@for (company of p.companies; track company) {<label>{{ company }}<select [attr.aria-label]="'Compañía para ' + company" [ngModel]="companyMap[company] || ''" (ngModelChange)="companyMap[company] = $event; invalidate()" [disabled]="busy()"><option value="">Usar código del Excel</option>@for (c of companies; track c) {<option [value]="c">{{ c }}</option>}</select></label>}</div>
+        <div class="supplier-mappings">@for (supplier of p.suppliers; track supplier) {<label>{{ supplier }}<select [attr.aria-label]="'Proveedor para ' + supplier" [ngModel]="supplierMap[supplier] || ''" (ngModelChange)="supplierMap[supplier] = $event; invalidate()" [disabled]="busy()"><option value="">Usar nombre del Excel</option>@for (s of suppliers; track s.id) {@if (s.is_active) {<option [value]="s.id">{{ s.legal_name }}</option>}}</select></label>}</div>
+      </details>
+    }
+  }
+</section>

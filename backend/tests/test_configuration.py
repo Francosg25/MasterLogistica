@@ -35,6 +35,7 @@ def test_production_requires_secure_configuration(settings):
     assert Settings(_env_file=None, **values).app_env == "production"
     for field, invalid in [
         ("allowed_hosts", ["*"]),
+        ("allowed_hosts", ["*.example.com"]),
         ("allowed_origins", ["http://app.example.com"]),
         ("entra_allowed_client_ids", []),
         ("migration_database_url", "postgresql+psycopg://admin@example.com/db"),
@@ -50,7 +51,7 @@ def test_configuration_error_redacts_password():
     assert password not in str(error.value)
 
 
-@pytest.mark.parametrize("catalog", [{"TOOLONG": "Example"}, {"T01": " "}, {"t01": "Example"}])
+@pytest.mark.parametrize("catalog", [{"TOOLONG": "Example"}, {"M01": " "}, {"t01": "Example"}])
 def test_business_unit_catalog_requires_valid_codes_and_names(settings, catalog):
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **{**settings.model_dump(), "business_units": catalog})
@@ -63,7 +64,7 @@ def test_new_shipment_rejects_legacy_process():
             process_code="DR",
             operation_code="F4",
             reference_year=2026,
-            business_unit="T01",
+            business_unit="M01",
             department_code="CTM",
         )
 
@@ -146,3 +147,19 @@ def test_browser_auth_config_requires_an_allowed_frontend(settings, rsa_key):
             result = client.get("/api/v1/auth/config")
             assert result.status_code == 200
             assert result.json()["enabled"] is expected
+
+
+@pytest.mark.parametrize("concept", ["FREIGHT", "BROKER", "STORAGE"])
+def test_provision_exact_date_derives_its_accounting_month(concept):
+    row = ProvisionCreate(
+        shipment_id="50000000-0000-0000-0000-000000000001",
+        supplier_id="60000000-0000-0000-0000-000000000001",
+        charge_code=concept,
+        provision_date="2026-10-23",
+    )
+    assert row.provision_date.isoformat() == "2026-10-23"
+    assert row.month_accrued.isoformat() == "2026-10-01"
+    with pytest.raises(ValidationError):
+        ProvisionCreate(**{**row.model_dump(), "month_accrued": "2026-11-01"})
+    with pytest.raises(ValidationError):
+        ProvisionCreate(**{**row.model_dump(), "charge_code": "HANDLING"})

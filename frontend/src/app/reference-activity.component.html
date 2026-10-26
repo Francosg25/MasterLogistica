@@ -1,0 +1,17 @@
+<dialog #dialog class="activity-dialog" aria-labelledby="activity-title" (cancel)="$event.preventDefault(); closed.emit()">
+  <header class="editor-head"><div><p class="eyebrow">MOVIMIENTOS POR REFERENCIA</p><h2 id="activity-title">{{ reference }}</h2><p>Provisiones, facturas y cambios registrados.</p></div><button class="button subtle" (click)="closed.emit()">Cerrar movimientos</button></header>
+  <div class="activity-content">
+    @if (loading()) {<p role="status">Cargando movimientos…</p>}
+    @if (error()) {<p class="error" role="alert">{{ error() }}</p>}
+    @if (demo) {<p class="notice">Demostración · Solo movimientos ficticios disponibles para esta referencia.</p>}
+    @if (data(); as d) {
+      <h3>Provisiones y saldo actual</h3>
+      <div class="finance-scroll"><table class="finance-table"><thead><tr><th>Origen</th><th>Proveedor / concepto</th><th>Provisión</th><th>Saldo</th><th>Estado</th></tr></thead><tbody>@for (p of d.provisions; track p.id) {<tr><td>{{ p.provision_date ? p.provision_date.split('-').reverse().join('/') : p.month.slice(0, 7) }}</td><td>{{ p.supplier }}<small>{{ conceptLabel(p.concept) }}</small></td><td>{{ money(p.total) }} {{ p.currency }}</td><td>{{ money(p.balance) }} {{ p.currency }}</td><td>{{ labels[p.status] }}</td></tr>} @empty {<tr><td colspan="5">Sin provisiones registradas.</td></tr>}</tbody></table></div>
+      <h3>Facturas de esta referencia</h3>
+      <div class="finance-scroll"><table class="finance-table"><thead><tr><th>Factura / mes</th><th>Proveedor / concepto</th><th>Importe</th><th>Aplicado</th><th>Estado</th></tr></thead><tbody>@for (i of d.invoices; track i.id) {<tr><td>{{ i.invoice_number }}<small>{{ i.month.slice(0, 7) }}</small></td><td>{{ i.supplier }}<small>{{ conceptLabel(i.concept) }}</small></td><td>{{ money(i.amount) }} {{ i.currency }}<small>{{ i.amount_basis === 'USD_AMOUNT' ? 'USD AMOUNT completo' : 'Captura neta' }}</small></td><td>{{ money(i.applied) }} {{ i.currency }}</td><td>{{ labels[i.status] }}</td></tr>} @empty {<tr><td colspan="5">Sin facturas registradas.</td></tr>}</tbody></table></div>
+      <h3>Historial de movimientos y cambios</h3>
+      <div class="activity-timeline">@for (h of d.history.items; track h.id) {<article><strong>{{ events[h.event_type] || h.event_type }}</strong><p>{{ h.actor_name }} · {{ date(h.occurred_at) }}</p><details><summary>Ver detalle del cambio</summary>@for (c of h.changes; track c.field) {<p>{{ fields[c.field] || c.field }}: {{ value(c.before) }} → {{ value(c.after) }}</p>}</details></article>} @empty {<p>Sin cambios registrados.</p>}</div>
+      @if (d.history.items.length < d.history.total) {<button class="button secondary" (click)="more()" [disabled]="loading()">Cargar más movimientos</button>}
+    }
+  </div>
+</dialog>

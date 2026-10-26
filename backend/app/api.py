@@ -9,7 +9,14 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.auth import admin_user, consolidated, current_user, master_writer, operational_user
+from app.auth import (
+    admin_user,
+    can_edit_masters,
+    consolidated,
+    current_user,
+    master_writer,
+    operational_user,
+)
 from app.db import get_session
 from app.models import (
     AccountingPeriod,
@@ -28,7 +35,10 @@ from app.references import (
     VERSION,
     generate_reference,
     normalize_identifier,
+    normalize_reference,
+    operation_classification,
     parse_reference,
+    reserve_manual_sequence,
 )
 from app.schemas import (
     AuditRead,
@@ -63,6 +73,12 @@ Admin = Annotated[User, Depends(admin_user)]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0, le=1000000)]
 ADMIN_LOCK = 638917240
+
+
+def lock_administration(session):
+    # Local SQLite transactions already hold BEGIN IMMEDIATE's database write lock.
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_LOCK})
 
 
 def owned(statement, user):
@@ -148,9 +164,19 @@ def open_period(session, month):
 @router.get("/auth/config", tags=["Authentication"])
 def auth_config(request: Request):
     s = request.app.state.settings
+    if s.auth_mode == "development":
+        return {
+            "enabled": False,
+            "auth_mode": "development",
+            "storage": "sqlite",
+            "authority": None,
+            "frontend_client_id": None,
+            "scope": None,
+        }
     enabled = s.entra_configured and s.entra_frontend_client_id in s.entra_allowed_client_ids
     return {
         "enabled": enabled,
+        "auth_mode": "entra",
         "authority": s.authority if enabled else None,
         "api_client_id": str(s.entra_api_client_id) if enabled else None,
         "frontend_client_id": str(s.entra_frontend_client_id)
@@ -166,16 +192,44 @@ def me(user: Actor):
 
 
 @router.get("/references/catalogs", tags=["References"])
-def reference_catalogs(request: Request, user: Actor):
+def reference_catalogs(request: Request, user: Actor, session: DB):
+    can_edit = can_edit_masters(user)
+    units_configured = bool(request.app.state.settings.business_units)
+    analyst_assigned = getattr(user, "analyst_code", None) is not None
+    companies = select(Shipment.company_code, Shipment.operation_code, Shipment.status).distinct()
+    if user.role == "OPERATOR":
+        companies = companies.where(Shipment.owner_id == user.id)
+    catalog_rows = session.execute(companies).all()
     return {
         "version": VERSION,
         "process_codes": sorted(PROCESSES),
-        "operation_codes": sorted(OPERATIONS),
+        "operation_codes": sorted(
+            set(OPERATIONS) | {r.operation_code for r in catalog_rows if r.operation_code}
+        ),
+        "shipment_statuses": sorted({r.status for r in catalog_rows if r.status}),
         "department_codes": sorted(DEPARTMENTS),
         "business_units": request.app.state.settings.business_units,
         "business_units_configured": bool(request.app.state.settings.business_units),
         "sequence_digits": 4,
-        "company_codes": request.app.state.settings.company_codes,
+        "company_codes": sorted(
+            set(request.app.state.settings.company_codes) | {r.company_code for r in catalog_rows}
+        ),
+        "master_access": {
+            "can_edit": can_edit,
+            "can_create": can_edit
+            and units_configured
+            and (analyst_assigned or user.role == "SUPER_ADMIN"),
+            "edit_scope": "ALL" if user.role == "SUPER_ADMIN" else "OWN" if can_edit else "NONE",
+            "read_only_reason": None
+            if can_edit
+            else (
+                "Tu perfil de Gerencia permite consultar los masters. "
+                "La edición corresponde a Operaciones y Administración."
+                if user.role == "MANAGER"
+                else "Tu perfil de Finanzas permite consultar los masters. "
+                "La edición operativa corresponde a Operaciones y Administración."
+            ),
+        },
     }
 
 
@@ -202,7 +256,7 @@ def users(session: DB, user: Admin, limit: Limit = 50, offset: Offset = 0):
 @router.post("/users", response_model=UserRead, status_code=201, tags=["Administration"])
 def create_user(data: UserCreate, request: Request, session: DB, user: Admin):
     tenant_id = request.app.state.settings.entra_tenant_id
-    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_LOCK})
+    lock_administration(session)
     row = User(entra_tenant_id=tenant_id, **data.model_dump(exclude={"last_reference_sequence"}))
     session.add(row)
     # Flush inside record_change catches uniqueness failures. Counter references a preassigned UUID.
@@ -216,7 +270,7 @@ def create_user(data: UserCreate, request: Request, session: DB, user: Admin):
 
 @router.patch("/users/{user_id}", response_model=UserRead, tags=["Administration"])
 def patch_user(user_id: UUID, data: UserPatch, request: Request, session: DB, user: Admin):
-    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMIN_LOCK})
+    lock_administration(session)
     row = session.get(User, user_id)
     if row is None:
         raise HTTPException(404, "User not found")
@@ -316,6 +370,9 @@ def filtered_shipments(
         statement = statement.where(
             or_(
                 Shipment.reference_raw.icontains(value, autoescape=True),
+                Shipment.company_code.icontains(value, autoescape=True),
+                Shipment.carrier_broker_name.icontains(value, autoescape=True),
+                Shipment.shipping_line_name.icontains(value, autoescape=True),
                 Shipment.sender.icontains(value, autoescape=True),
                 Shipment.consignee.icontains(value, autoescape=True),
                 Shipment.id.in_(identifiers),
@@ -370,14 +427,18 @@ def shipments(
 
 def master_statement(
     user: Actor,
-    owner_id: UUID,
-    operation_code: Operation,
+    operation_code: Operation | None = None,
+    owner_id: UUID | None = None,
     statement=Depends(filtered_shipments),
 ):
-    # Both context fields are mandatory. Existing owner authorization remains in the query.
-    if not consolidated(user) and owner_id != user.id:
+    # Owner is optional for consolidated roles; operators retain their existing scope.
+    if not consolidated(user) and owner_id is not None and owner_id != user.id:
         raise HTTPException(403, "Cannot access another owner's master")
-    return statement.where(Shipment.owner_id == owner_id, Shipment.operation_code == operation_code)
+    if owner_id:
+        statement = statement.where(Shipment.owner_id == owner_id)
+    return (
+        statement.where(Shipment.operation_code == operation_code) if operation_code else statement
+    )
 
 
 @router.get("/masters/shipments", response_model=Page[ShipmentRead], tags=["Masters"])
@@ -397,21 +458,40 @@ def shipment_detail(shipment_id: UUID, session: DB, user: Actor):
     return shipment_for(session, user, shipment_id)
 
 
+def shipment_supplier_values(session, values):
+    """Keep a catalog link or a manual name, never a stale link behind new text."""
+    for prefix in ("carrier_broker", "shipping_line"):
+        id_key, name_key = prefix + "_id", prefix + "_name"
+        if name_key in values:
+            values[name_key] = (values[name_key] or "").strip() or None
+            if values[name_key]:
+                values[id_key] = None
+        if id_key in values:
+            supplier_valid(session, values[id_key])
+            if name_key not in values or values[id_key]:
+                values[name_key] = None
+    return values
+
+
 @router.post("/shipments", response_model=ShipmentRead, status_code=201, tags=["Masters"])
 def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: MasterWriter):
-    if data.company_code not in request.app.state.settings.company_codes:
-        raise HTTPException(422, "Company code is not configured")
+    owner = user
+    if data.owner_id is not None and data.owner_id != user.id:
+        if user.role != "SUPER_ADMIN":
+            raise HTTPException(403, "Solo Administración puede crear en otro master")
+        owner = session.get(User, data.owner_id)
+        if owner is None or not owner.is_active or owner.analyst_code not in range(1, 6):
+            raise HTTPException(422, "Selecciona un responsable activo del master")
     catalog = request.app.state.settings.business_units
     if not catalog:
         raise HTTPException(503, "An approved business unit catalog must be configured")
     if data.business_unit not in catalog:
         raise HTTPException(422, "Business unit is not in the approved catalog")
-    supplier_valid(session, data.carrier_broker_id)
-    supplier_valid(session, data.shipping_line_id)
+    values = shipment_supplier_values(session, data.model_dump(exclude={"owner_id"}))
     try:
         reference, sequence = generate_reference(
             session,
-            user,
+            owner,
             process=data.process_code,
             operation=data.operation_code,
             year=data.reference_year,
@@ -421,12 +501,12 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         )
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
-    mode, service, direction = OPERATIONS[data.operation_code]
+    mode, service, direction = operation_classification(data.operation_code)
     row = Shipment(
-        **data.model_dump(),
-        owner_id=user.id,
+        **values,
+        owner_id=owner.id,
         reference_raw=reference,
-        reference_normalized=reference,
+        reference_normalized=normalize_reference(reference),
         normalization_version=VERSION,
         reference_sequence=sequence,
         transport_mode=mode,
@@ -442,7 +522,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
             shipment_id=row.id,
             kind="REFERENCE",
             raw_value=reference,
-            normalized_value=reference,
+            normalized_value=normalize_reference(reference),
             normalization_version=VERSION,
         )
     )
@@ -451,17 +531,20 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
     )
 
 
-def add_reference_alias(session, row, suffix):
-    if row.reference_normalized is None:
-        raise HTTPException(
-            409, "Shipment requires a normalized base reference before adding aliases"
-        )
-    value = f"{row.reference_normalized}.{suffix}"
+def remember_reference(session, row, raw, normalized, version):
+    if any(
+        isinstance(item, ShipmentIdentifier)
+        and item.shipment_id == row.id
+        and item.kind == "REFERENCE"
+        and item.normalized_value == normalized
+        for item in session.new
+    ):
+        return
     existing = session.scalar(
         select(ShipmentIdentifier.id).where(
             ShipmentIdentifier.shipment_id == row.id,
             ShipmentIdentifier.kind == "REFERENCE",
-            ShipmentIdentifier.normalized_value == value,
+            ShipmentIdentifier.normalized_value == normalized,
         )
     )
     if existing is None:
@@ -469,11 +552,52 @@ def add_reference_alias(session, row, suffix):
             ShipmentIdentifier(
                 shipment_id=row.id,
                 kind="REFERENCE",
-                raw_value=value,
-                normalized_value=value,
-                normalization_version=row.normalization_version or VERSION,
+                raw_value=raw,
+                normalized_value=normalized,
+                normalization_version=version,
             )
         )
+
+
+def add_reference_alias(session, row, suffix):
+    if row.reference_normalized is None:
+        raise HTTPException(
+            409, "Shipment requires a normalized base reference before adding aliases"
+        )
+    value = f"{row.reference_normalized}.{suffix}"
+    remember_reference(session, row, value, value, row.normalization_version or VERSION)
+
+
+def edit_reference(session, row, raw):
+    normalized = normalize_reference(raw) if raw else None
+    if normalized and len(normalized) > 160:
+        raise HTTPException(422, "La referencia normalizada admite hasta 160 caracteres")
+    if normalized:
+        aliases = select(ShipmentIdentifier.shipment_id).where(
+            ShipmentIdentifier.kind == "REFERENCE",
+            ShipmentIdentifier.normalized_value == normalized,
+        )
+        if session.scalar(
+            select(Shipment.id).where(
+                Shipment.id != row.id,
+                or_(Shipment.reference_normalized == normalized, Shipment.id.in_(aliases)),
+            )
+        ):
+            raise HTTPException(422, "La referencia ya pertenece a otro embarque")
+    if row.reference_raw and row.reference_normalized:
+        remember_reference(
+            session,
+            row,
+            row.reference_raw,
+            row.reference_normalized,
+            row.normalization_version or VERSION,
+        )
+    row.reference_raw = raw
+    row.reference_normalized = normalized
+    row.normalization_version = VERSION if normalized else None
+    if normalized:
+        remember_reference(session, row, raw, normalized, VERSION)
+        reserve_manual_sequence(session, session.get(User, row.owner_id), raw)
 
 
 @router.patch("/shipments/{shipment_id}", response_model=ShipmentRead, tags=["Masters"])
@@ -483,8 +607,13 @@ def patch_shipment(
     row = shipment_for(session, user, shipment_id)
     version_matches(row, data.expected_version)
     updates = data.model_dump(exclude_unset=True, exclude={"expected_version"})
-    for field in {"carrier_broker_id", "shipping_line_id"} & updates.keys():
-        supplier_valid(session, updates[field])
+    if (
+        updates.get("business_unit") is not None
+        and updates["business_unit"] != row.business_unit
+        and updates["business_unit"] not in request.app.state.settings.business_units
+    ):
+        raise HTTPException(422, "Selecciona M01, M19, M23, M45 o M46")
+    shipment_supplier_values(session, updates)
     expedited = updates.get("expedited_status", row.expedited_status)
     approval = updates.get("pfa_approval_code", row.pfa_approval_code)
     if (expedited == "APPROVED") != bool(approval):
@@ -493,15 +622,21 @@ def patch_shipment(
             "Approved expedited status requires a PFA approval code; other statuses must clear it",
         )
     before = ShipmentRead.model_validate(row).model_dump(mode="json")
-    for key, value in updates.items():
-        setattr(row, key, value)
     # Avoid autoflush: all writes, constraints and audit commit are handled atomically below.
     with session.no_autoflush:
-        if row.damaged_material:
+        if "reference_raw" in updates and updates["reference_raw"] != row.reference_raw:
+            edit_reference(session, row, updates.pop("reference_raw"))
+        for key, value in updates.items():
+            setattr(row, key, value)
+        if "operation_code" in updates:
+            row.transport_mode, row.service_category, row.direction = operation_classification(
+                row.operation_code
+            )
+        if row.damaged_material and row.reference_normalized:
             add_reference_alias(session, row, "DMR")
-        if expedited == "PENDING":
+        if expedited == "PENDING" and row.reference_normalized:
             add_reference_alias(session, row, "PFA")
-        elif expedited == "APPROVED":
+        elif expedited == "APPROVED" and row.reference_normalized:
             add_reference_alias(session, row, approval)
     return record_change(
         session,

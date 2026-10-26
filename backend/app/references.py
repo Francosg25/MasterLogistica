@@ -5,7 +5,9 @@ import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models import ReferenceCounter, User
@@ -32,6 +34,26 @@ OPERATIONS = {
     "F5": (None, "COMPLIANCE", "N"),
     "R1": (None, "COMPLIANCE", "N"),
 }
+# Labels used in the source masters. Unknown labels remain valid manual text.
+EXCEL_OPERATIONS = {
+    "LANDIMPO": "LI",
+    "LANDEXPO": "LE",
+    "AIRIMPO": "AI",
+    "AIREXPO": "AE",
+    "SEAIMPO": "SI",
+    "SEAEXPO": "SE",
+}
+
+
+def reference_operation(value: str) -> str:
+    cleaned = re.sub(r"\s+", "", unicodedata.normalize("NFKC", value)).upper()
+    return EXCEL_OPERATIONS.get(cleaned, cleaned)
+
+
+def operation_classification(value):
+    return OPERATIONS.get(reference_operation(value or ""), (None, "FREIGHT", "N"))
+
+
 PATTERN = re.compile(
     r"(?P<process>RM|AF|FG|CR|DR|FA)(?P<analyst>[1-9])-"
     r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5|R1)"
@@ -110,14 +132,18 @@ def generate_reference(
 ) -> tuple[str, int]:
     if user.analyst_code is None:
         raise ValueError("Assign an analyst code before creating operations")
-    if process not in PROCESSES or operation not in OPERATIONS or department not in DEPARTMENTS:
+    if process not in PROCESSES or department not in DEPARTMENTS:
         raise ValueError("Unsupported reference catalog code")
+    if not operation.strip() or len(operation) > 100:
+        raise ValueError("Capture an operation up to 100 characters")
+    operation = reference_operation(operation)
     if not 2000 <= year <= 2099 or not re.fullmatch(r"[A-Z0-9]{3}", business_unit, re.ASCII):
         raise ValueError("Invalid reference year or business unit")
     if not business_units or business_unit not in business_units:
         raise ValueError("Business unit must belong to the configured approved catalog")
     # UPSERT locks the owner's counter until the transaction commits; rollback consumes no number.
-    statement = insert(ReferenceCounter).values(owner_id=user.id, last_value=1)
+    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
+    statement = insert_row(ReferenceCounter).values(owner_id=user.id, last_value=1)
     statement = statement.on_conflict_do_update(
         index_elements=[ReferenceCounter.owner_id],
         set_={"last_value": ReferenceCounter.last_value + 1},
@@ -130,6 +156,37 @@ def generate_reference(
         f"{process}{user.analyst_code}-{sequence:04d}{operation}{year % 100:02d}"
         f"-{business_unit}-{department}"
     ), sequence
+
+
+def normalize_reference(raw: str) -> str:
+    """Use the official key when recognized, otherwise accept the manual reference."""
+    try:
+        return parse_reference(raw).normalized
+    except ValueError:
+        return re.sub(r"\s+", "", unicodedata.normalize("NFKC", raw)).upper()
+
+
+def reserve_manual_sequence(session: Session, owner: User, raw: str) -> None:
+    """Keep automatic numbering ahead of a manually entered number for this owner."""
+    try:
+        parsed = parse_reference(raw)
+    except ValueError:
+        return
+    if parsed.analyst_code != owner.analyst_code or parsed.sequence > 9999:
+        return
+    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
+    statement = insert_row(ReferenceCounter).values(owner_id=owner.id, last_value=parsed.sequence)
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[ReferenceCounter.owner_id],
+            set_={
+                "last_value": case(
+                    (ReferenceCounter.last_value < parsed.sequence, parsed.sequence),
+                    else_=ReferenceCounter.last_value,
+                )
+            },
+        )
+    )
 
 
 def normalize_identifier(raw: str) -> str:

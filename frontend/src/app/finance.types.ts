@@ -1,5 +1,15 @@
-export type Section = "masters" | "provisions" | "invoices" | "history";
+export type Section = "home" | "masters" | "provisions" | "invoices" | "history";
+export const INVOICE_CONCEPTS = [
+  { value: "FREIGHT", label: "FREIGHT" },
+  { value: "BROKER", label: "BROKER" },
+  { value: "STORAGE", label: "STORAGE" },
+  { value: "OTHER", label: "OTROS" },
+];
+export function conceptLabel(value: string): string {
+  return INVOICE_CONCEPTS.find(concept => concept.value === value)?.label ?? value;
+}
 export interface Balance {
+  shipment_id?: string;
   id: string;
   row_version: number;
   reference: string;
@@ -11,6 +21,7 @@ export interface Balance {
   charge_code: string;
   line_no: number;
   month_accrued: string;
+  provision_date?: string | null;
   period_month: string;
   currency: string;
   total_amount: string;
@@ -31,6 +42,8 @@ export interface CurrencyTotal {
   closing_amount: string;
 }
 export interface InvoiceRow {
+  amount_basis?: string;
+  source_data?: { filename?: string; sheet?: string; row_numbers?: number[] };
   id: string;
   row_version: number;
   invoice_number: string;
@@ -46,6 +59,7 @@ export interface InvoiceRow {
   applied_amount: string;
   pending_amount: string;
   lines: {
+    shipment_id?: string;
     id: string;
     reference: string;
     charge_code: string;
@@ -103,6 +117,7 @@ export const EVENTS: Record<string, string> = {
   SUPPLIER_CREATED: "Agregó un proveedor",
   SUPPLIER_UPDATED: "Modificó un proveedor",
   PERIOD_CREATED: "Abrió un periodo",
+  PROVISION_CREATED: "Creó una provisión",
   PROVISION_DRAFT_CREATED: "Creó una provisión",
   PROVISION_DRAFT_UPDATED: "Editó una provisión",
   PROVISION_APPROVED: "Aprobó una provisión",
@@ -112,6 +127,9 @@ export const EVENTS: Record<string, string> = {
   INVOICE_CANCELLED: "Canceló una factura",
 };
 export const FIELDS: Record<string, string> = {
+  amount_basis: "Base de conciliación",
+  source_file: "Archivo de origen",
+  source_rows: "Filas de origen",
   status: "Estado",
   balance: "Saldo",
   amount: "Importe",
@@ -121,12 +139,18 @@ export const FIELDS: Record<string, string> = {
   total_amount: "Provisión total",
   extra_charges: "Cargos extra",
   month_accrued: "Mes de origen",
+  automatic: "Aprobación automática",
+  provision_date: "Fecha de provisión",
   accounting_period: "Periodo contable",
   period_month: "Mes del movimiento",
   invoice_number: "Factura",
   reference: "Referencia",
   reference_raw: "Referencia",
   reason: "Motivo",
+  carrier_broker_id: "Transportista / agente del catálogo",
+  carrier_broker_name: "Transportista / agente",
+  shipping_line_id: "Naviera del catálogo",
+  shipping_line_name: "Naviera",
   sender: "Remitente",
   origin: "Origen",
   consignee: "Destinatario",

@@ -17,6 +17,22 @@ pytest_plugins = ["tests.test_integration"]
 D = Decimal
 
 
+@pytest.mark.integration
+def test_reference_picker_company_filter_preserves_owner_scope(environment):
+    e = environment
+    owned = create_shipment(e, company_code="MXG")
+    foreign = create_shipment(e, "two", company_code="MXG")
+    other_company = create_shipment(e, company_code="MXT")
+    path = "/references?company_code=MXG"
+    assert {r["id"] for r in api(e, "get", path)} == {owned["id"], foreign["id"]}
+    assert [r["id"] for r in api(e, "get", path, role="one")] == [owned["id"]]
+    assert [r["id"] for r in api(e, "get", "/references?company_code=MXT", role="one")] == [
+        other_company["id"]
+    ]
+    assert api(e, "get", path + "&q=" + other_company["reference_raw"]) == []
+    api(e, "get", "/references?company_code=" + "X" * 33, expected=422)
+
+
 def api(e, method, path, data=None, role="finance", expected=200):
     response = getattr(e["client"], method)(
         "/api/v1/finance" + path,
@@ -33,22 +49,22 @@ def api(e, method, path, data=None, role="finance", expected=200):
 
 def provision(e, shipment, amount="500", month="2026-10-01", currency="USD", line=1, approve=True):
     api(e, "post", "/periods?period_month=" + month, expected=201)
-    row = api(
-        e,
-        "post",
-        "/provisions",
-        dict(
-            shipment_id=shipment["id"],
-            supplier_id=str(e["supplier_id"]),
-            charge_code="FREIGHT",
-            line_no=line,
-            month_accrued=month,
-            amount=amount,
-            extra_charges="0",
-            currency=currency,
-        ),
-        expected=201,
+    payload = dict(
+        shipment_id=shipment["id"],
+        supplier_id=str(e["supplier_id"]),
+        charge_code="FREIGHT",
+        line_no=line,
+        month_accrued=month,
+        amount=amount,
+        extra_charges="0",
+        currency=currency,
     )
+    if not approve:
+        # Preserve a legacy draft for historical-record compatibility cases.
+        response = e["client"].post("/api/v1/provisions", headers=e["headers"]("one"), json=payload)
+        assert response.status_code == 201, response.text
+        return response.json()
+    row = api(e, "post", "/provisions", payload, expected=201)
     if approve:
         row = api(
             e, "post", f"/provisions/{row['id']}/approve", {"expected_version": row["row_version"]}
