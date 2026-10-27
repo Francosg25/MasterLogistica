@@ -412,6 +412,9 @@ kbd { display: inline-block; background: white; border: 1px solid #d6dfeb; borde
 .import-table small { display: block; margin-top: 5px; color: var(--muted); }
 .import-table details p { margin: 8px 0; overflow-wrap: anywhere; white-space: normal; max-width: 560px; }
 .import-issue { color: #943a22; }
+.import-table .import-match { color: #865018; font-weight: 600; }
+.import-table .import-match-found { color: #16634c; }
+.import-detection-controls input { min-width: min(310px, 100%); }
 .activity-dialog { width: min(1100px, 96vw); max-height: 90dvh; padding: 0; border: 1px solid var(--border); border-radius: 8px; color: inherit; }
 .activity-dialog::backdrop { background: #13223d59; }
 .activity-content { padding: 20px; }

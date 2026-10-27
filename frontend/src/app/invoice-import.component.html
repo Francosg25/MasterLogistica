@@ -31,10 +31,19 @@
   @if (busy()) { <p role="status">Revisando el Excel…</p> }
   @if (stale()) { <p class="notice">Los datos cambiaron. Pulsa Revisar archivo antes de guardar.</p> }
   @if (preview(); as p) {
+    @if (periodMismatch()) {
+      <p class="notice">El archivo no contiene movimientos de {{ monthLabel(month) }}. Las referencias se buscan en todo el archivo; para registrar una factura, selecciona su mes de origen.</p>
+    }
+      <div class="import-controls import-detection-controls">
+        @if (p.available_periods?.length) {
+        <label>Meses encontrados en el Excel<select aria-label="Mes encontrado en el Excel" [ngModel]="''" (ngModelChange)="usePeriod($event)" [disabled]="busy()"><option value="">Ir a un mes del archivo</option>@for (period of p.available_periods; track period.period_month) { <option [value]="period.period_month">{{ monthLabel(period.period_month) }} · {{ period.invoice_count }} facturas</option> }</select></label>
+        }
+        <label>Buscar referencia o factura<input aria-label="Buscar referencia o factura en el Excel" type="search" [ngModel]="search()" (ngModelChange)="search.set($event); offset.set(0)" placeholder="Escribe o pega la referencia" /></label>
+      </div>
     <div class="import-review-bar">
-      <span>{{ filename }} · {{ p.counts['READY'] }} listas · {{ p.counts['REVIEW'] }} por revisar</span>
+      <span>{{ filename }} · {{ p.row_count }} filas leídas · {{ found().length }} facturas con referencia encontrada · {{ p.counts['READY'] }} listas · {{ p.counts['REVIEW'] }} por revisar · {{ p.counts['OUTSIDE'] }} de otros meses</span>
       <label>Mostrar<select aria-label="Mostrar facturas del Excel" [ngModel]="filter()" (ngModelChange)="filter.set($event); offset.set(0)">
-        @for (s of statuses; track s) { <option [value]="s">{{ labels[s] }} ({{ p.counts[s] }})</option> }
+        @for (s of statuses; track s) { <option [value]="s">{{ labels[s] }} ({{ count(s) }})</option> }
       </select></label>
       <button class="button primary" [disabled]="busy() || stale() || !p.counts['READY']" (click)="confirm()">Guardar {{ p.counts['READY'] }} facturas</button>
     </div>
@@ -44,16 +53,19 @@
           <td><strong>{{ group.invoice_number || 'Sin folio' }}</strong></td>
           <td>{{ group.supplier_name }}<small>{{ group.company }}</small></td>
           <td>
-            @if (group.rows.length === 1) { {{ group.rows[0].reference }}<small>{{ conceptLabel(group.rows[0].charge_code) }}</small> }
-            @else { <details><summary>{{ group.rows.length }} referencias</summary>@for (row of group.rows; track row.row) { <p>{{ row.reference }} · {{ conceptLabel(row.charge_code) }} · {{ money(row.usd_amount) }} USD</p> }</details> }
+            @if (group.rows.length === 1) {
+              {{ group.rows[0].reference }}<small>{{ conceptLabel(group.rows[0].charge_code) }}</small>
+              @if (group.rows[0].reference_match) { <small class="import-match" [class.import-match-found]="referenceFound(group.rows[0])">{{ matchLabel(group.rows[0]) }}</small> }
+            }
+            @else { <details [open]="!!search() || filter() === 'FOUND' && group.rows.length <= 5"><summary>{{ group.rows.length }} referencias</summary>@for (row of group.rows; track row.row) { <p>{{ row.reference }} · {{ conceptLabel(row.charge_code) }} · {{ money(row.usd_amount) }} USD@if (row.reference_match) { <small class="import-match" [class.import-match-found]="referenceFound(row)">{{ matchLabel(row) }}</small> }</p> }</details> }
           </td>
           <td class="number">{{ money(group.usd_amount) }}</td>
-          <td>{{ labels[group.status] }}@for (issue of group.issues; track $index) { <p class="import-issue">{{ issue }}</p> }</td>
+          <td>{{ labels[group.status] }}@for (period of group.source_periods || []; track period) { <small>Mes del Excel: {{ monthLabel(period) }}</small> }@for (issue of group.issues; track $index) { <p class="import-issue">{{ issue }}</p> }</td>
         </tr>
-      } @empty { <tr><td colspan="5">No hay facturas en este estado.</td></tr> }
+      } @empty { <tr><td colspan="5">{{ search() ? 'No hay coincidencias para esta búsqueda en la vista seleccionada.' : 'No hay facturas en esta vista. Consulta Todas para revisar el archivo completo.' }}</td></tr> }
     </tbody></table></div>
     <div class="table-footer"><span>{{ filtered().length }} facturas · {{ filtered().length ? offset() + 1 : 0 }}–{{ offset() + visible().length }}</span><div class="pagination"><button class="button subtle" [disabled]="offset() === 0" (click)="offset.set(offset() - 20)">Anterior</button><button class="button subtle" [disabled]="offset() + 20 >= filtered().length" (click)="offset.set(offset() + 20)">Siguiente</button></div></div>
-    @if (p.counts['REVIEW']) {
+    @if (hasIssues()) {
       <p class="hint">Las facturas por revisar no se guardan. Corrige las filas indicadas en el Excel y vuelve a cargarlo.</p>
       <details class="import-mappings"><summary>Corregir nombres del Excel</summary>
         <p class="hint">Úsalo si una empresa o proveedor tiene un nombre distinto en el Excel. Después pulsa Revisar archivo.</p>

@@ -402,7 +402,7 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 
 ### Verificación de este bloque
 
-- Compilación Angular de producción correcta, **358 pruebas de backend sin integración externa** y **16 casos de navegador de Finanzas** verificados, incluyendo importación, aprobación automática, captura del tipo de cambio y aplicaciones entre monedas distintas. Otros **8 casos con API real y SQLite** comprueban persistencia, los cinco masters, aplicación parcial y total en otra moneda y restitución al cancelar.
+- Compilación Angular de producción correcta, **365 pruebas de backend sin integración externa** y **18 casos de navegador de Finanzas** verificados, incluyendo importación, aprobación automática, captura del tipo de cambio y aplicaciones entre monedas distintas. Otros **9 casos con API real y SQLite** comprueban persistencia, los cinco masters, aplicación parcial y total en otra moneda y restitución al cancelar.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
@@ -416,8 +416,12 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 2. Selecciona un `.xlsx` de hasta 10 MB con la hoja `CONSOLIDADO <año>`. Se lee esa hoja; las hojas auxiliares no se importan.
 3. El mes se obtiene de `MOUTH` y el año del nombre de la hoja. Las facturas de otros meses se muestran aparte. La fecha de factura se conserva independientemente del periodo del gasto.
 4. Si una compañía o proveedor no coincide con el catálogo, abre **Corregir nombres del Excel**, selecciona su equivalencia y pulsa **Revisar archivo**. No se crean proveedores ni embarques automáticamente.
-5. Usa **Mostrar** para consultar **Listas**, **Revisar**, **Ya registradas** u **Otros meses**. Solo las listas se pueden guardar. El periodo contable se prepara automáticamente si es nuevo.
+5. **Encontradas** muestra las facturas cuya referencia existe en un master, incluso si pertenecen a otro mes o requieren revisar proveedor o empresa. La vista se abre automáticamente cuando hay coincidencias. **Todas** permite revisar el archivo completo; **Listas**, **Revisar**, **Ya registradas** y **Otros meses** conservan su clasificación. Solo las facturas listas se pueden guardar. El periodo contable se prepara automáticamente si es nuevo.
 6. **Guardar N facturas** registra y aplica los importes por lotes de hasta 100 facturas. Cada lote es atómico. Si falla un lote, los anteriores confirmados permanecen guardados; la vista previa reconoce sus facturas al reintentar.
+
+La búsqueda usa la columna **REFERENCIA** por su encabezado, aunque esté en G; **NO TOCAR** es auxiliar. Se reconocen la referencia actual y sus alias registrados, normalizando espacios y mayúsculas. El mes seleccionado no oculta las coincidencias: cada fila muestra **Encontrada**, el master y la empresa, o explica si hay varias coincidencias, falta el registro o existe en otra empresa. La empresa se revisa antes de permitir el registro; una coincidencia en otra empresa no se vincula automáticamente.
+
+**Buscar referencia o factura** filtra el archivo leído. **Meses encontrados en el Excel** permite cambiar al mes de origen sin modificar el libro. Si el mes elegido no contiene filas, se muestra un aviso y los otros meses disponibles. El encabezado incluye filas leídas, facturas encontradas y facturas de otros meses para distinguir una búsqueda sin coincidencias de un filtro de fecha.
 
 La identidad de factura usa compañía, proveedor y folio normalizado. El concepto se toma del primer `TYPE` (Freight, Broker, Storage y Other/OTROS); se respeta cada concepto sin sumarlos entre sí. La referencia debe coincidir de manera única con un embarque o alias registrado. Un movimiento `PAQUETERIA` sin referencia concreta necesita corregirse o vincularse antes de importar.
 

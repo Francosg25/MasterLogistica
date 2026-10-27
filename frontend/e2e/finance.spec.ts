@@ -533,3 +533,58 @@ test("pending invoice detail requests the missing rate and shows both applied cu
   expect(submitted.fx).toEqual({ mxn_per_usd: "20", rate_date: "2026-10-27" });
   await expect(page.locator(".finance-status")).toHaveText("Aplicada");
 });
+
+test("known Excel references remain visible across months and the detected month can be selected", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/finance/import/preview", async route => {
+    const outside = route.request().postDataJSON().period_month !== "2026-09-01";
+    await route.fulfill({ json: {
+      sheet: "CONSOLIDADO 2026", row_count: 2, invoice_count: 2,
+      counts: { READY: outside ? 0 : 1, REVIEW: outside ? 0 : 1, DUPLICATE: 0, OUTSIDE: outside ? 2 : 0 },
+      reference_counts: { MATCHED: 1, OTHER_COMPANY: 0, NOT_FOUND: 1, AMBIGUOUS: 0 },
+      available_periods: [{ period_month: "2026-09-01", row_count: 2, invoice_count: 2 }],
+      companies: ["DEMO"], suppliers: ["TRANSPORTES DEMO"],
+      groups: [
+        { key: "found", invoice_number: "DETECTED-TEST", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: outside ? "OUTSIDE" : "READY", usd_amount: "500", issues: [], source_periods: ["2026-09-01"], rows: [{ row: 2, reference: "SYNTHETIC-FOUND-REFERENCE", charge_code: "FREIGHT", usd_amount: "500", source_period: "2026-09-01", reference_match: { status: "MATCHED", shipment_id: "ship-1", reference: "SYNTHETIC-FOUND-REFERENCE", company: "DEMO", owner_name: "Analista de prueba" } }] },
+        { key: "missing", invoice_number: "MISSING-TEST", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: outside ? "OUTSIDE" : "REVIEW", usd_amount: "100", issues: ["Referencia sin coincidencia"], source_periods: ["2026-09-01"], rows: [{ row: 3, reference: "SYNTHETIC-MISSING", charge_code: "BROKER", usd_amount: "100", source_period: "2026-09-01", reference_match: { status: "NOT_FOUND" } }] },
+      ],
+    } });
+  });
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Cargar Excel", exact: true }).click();
+  await page.getByLabel("Mes del consolidado", { exact: true }).fill("2026-10");
+  await page.getByLabel("Archivo consolidado (.xlsx)", { exact: true }).setInputFiles({ name: "synthetic.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic; parser tested separately") });
+  await expect(page.getByLabel("Mostrar facturas del Excel", { exact: true })).toHaveValue("FOUND");
+  await expect(page.locator(".import-review-bar")).toContainText("1 facturas con referencia encontrada");
+  await expect(page.locator(".import-panel .notice")).toContainText("no contiene movimientos de octubre");
+  await expect(page.locator(".import-table tbody")).toContainText("SYNTHETIC-FOUND-REFERENCE");
+  await expect(page.locator(".import-match")).toHaveText("Encontrada · Master de Analista de prueba · DEMO");
+  await expect(page.getByRole("button", { name: "Guardar 0 facturas", exact: true })).toBeDisabled();
+  await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill(" synthetic- found-reference ");
+  await expect(page.locator(".import-table tbody tr")).toHaveCount(1);
+  await page.getByLabel("Mes encontrado en el Excel", { exact: true }).selectOption("2026-09-01");
+  await expect(page.getByLabel("Mes del consolidado", { exact: true })).toHaveValue("2026-09");
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas", exact: true })).toBeEnabled();
+  await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill("");
+  await page.getByLabel("Mostrar facturas del Excel", { exact: true }).selectOption("ALL");
+  await expect(page.locator(".import-table tbody tr")).toHaveCount(2);
+  await page.screenshot({ path: "test-results/import-reference-detection.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("an Excel with no ready invoices opens its other-month rows instead of an empty ready list", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/finance/import/preview", route => route.fulfill({ json: {
+    sheet: "CONSOLIDADO 2026", row_count: 1, invoice_count: 1, counts: { READY: 0, REVIEW: 0, DUPLICATE: 0, OUTSIDE: 1 }, companies: ["DEMO"], suppliers: [],
+    available_periods: [{ period_month: "2026-09-01", row_count: 1, invoice_count: 1 }],
+    groups: [{ key: "outside", invoice_number: "VISIBLE-OUTSIDE-TEST", company: "DEMO", supplier_name: "Pendiente", source_company: "DEMO", source_supplier: "PENDIENTE", status: "OUTSIDE", usd_amount: "100", issues: ["Vincula el proveedor"], source_periods: ["2026-09-01"], rows: [{ row: 2, reference: "SYNTHETIC-MISSING", charge_code: "FREIGHT", usd_amount: "100", reference_match: { status: "NOT_FOUND" } }] }],
+  } }));
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Cargar Excel", exact: true }).click();
+  await page.getByLabel("Mes del consolidado", { exact: true }).fill("2026-10");
+  await page.getByLabel("Archivo consolidado (.xlsx)", { exact: true }).setInputFiles({ name: "synthetic.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic preview") });
+  await expect(page.getByLabel("Mostrar facturas del Excel", { exact: true })).toHaveValue("OUTSIDE");
+  await expect(page.locator(".import-table tbody")).toContainText("VISIBLE-OUTSIDE-TEST");
+  await expect(page.getByText("Corregir nombres del Excel", { exact: true })).toBeVisible();
+});

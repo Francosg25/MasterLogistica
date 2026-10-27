@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import type { MasterLayout } from "../src/app/types";
 
@@ -412,4 +413,39 @@ test("peso invoices apply to dollar provisions with a recorded rate and reversal
   await expect(last).toContainText("Cancelada");
   expect(Number((await balances()).closing_amount)).toBe(400);
   await page.screenshot({ path: "test-results/local/cross-currency-reconciliation.png", fullPage: true });
+});
+
+test("Excel upload finds a registered column G reference even when October is selected for a September invoice", async ({ page }) => {
+  const reference = "TEST-EXCEL-REFERENCE-DETECTION";
+  const created = await page.request.post("/api/v1/shipments", { data: {
+    company_code: "MXG", process_code: "RM", operation_code: "AI", reference_year: 2026,
+    business_unit: "M23", reference_raw: reference,
+  } });
+  expect(created.status()).toBe(201);
+  const shipment = await created.json();
+  const supplier = await page.request.post("/api/v1/suppliers", { data: { code: "IMPORT-DETECTION", legal_name: "Example Test Carrier" } });
+  expect(supplier.status()).toBe(201);
+  const content = execFileSync(process.env["LOCAL_TEST_PYTHON"] || "python", ["-c", "import sys; from tests.test_import_detection import reference_in_column_g; sys.stdout.buffer.write(reference_in_column_g(sys.argv[1], 'FREIGHT-WRONG-HELPER', company='MXG'))", reference], { cwd: resolve(__dirname, "../../backend") });
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Facturas", exact: true }).click();
+  await page.getByRole("button", { name: "Cargar Excel", exact: true }).click();
+  await page.getByLabel("Mes del consolidado", { exact: true }).fill("2026-10");
+  await page.getByLabel("Archivo consolidado (.xlsx)", { exact: true }).setInputFiles({ name: "invoice-detection.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: content });
+  await expect(page.getByLabel("Mostrar facturas del Excel", { exact: true })).toHaveValue("FOUND");
+  await expect(page.locator(".import-table tbody")).toContainText(reference);
+  await expect(page.locator(".import-match")).toContainText("Encontrada · Master de DENI · MXG");
+  await expect(page.locator(".import-panel")).toContainText("El archivo no contiene movimientos de octubre");
+  await expect(page.getByRole("button", { name: "Guardar 0 facturas", exact: true })).toBeDisabled();
+  await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill(" test-excel- reference-detection ");
+  await expect(page.locator(".import-table tbody tr")).toHaveCount(1);
+  await page.getByLabel("Mes encontrado en el Excel", { exact: true }).selectOption("2026-09-01");
+  await expect(page.getByLabel("Mes del consolidado", { exact: true })).toHaveValue("2026-09");
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas", exact: true })).toBeEnabled();
+  await page.screenshot({ path: "test-results/local/import-found-reference.png", fullPage: true });
+  await page.getByRole("button", { name: "Guardar 1 facturas", exact: true }).click();
+  await expect(page.locator(".import-panel .success")).toContainText("1 facturas registradas");
+  const invoices = await (await page.request.get("/api/v1/finance/invoices?q=COLUMN-G-TEST&month=2026-09-01")).json();
+  expect(invoices.items).toHaveLength(1);
+  expect(invoices.items[0].accounting_period).toBe("2026-09-01");
+  expect(invoices.items[0].lines[0].shipment_id).toBe(shipment.id);
 });

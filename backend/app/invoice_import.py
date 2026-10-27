@@ -26,7 +26,7 @@ from app.finance import (
 )
 from app.finance_schemas import InvoiceCreate, SettlementFx
 from app.invoice_excel import normalized, read_consolidated
-from app.models import Invoice, Shipment, ShipmentIdentifier, Supplier
+from app.models import Invoice, Shipment, ShipmentIdentifier, Supplier, User
 from app.references import normalize_identifier, normalize_reference
 from app.schemas import Schema
 
@@ -89,15 +89,19 @@ def prepare(data, session, request):
         set(request.app.state.settings.company_codes) | {s.company_code for s in shipments}
     )
     by_ref = defaultdict(set)
+    by_any_company = defaultdict(set)
     by_shipment = {s.id: s for s in shipments}
+    owner_names = dict(session.execute(select(User.id, User.display_name)).all())
     for shipment in shipments:
         by_ref[(shipment.company_code, shipment.reference_normalized)].add(shipment.id)
+        by_any_company[shipment.reference_normalized].add(shipment.id)
     for alias in session.scalars(
         select(ShipmentIdentifier).where(ShipmentIdentifier.kind == "REFERENCE")
     ):
         shipment = by_shipment.get(alias.shipment_id)
         if shipment:
             by_ref[(shipment.company_code, alias.normalized_value)].add(shipment.id)
+            by_any_company[alias.normalized_value].add(shipment.id)
     existing = {
         (i.company_code, str(i.supplier_id), i.invoice_number_normalized)
         for i in session.scalars(select(Invoice))
@@ -149,20 +153,48 @@ def prepare(data, session, request):
             issues.append("La factura tiene fechas distintas entre sus movimientos")
         if len(rows) > 100:
             issues.append("La factura supera 100 movimientos")
-        lines = []
+        lines, preview_rows = [], []
         for row in rows:
             ref = reference_key(row["reference"])
             matches = by_ref.get((company, ref), set())
-            if len(matches) != 1:
-                issues.append(
-                    f"Fila {row['row']}: referencia sin coincidencia única; corrige o registra su alias en el master"
+            candidates = matches or by_any_company.get(ref, set())
+            detection = {"status": "AMBIGUOUS" if candidates else "NOT_FOUND"}
+            if len(candidates) == 1:
+                found = by_shipment[next(iter(candidates))]
+                detection = dict(
+                    status="MATCHED" if len(matches) == 1 else "OTHER_COMPANY",
+                    shipment_id=str(found.id),
+                    reference=found.reference_raw,
+                    company=found.company_code,
+                    owner_name=owner_names.get(found.owner_id),
                 )
+            if len(matches) != 1:
+                if detection["status"] == "OTHER_COMPANY":
+                    issues.append(
+                        f"Fila {row['row']}: la referencia está registrada en {detection['company']}; el Excel indica {company}. Revisa la empresa"
+                    )
+                else:
+                    issues.append(
+                        f"Fila {row['row']}: referencia sin coincidencia única; corrige o registra su alias en el master"
+                    )
                 reference = row["reference"]
             else:
                 shipment = by_shipment[next(iter(matches))]
                 reference = shipment.reference_raw
                 if shipment.status == "CANCELLED":
                     issues.append(f"Fila {row['row']}: el embarque está cancelado")
+            month = MONTHS.get(normalized(row["source"].get("MOUTH")))
+            preview_rows.append(
+                dict(
+                    row=row["row"],
+                    reference=row["reference"],
+                    charge_code=row["charge_code"],
+                    usd_amount=row["usd_amount"],
+                    issue_date=row["issue_date"],
+                    source_period=f"{year[1]}-{month:02d}-01" if year and month else None,
+                    reference_match=detection,
+                )
+            )
             lines.append(
                 dict(
                     reference=reference,
@@ -206,16 +238,10 @@ def prepare(data, session, request):
                     sum((Decimal(r["usd_amount"]) for r in rows if r["usd_amount"]), Decimal(0))
                 ),
                 issues=issues,
-                rows=[
-                    dict(
-                        row=r["row"],
-                        reference=r["reference"],
-                        charge_code=r["charge_code"],
-                        usd_amount=r["usd_amount"],
-                        issue_date=r["issue_date"],
-                    )
-                    for r in rows
-                ],
+                rows=preview_rows,
+                source_periods=sorted(
+                    {r["source_period"] for r in preview_rows if r["source_period"]}
+                ),
                 evidence=rows,
             )
         )
@@ -236,11 +262,27 @@ def prepare(data, session, request):
 @router.post("/preview")
 def preview(data: ImportRequest, session: DB, user: FinanceWriter, request: Request):
     parsed, groups, _ = prepare(data, session, request)
+    periods = defaultdict(lambda: {"row_count": 0, "invoices": set()})
+    reference_counts = {key: 0 for key in ("MATCHED", "OTHER_COMPANY", "NOT_FOUND", "AMBIGUOUS")}
+    for group in groups:
+        for row in group["rows"]:
+            reference_counts[row["reference_match"]["status"]] += 1
+            if row["source_period"]:
+                period = periods[row["source_period"]]
+                period["row_count"] += 1
+                period["invoices"].add(group["key"])
     return dict(
         sheet=parsed["sheet"],
         sha256=parsed["sha256"],
         row_count=len(parsed["rows"]),
         invoice_count=len(groups),
+        reference_counts=reference_counts,
+        available_periods=[
+            dict(
+                period_month=key, row_count=value["row_count"], invoice_count=len(value["invoices"])
+            )
+            for key, value in sorted(periods.items())
+        ],
         counts={
             status: sum(g["status"] == status for g in groups)
             for status in ("READY", "REVIEW", "DUPLICATE", "OUTSIDE")

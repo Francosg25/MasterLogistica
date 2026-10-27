@@ -4,14 +4,19 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "./api.service";
 import { Supplier } from "./types";
 
+interface ReferenceMatch { status: string; shipment_id?: string; reference?: string; company?: string; owner_name?: string; }
+interface ImportRow { row: number; reference: string; charge_code: string; usd_amount: string | null; issue_date: string | null; source_period?: string | null; reference_match?: ReferenceMatch; }
 interface ImportGroup {
   key: string; invoice_number: string; supplier_name: string; source_supplier: string;
   source_company: string; company: string; status: string; usd_amount: string; issues: string[];
-  rows: { row: number; reference: string; charge_code: string; usd_amount: string | null; issue_date: string | null }[];
+  source_periods?: string[];
+  rows: ImportRow[];
 }
 interface Preview {
   sheet: string; row_count: number; invoice_count: number; counts: Record<string, number>;
   companies: string[]; suppliers: string[]; groups: ImportGroup[];
+  reference_counts?: Record<string, number>;
+  available_periods?: { period_month: string; row_count: number; invoice_count: number }[];
 }
 @Component({
   selector: "invoice-import", standalone: true, imports: [FormsModule],
@@ -37,11 +42,32 @@ export class InvoiceImportComponent implements OnChanges {
   companyMap: Record<string, string> = {};
   supplierMap: Record<string, string> = {};
   filter = signal("READY");
+  search = signal("");
   offset = signal(0);
-  labels: Record<string, string> = { READY: "Listas", REVIEW: "Revisar", DUPLICATE: "Ya registradas", OUTSIDE: "Otros meses" };
-  filtered = computed(() => this.preview()?.groups.filter(g => g.status === this.filter()) ?? []);
+  labels: Record<string, string> = { FOUND: "Encontradas", ALL: "Todas", READY: "Listas", REVIEW: "Revisar", DUPLICATE: "Ya registradas", OUTSIDE: "Otros meses" };
+  found = computed(() => this.preview()?.groups.filter(group => group.rows.some(row => this.referenceFound(row))) ?? []);
+  filtered = computed(() => {
+    const query = this.searchKey(this.search());
+    return this.preview()?.groups.filter(group =>
+      (this.filter() === "ALL" || (this.filter() === "FOUND" ? group.rows.some(row => this.referenceFound(row)) : group.status === this.filter())) &&
+      (!query || [group.invoice_number, ...group.rows.flatMap(row => [row.reference, row.reference_match?.reference ?? ""])].some(value => this.searchKey(value).includes(query)))
+    ) ?? [];
+  });
   visible = computed(() => this.filtered().slice(this.offset(), this.offset() + 20));
-  statuses = ["READY", "REVIEW", "DUPLICATE", "OUTSIDE"];
+  statuses = ["FOUND", "ALL", "READY", "REVIEW", "DUPLICATE", "OUTSIDE"];
+  periodMismatch = computed(() => !!this.preview()?.available_periods?.length && !this.preview()!.available_periods!.some(period => period.period_month.startsWith(this.analyzedMonth)));
+  hasIssues = computed(() => this.preview()?.groups.some(group => group.issues.length > 0) ?? false);
+  referenceFound(row: ImportRow): boolean { return ["MATCHED", "OTHER_COMPANY"].includes(row.reference_match?.status ?? ""); }
+  private searchKey(value: string): string { return value.normalize("NFKC").replace(/\s/g, "").toUpperCase(); }
+  count(status: string): number { return status === "ALL" ? this.preview()?.invoice_count ?? 0 : status === "FOUND" ? this.found().length : this.preview()?.counts[status] ?? 0; }
+  matchLabel(row: ImportRow): string {
+    const match = row.reference_match;
+    return match?.status === "MATCHED" ? `Encontrada · Master de ${match.owner_name || "responsable"} · ${match.company}` : match?.status === "OTHER_COMPANY" ? `Encontrada en otra empresa: ${match.company}` : match?.status === "AMBIGUOUS" ? "Varias coincidencias · Requiere revisión" : "Sin coincidencia en los masters";
+  }
+  monthLabel(value: string): string {
+    return new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(value.slice(0, 7) + "-01T00:00:00Z"));
+  }
+  async usePeriod(value: string) { if (!value) return; this.month = value.slice(0, 7); this.invalidate(); await this.analyze(); }
   pending = false;
   fxRate = "";
   fxDate = "";
@@ -58,6 +84,7 @@ export class InvoiceImportComponent implements OnChanges {
     input.value = "";
     this.error.set(""); this.preview.set(null); this.notice.set("");
     this.content = ""; this.filename = ""; this.pending = false;
+    this.search.set("");
     this.fxRate = ""; this.fxDate = "";
     if (!/\.xlsx$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
       this.error.set("Selecciona un .xlsx de hasta 10 MB."); return;
@@ -80,9 +107,12 @@ export class InvoiceImportComponent implements OnChanges {
   async analyze() {
     if (this.busy() || !this.content || !/^\d{4}-\d{2}$/.test(this.month)) return;
     this.setBusy(true); this.stale.set(true); this.error.set("");
+    const firstAnalysis = !this.preview();
     try {
-      this.preview.set(await this.api.request<Preview>("/finance/import/preview", "POST", this.payload()));
+      const result = await this.api.request<Preview>("/finance/import/preview", "POST", this.payload());
       this.analyzedMonth = this.month;
+      this.preview.set(result);
+      if (firstAnalysis) this.filter.set(this.found().length ? "FOUND" : ["READY", "REVIEW", "OUTSIDE", "DUPLICATE"].find(status => result.counts[status] > 0) ?? "ALL");
       this.stale.set(false);
       this.offset.set(0);
     } catch (e) { this.error.set(this.message(e)); }
