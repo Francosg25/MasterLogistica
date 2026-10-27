@@ -1,4 +1,4 @@
-import { conceptLabel } from "./finance.types";
+import { conceptLabel, InvoiceApplication } from "./finance.types";
 import { AfterViewInit, Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, inject, signal } from "@angular/core";
 import { ApiService } from "./api.service";
 import { EVENTS, FIELDS, FINANCE_STATUS, HistoryRow } from "./finance.types";
@@ -6,7 +6,7 @@ import { EVENTS, FIELDS, FINANCE_STATUS, HistoryRow } from "./finance.types";
 interface Activity {
   reference: string;
   provisions: { id: string; supplier: string; concept: string; month: string; provision_date?: string | null; currency: string; total: string; balance: string | null; status: string }[];
-  invoices: { id: string; invoice_number: string; supplier: string; concept: string; month: string; currency: string; amount: string; applied: string; status: string; amount_basis: string }[];
+  invoices: { id: string; invoice_number: string; supplier: string; concept: string; month: string; currency: string; amount: string; applied: string; status: string; amount_basis: string; applications?: InvoiceApplication[] }[];
   history: { items: HistoryRow[]; total: number };
 }
 @Component({

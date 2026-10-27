@@ -15,7 +15,7 @@
       @if (section !== 'history') {
         <details class="finance-tools"><summary>Más opciones</summary>
           <button class="button subtle" (click)="showReport()" [disabled]="loading() || busy()">Reporte mensual</button>
-          <p>Las facturas se aplican por referencia, empresa, proveedor, concepto y moneda. El Excel usa USD AMOUNT; la captura manual usa el importe neto.</p>
+          <p>Las facturas se aplican por referencia, empresa, proveedor y concepto. Si las monedas son distintas, se usa el tipo de cambio capturado. El Excel usa USD AMOUNT; la captura manual usa el importe neto.</p>
         </details>
       }
     </div>
@@ -250,6 +250,7 @@
               >
               <label
                 >Empresa de factura<select
+                  aria-label="Empresa de factura"
                   formControlName="company_code"
                   required
                 >
@@ -271,12 +272,20 @@
                   required
               /></label>
               <label
-                >Moneda de factura<select formControlName="currency">
+                >Moneda de factura<select aria-label="Moneda de factura" formControlName="currency">
                   <option>USD</option>
                   <option>MXN</option>
                 </select></label
               >
             </div>
+            <details class="finance-extra" [open]="invoiceForm.controls.currency.value === 'MXN'">
+              <summary>Tipo de cambio para provisiones en otra moneda</summary>
+              <p class="hint">Indica cuántos pesos equivalen a 1 USD. Por ejemplo, 20 significa 1 USD = 20 MXN. Se aplicará automáticamente al guardar.</p>
+              <div class="finance-form-grid">
+                <label>Tipo de cambio (MXN por USD)<input formControlName="fx_mxn_per_usd" type="text" inputmode="decimal" maxlength="21" placeholder="Ej. 20.0000" /></label>
+                <label>Fecha del tipo de cambio<input formControlName="fx_rate_date" type="date" /></label>
+              </div>
+            </details>
             <h3 class="section-title">Referencias incluidas en la factura</h3>
             <div formArrayName="lines">
               @for (line of lines.controls; track line; let i = $index) {
@@ -483,16 +492,13 @@
                     [class.settled]="row.status === 'APPROVED'"
                     >{{ row.status === "APPROVED" ? "Aplicada" : row.status === "UNDER_REVIEW" ? "Pendiente" : labels[row.status] }}</span
                   >
+                  @if (row.fx_required) { <small>Falta tipo de cambio · Completar en Detalle</small> }
                 </td>
                 <td>
                   <div class="finance-buttons">
                     <button
                       class="button subtle"
-                      (click)="
-                        expandedInvoice.set(
-                          expandedInvoice() === row.id ? '' : row.id
-                        )
-                      "
+                      (click)="toggleInvoice(row)"
                     >
                       Detalle
                     </button>
@@ -513,9 +519,22 @@
                           Aplicado {{ money(line.applied_amount) }} · Pendiente
                           {{ money(line.pending_amount) }}
                         </p>
+                        @for (a of line.applications || []; track a.id) {
+                          @if (a.fx?.mxn_per_usd) {<p class="hint">{{ money(a.invoice_amount) }} {{ row.currency }} descontaron {{ money(a.provision_amount) }} {{ a.provision_currency }} de la provisión · TC {{ a.fx?.mxn_per_usd }} MXN/USD · {{ a.fx?.rate_date }}</p>}
+                        }
                       }
                       <p>El importe se aplica automáticamente a las provisiones disponibles. Lo que falta por aplicar aparece como pendiente.</p>
                       <p>Impuestos: {{ row.amount_basis === 'USD_AMOUNT' ? 'Incluidos en el importe original del Excel' : money(row.tax_amount) + ' ' + row.currency }}</p>
+                      @if (canWrite && row.status !== 'CANCELLED' && row.status !== 'APPROVED') {
+                        <div [formGroup]="reconciliationFxForm">
+                          @if (row.fx_required) { <p class="notice">Hay provisiones en otra moneda. Completa el tipo de cambio para descontarlas.</p> }
+                          <div class="finance-form-grid">
+                            <label>Tipo de cambio (MXN por USD)<input formControlName="mxn_per_usd" type="text" inputmode="decimal" maxlength="21" placeholder="Solo para monedas distintas" [readOnly]="busy()" /></label>
+                            <label>Fecha del tipo de cambio<input formControlName="rate_date" type="date" [readOnly]="busy()" /></label>
+                          </div>
+                          <p class="hint">Ejemplo: 20 significa 1 USD = 20 MXN. Cada aplicación conserva el cambio utilizado.</p>
+                        </div>
+                      }
                       <div class="finance-buttons">
                     @if (canWrite && row.status !== "CANCELLED") {
                       @if (row.status !== "APPROVED") {
@@ -685,7 +704,7 @@
                   {{ m.entry_type === "REVERSAL" ? "Reversión" : "Aplicación" }}
                 </td>
                 <td>{{ m.currency }}</td>
-                <td class="number">{{ money(m.amount) }}</td>
+                <td class="number">{{ money(m.amount) }}@if (m.fx?.mxn_per_usd) {<small>Provisión: {{ money(m.provision_amount) }} {{ m.provision_currency }} · TC {{ m.fx?.mxn_per_usd }} MXN/USD</small>}</td>
                 <td>{{ m.actor_name }}</td>
               </tr>
             } @empty {

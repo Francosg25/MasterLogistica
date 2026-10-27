@@ -42,6 +42,8 @@ export interface CurrencyTotal {
   closing_amount: string;
 }
 export interface InvoiceRow {
+  fx?: SettlementFx | null;
+  fx_required?: boolean;
   amount_basis?: string;
   source_data?: { filename?: string; sheet?: string; row_numbers?: number[] };
   id: string;
@@ -67,7 +69,17 @@ export interface InvoiceRow {
     tax_amount: string;
     applied_amount: string;
     pending_amount: string;
+    applications?: InvoiceApplication[];
   }[];
+}
+export interface SettlementFx { mxn_per_usd: string; rate_date: string; source: string; }
+export interface InvoiceApplication {
+  id: string;
+  provision_id: string;
+  provision_amount: string;
+  provision_currency: string;
+  invoice_amount: string;
+  fx?: Partial<SettlementFx>;
 }
 export interface HistoryRow {
   id: string;
@@ -79,6 +91,9 @@ export interface HistoryRow {
   changes: { field: string; label?: string; before: unknown; after: unknown }[];
 }
 export interface Movement {
+  provision_amount?: string;
+  provision_currency?: string;
+  fx?: Partial<SettlementFx>;
   id?: string;
   reference: string;
   invoice_number: string;
@@ -123,11 +138,15 @@ export const EVENTS: Record<string, string> = {
   PROVISION_APPROVED: "Aprobó una provisión",
   INVOICE_REGISTERED: "Registró una factura",
   INVOICE_MATCHED: "Aplicó una factura",
+  INVOICE_FX_UPDATED: "Registró el tipo de cambio de una factura",
   INVOICE_REVERSED: "Restituyó una provisión",
   INVOICE_CANCELLED: "Canceló una factura",
 };
 export const FIELDS: Record<string, string> = {
   amount_basis: "Base de conciliación",
+  settlement_fx: "Tipo de cambio aplicado (MXN por USD)",
+  provision_amount: "Descontado de la provisión",
+  provision_currency: "Moneda de la provisión",
   source_file: "Archivo de origen",
   source_rows: "Filas de origen",
   status: "Estado",

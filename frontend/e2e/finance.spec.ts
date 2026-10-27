@@ -28,6 +28,11 @@ test("Excel preview imports only ready invoices and requires refreshing changed 
   await page.getByLabel("Mes del consolidado").fill("2026-10");
   await page.getByLabel("Archivo consolidado (.xlsx)").setInputFiles({ name: "consolidado.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic upload; parser tested on backend") });
   await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeEnabled();
+  await page.getByText("Tipo de cambio del lote para provisiones en MXN", { exact: true }).click();
+  await page.getByLabel("Tipo de cambio del lote (MXN por USD)", { exact: true }).fill("20");
+  await page.getByLabel("Fecha del tipo de cambio del lote", { exact: true }).fill("2026-10-27");
+  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeDisabled();
+  await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
   previewFailure = true;
   await page.getByRole("button", { name: "Revisar archivo" }).click();
   await expect(page.getByRole("alert")).toContainText("El servicio no está disponible");
@@ -45,6 +50,7 @@ test("Excel preview imports only ready invoices and requires refreshing changed 
   await page.getByRole("button", { name: "Guardar 1 facturas" }).click();
   await expect(page.getByText("1 facturas registradas.", { exact: false })).toBeVisible();
   expect(submitted.selected).toEqual(["ready"]);
+  expect(submitted.fx).toEqual({ mxn_per_usd: "20", rate_date: "2026-10-27", source: "Captura manual del lote Excel" });
   expect(submitted.period_month).toBe("2026-10-01");
   expect(submitted.company_map).toEqual({ DEMO: "DEMO" });
   await expect(page.getByRole("button", { name: "Guardar 0 facturas" })).toBeDisabled();
@@ -482,4 +488,48 @@ test("reference searches keep the latest result and closing a line cancels its s
   await page.getByRole("button", { name: "Quitar línea 2", exact: true }).click();
   await expect(page.getByRole("listbox")).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Referencia 1", exact: true })).toHaveValue("RAPIDA");
+});
+
+test("manual invoice captures MXN per USD and its date without changing the original invoice currency", async ({ page }) => {
+  const writes = await setup(page);
+  await section(page, "Facturas");
+  await page.getByRole("button", { name: "Agregar factura", exact: true }).click();
+  await page.getByLabel("Folio de factura", { exact: true }).fill("FX-MANUAL-TEST");
+  await page.getByLabel("Proveedor de factura", { exact: true }).selectOption("supplier-1");
+  await page.getByLabel("Moneda de factura", { exact: true }).selectOption("MXN");
+  await page.getByLabel("Tipo de cambio (MXN por USD)", { exact: true }).fill("19.87654321");
+  await page.getByLabel("Fecha del tipo de cambio", { exact: true }).fill("2026-10-27");
+  await page.getByLabel("Referencia 1", { exact: true }).fill(demoReport.balances[0].reference);
+  await page.getByLabel("Neto 1", { exact: true }).fill("5600");
+  await page.getByRole("button", { name: "Guardar factura", exact: true }).click();
+  await expect(page.locator(".success[role=status]")).toContainText("Factura guardada");
+  const body = writes.find(write => write.path === "/finance/invoices")!.body;
+  expect(body.currency).toBe("MXN");
+  expect(body.lines[0].net_amount).toBe("5600");
+  expect(body.fx).toEqual({ mxn_per_usd: "19.87654321", rate_date: "2026-10-27" });
+  expect(body).not.toHaveProperty("fx_mxn_per_usd");
+});
+
+test("pending invoice detail requests the missing rate and shows both applied currencies", async ({ page }) => {
+  await setup(page);
+  let submitted: any;
+  let row = { ...demoInvoices[0], currency: "MXN", status: "UNDER_REVIEW", fx_required: true, fx: null as any, net_amount: "5600", applied_amount: "0", pending_amount: "5600", lines: [{ ...demoInvoices[0].lines[0], net_amount: "5600", applied_amount: "0", pending_amount: "5600", applications: [] as any[] }] };
+  await page.route("**/api/v1/finance/invoices**", async route => {
+    if (route.request().method() === "POST") {
+      submitted = route.request().postDataJSON();
+      row = { ...row, status: "APPROVED", fx_required: false, fx: submitted.fx, applied_amount: "5600", pending_amount: "0", lines: [{ ...row.lines[0], applied_amount: "5600", pending_amount: "0", applications: [{ id: "a-fx", provision_id: "p-fx", provision_amount: "280", provision_currency: "USD", invoice_amount: "5600", fx: submitted.fx }] }] };
+      return route.fulfill({ json: row });
+    }
+    return route.fulfill({ json: { items: [row], total: 1, limit: 20, offset: 0 } });
+  });
+  await section(page, "Facturas");
+  await expect(page.locator(".finance-table tbody")).toContainText("Falta tipo de cambio");
+  await page.getByRole("button", { name: "Detalle", exact: true }).click();
+  const detail = page.locator(".invoice-detail");
+  await detail.getByLabel("Tipo de cambio (MXN por USD)", { exact: true }).fill("20");
+  await detail.getByLabel("Fecha del tipo de cambio", { exact: true }).fill("2026-10-27");
+  await detail.getByRole("button", { name: "Aplicar a provisiones", exact: true }).click();
+  await expect(detail).toContainText("5,600.00 MXN descontaron 280.00 USD");
+  expect(submitted.fx).toEqual({ mxn_per_usd: "20", rate_date: "2026-10-27" });
+  await expect(page.locator(".finance-status")).toHaveText("Aplicada");
 });

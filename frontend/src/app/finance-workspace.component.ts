@@ -144,8 +144,21 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     issue_date: [this.day, Validators.required],
     accounting_period: [this.currentMonth, Validators.required],
     currency: ["USD", Validators.required],
+    fx_mxn_per_usd: ["", [Validators.pattern(/^[0-9]{1,10}(\.[0-9]{1,10})?$/), Validators.min(0.0000000002)]],
+    fx_rate_date: [this.day],
     lines: this.fb.array([this.newLine()]),
   });
+  reconciliationFxForm = this.fb.group({
+    mxn_per_usd: ["", [Validators.pattern(/^[0-9]{1,10}(\.[0-9]{1,10})?$/), Validators.min(0.0000000002)]],
+    rate_date: [this.day],
+  });
+  toggleInvoice(row: InvoiceRow) {
+    if (this.busy()) return;
+    if (this.reconciliationFxForm.dirty && !this.canLeave()) return;
+    const closing = this.expandedInvoice() === row.id;
+    this.reconciliationFxForm.reset({ mxn_per_usd: row.fx?.mxn_per_usd ?? "", rate_date: row.fx?.rate_date ?? row.issue_date });
+    this.expandedInvoice.set(closing ? "" : row.id);
+  }
   cancelForm = this.fb.group({
     period_month: [this.currentMonth, Validators.required],
     reason: ["", [Validators.required, Validators.minLength(3)]],
@@ -189,6 +202,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
           ? this.provisionForm.dirty
           : this.invoiceForm.dirty)) ||
       (!!this.cancelTarget() && this.cancelForm.dirty)
+      || (!!this.expandedInvoice() && this.reconciliationFxForm.dirty)
     );
   }
   canLeave() {
@@ -335,6 +349,9 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   openForm() {
     if (!this.canWrite) return;
+    if (this.reconciliationFxForm.dirty && !this.canLeave()) return;
+    this.expandedInvoice.set("");
+    this.reconciliationFxForm.markAsPristine();
     this.provisionForm.reset({
       reference: "",
       supplier_id: "",
@@ -352,6 +369,8 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       issue_date: this.day,
       accounting_period: this.filters.controls.month.value,
       currency: "USD",
+      fx_mxn_per_usd: "",
+      fx_rate_date: this.day,
     });
     this.lines.clear();
     this.lines.push(this.newLine());
@@ -362,14 +381,14 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   closeForm() {
     if (this.canLeave()) this.formOpen.set(false);
   }
-  async write(action: () => Promise<unknown>, success: string) {
+  async write(action: () => Promise<unknown>, success: string | (() => string)) {
     if (!this.canWrite || this.busy()) return;
     this.busy.set(true);
     this.error.set("");
     this.notice.set("");
     try {
       await action();
-      this.notice.set(success);
+      this.notice.set(typeof success === "function" ? success() : success);
       this.report.set(null);
       this.reportOpen.set(false);
       await this.load();
@@ -418,32 +437,48 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       this.invoiceForm.markAllAsTouched();
       return;
     }
+    if (this.invoiceForm.controls.fx_mxn_per_usd.value && !this.invoiceForm.controls.fx_rate_date.value) {
+      this.invoiceForm.controls.fx_rate_date.setErrors({ required: true });
+      this.error.set("Indica la fecha del tipo de cambio.");
+      return;
+    }
+    let message = "Factura guardada. Su importe se aplicó a las provisiones disponibles.";
     await this.write(async () => {
-      const v = this.invoiceForm.getRawValue();
-      await this.api.request<InvoiceRow>(
+      const {fx_mxn_per_usd, fx_rate_date, ...v} = this.invoiceForm.getRawValue();
+      const result = await this.api.request<InvoiceRow>(
         "/finance/invoices",
         "POST",
-        { ...v, accounting_period: v.accounting_period + "-01" },
+        { ...v, accounting_period: v.accounting_period + "-01", ...(fx_mxn_per_usd ? { fx: { mxn_per_usd: fx_mxn_per_usd, rate_date: fx_rate_date } } : {}) },
       );
+      if (result.fx_required) message = "Factura guardada. Completa el tipo de cambio en Detalle para aplicarla a las provisiones en otra moneda.";
       this.filters.controls.month.setValue(v.accounting_period);
       this.applied["month"] = this.month;
       this.offset.set(0);
       this.invoiceForm.markAsPristine();
       this.formOpen.set(false);
       this.expandedInvoice.set("");
-    }, "Factura guardada. Su importe se aplicó a las provisiones disponibles.");
+    }, () => message);
   }
   async invoiceImported() {
     if (this.importer?.month) this.filters.controls.month.setValue(this.importer.month);
     await this.apply();
   }
   async reconcile(row: InvoiceRow) {
+    const values = this.reconciliationFxForm.getRawValue();
+    if (this.reconciliationFxForm.invalid || (values.mxn_per_usd && !values.rate_date)) {
+      this.error.set("Revisa el tipo de cambio y su fecha. Usa punto decimal: por ejemplo, 20 significa 20 MXN por 1 USD.");
+      this.reconciliationFxForm.markAllAsTouched();
+      return;
+    }
     await this.write(
-      () =>
-        this.api.request(`/finance/invoices/${row.id}/reconcile`, "POST", {
+      async () => {
+        await this.api.request(`/finance/invoices/${row.id}/reconcile`, "POST", {
           expected_version: row.row_version,
           period_month: this.month,
-        }),
+          ...(values.mxn_per_usd ? { fx: values } : {}),
+        });
+        this.reconciliationFxForm.markAsPristine();
+      },
       "Conciliación revisada. Los importes sin provisión compatible permanecen pendientes.",
     );
   }

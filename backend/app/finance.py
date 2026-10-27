@@ -3,7 +3,8 @@
 Balances are derived from the ledger, never copied into a new provision each month.
 Manual amounts use net values. Consolidated imports use the full USD AMOUNT as
 their allocation basis, keeping original tax and currency evidence separately.
-Matching requires reference, company, supplier, currency and charge to agree.
+Matching requires reference, company, supplier and charge to agree. Different
+currencies require an explicitly recorded settlement exchange rate.
 """
 
 import csv
@@ -43,6 +44,7 @@ from app.models import (
 )
 from app.references import normalize_identifier, normalize_reference
 from app.schemas import ProvisionCreate, ProvisionRead
+from app.settlement_fx import FX_RULE, allocation_fx, invoice_fx, settlement_amounts
 
 router = APIRouter(prefix="/api/v1/finance", tags=["Finance"])
 ZERO = Decimal("0")
@@ -110,6 +112,7 @@ def audit_event(
     allocation_id=None,
     before=None,
     after=None,
+    rule_version=RULE,
 ):
     session.add(
         ReconciliationLog(
@@ -121,7 +124,7 @@ def audit_event(
             invoice_id=invoice_id,
             allocation_id=allocation_id,
             severity="GREEN",
-            rule_version=RULE,
+            rule_version=rule_version,
             evidence={"actor_name": user.display_name, "actor_email": user.email},
             before_values=financial_json(before or {}),
             after_values=financial_json(after or {}),
@@ -190,8 +193,26 @@ def invoice_snapshot(session, row):
     ).all()
     supplier = session.get(Supplier, row.supplier_id)
     items = []
+    fx = invoice_fx(row)
+    fx_required = False
     for line, reference in lines:
         consumed = applied(session, line.id)
+        if not fx and consumed < line.net_amount and row.status not in {"CANCELLED", "REJECTED"}:
+            fx_required = (
+                fx_required
+                or session.scalar(
+                    select(Provision.id)
+                    .where(
+                        Provision.shipment_id == line.shipment_id,
+                        Provision.supplier_id == row.supplier_id,
+                        Provision.charge_code == line.charge_code,
+                        Provision.currency != row.currency,
+                        Provision.status.in_(["OPEN", "PARTIALLY_MATCHED"]),
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
         items.append(
             dict(
                 id=line.id,
@@ -203,6 +224,7 @@ def invoice_snapshot(session, row):
                 applied_amount=consumed,
                 pending_amount=ZERO if row.status == "CANCELLED" else line.net_amount - consumed,
                 description=line.description,
+                applications=application_details(session, line.id),
             )
         )
     return financial_json(
@@ -222,10 +244,54 @@ def invoice_snapshot(session, row):
             gross_amount=row.gross_amount,
             amount_basis=(row.source_data or {}).get("amount_basis", "NET"),
             source_data=row.source_data or {},
+            fx=fx.model_dump(mode="json") if fx else None,
+            fx_required=fx_required,
             applied_amount=sum((x["applied_amount"] for x in items), ZERO),
             pending_amount=sum((x["pending_amount"] for x in items), ZERO),
             lines=items,
         )
+    )
+
+
+def application_details(session, line_id):
+    reversals = select(Allocation.reverses_allocation_id).where(Allocation.entry_type == "REVERSAL")
+    return [
+        dict(
+            id=entry.id,
+            provision_id=entry.provision_id,
+            provision_amount=entry.provision_release_amount,
+            provision_currency=currency,
+            invoice_amount=entry.invoice_allocated_amount,
+            fx=entry.fx_evidence or {},
+        )
+        for entry, currency in session.execute(
+            select(Allocation, Provision.currency)
+            .join(Provision)
+            .where(
+                Allocation.invoice_line_id == line_id,
+                Allocation.entry_type == "MATCH",
+                Allocation.id.not_in(reversals),
+            )
+            .order_by(Allocation.accepted_at, Allocation.id)
+        )
+    ]
+
+
+def set_settlement_fx(session, row, fx, user, request):
+    before = (row.source_data or {}).get("settlement_fx")
+    after = fx.model_dump(mode="json")
+    if before == after:
+        return
+    row.source_data = {**(row.source_data or {}), "settlement_fx": after}
+    audit_event(
+        session,
+        request,
+        user,
+        "INVOICE_FX_UPDATED",
+        invoice_id=row.id,
+        before={"settlement_fx": before},
+        after={"settlement_fx": after},
+        rule_version=FX_RULE,
     )
 
 
@@ -248,6 +314,7 @@ def match_invoice(session, row, period, user, request):
     if last_period and period < last_period:
         raise HTTPException(409, "No se puede conciliar antes del último movimiento de la factura")
     count = 0
+    fx = invoice_fx(row)
     for line in lines:
         remaining = line.net_amount - applied(session, line.id)
         if remaining <= 0 or not line.shipment_id:
@@ -257,12 +324,12 @@ def match_invoice(session, row, period, user, request):
             .where(
                 Provision.shipment_id == line.shipment_id,
                 Provision.supplier_id == row.supplier_id,
-                Provision.currency == row.currency,
+                Provision.currency.in_(["USD", "MXN"] if fx else [row.currency]),
                 Provision.charge_code == line.charge_code,
                 Provision.month_accrued <= period,
                 Provision.status.in_(["OPEN", "PARTIALLY_MATCHED"]),
             )
-            .order_by(Provision.month_accrued, Provision.id)
+            .order_by(Provision.currency != row.currency, Provision.month_accrued, Provision.id)
             .with_for_update()
         ).all()
         for provision in provisions:
@@ -276,8 +343,10 @@ def match_invoice(session, row, period, user, request):
                     409, "La referencia tiene movimientos posteriores; usa ese mes o uno posterior"
                 )
             balance = provision.total_amount - released(session, provision.id)
-            amount = min(balance, remaining)
-            if amount <= 0:
+            release_amount, invoice_amount = settlement_amounts(
+                balance, remaining, provision.currency, row.currency, fx
+            )
+            if release_amount <= 0 or invoice_amount <= 0:
                 continue
             entry = Allocation(
                 id=uuid4(),
@@ -285,10 +354,13 @@ def match_invoice(session, row, period, user, request):
                 invoice_line_id=line.id,
                 entry_type="MATCH",
                 period_month=period,
-                provision_release_amount=amount,
-                invoice_allocated_amount=amount,
+                provision_release_amount=release_amount,
+                invoice_allocated_amount=invoice_amount,
+                **allocation_fx(fx, provision.currency, row.currency),
                 decision="GREEN",
-                rule_version="REFERENCE_USD_AMOUNT_V1"
+                rule_version=FX_RULE
+                if provision.currency != row.currency
+                else "REFERENCE_USD_AMOUNT_V1"
                 if (row.source_data or {}).get("amount_basis") == "USD_AMOUNT"
                 else RULE,
                 accepted_by_id=user.id,
@@ -310,14 +382,20 @@ def match_invoice(session, row, period, user, request):
                 before=before,
                 after={
                     "status": provision.status,
-                    "balance": balance - amount,
-                    "amount": amount,
+                    "balance": balance - release_amount,
+                    "amount": invoice_amount,
                     "currency": row.currency,
+                    "provision_amount": release_amount,
+                    "provision_currency": provision.currency,
+                    "settlement_fx": fx.model_dump(mode="json")
+                    if provision.currency != row.currency
+                    else None,
                     "invoice_number": row.invoice_number_raw,
                     "period_month": period,
                 },
+                rule_version=entry.rule_version,
             )
-            remaining -= amount
+            remaining -= invoice_amount
             count += 1
             if remaining == 0:
                 break
@@ -600,6 +678,8 @@ def register_invoice(data, session, user, request, *, source_data=None, persist=
             },
         )
     session.flush()
+    if data.fx:
+        set_settlement_fx(session, row, data.fx, user, request)
     match_invoice(session, row, data.accounting_period, user, request)
     if persist:
         commit(session)
@@ -655,6 +735,8 @@ def reconcile(
     if row is None:
         raise HTTPException(404, "Factura no encontrada")
     version_matches(row, data.expected_version)
+    if data.fx:
+        set_settlement_fx(session, row, data.fx, user, request)
     match_invoice(session, row, data.period_month, user, request)
     commit(session)
     return invoice_snapshot(session, row)
@@ -700,6 +782,9 @@ def cancel_invoice(
             period_month=data.period_month,
             provision_release_amount=-entry.provision_release_amount,
             invoice_allocated_amount=-entry.invoice_allocated_amount,
+            provision_fx_rate_to_usd=entry.provision_fx_rate_to_usd,
+            invoice_fx_rate_to_usd=entry.invoice_fx_rate_to_usd,
+            fx_evidence=dict(entry.fx_evidence or {}),
             decision="YELLOW",
             decision_reason=data.reason,
             rule_version=entry.rule_version,
@@ -906,6 +991,7 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
             Supplier.legal_name,
             Provision.month_accrued,
             User.display_name,
+            Provision.currency,
         )
         .join(Provision, Provision.id == Allocation.provision_id)
         .join(Shipment, Shipment.id == Provision.shipment_id)
@@ -944,11 +1030,14 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
             period_month=a.period_month,
             entry_type=a.entry_type,
             amount=a.invoice_allocated_amount,
+            provision_amount=a.provision_release_amount,
+            provision_currency=provision_currency,
+            fx=a.fx_evidence or {},
             actor_name=actor,
             occurred_at=a.accepted_at,
             amount_basis=(source or {}).get("amount_basis", "NET"),
         )
-        for a, number, currency, source, ref, supplier, origin, actor in session.execute(
+        for a, number, currency, source, ref, supplier, origin, actor, provision_currency in session.execute(
             statement.order_by(Allocation.accepted_at, Allocation.id)
         )
     ]
@@ -1053,6 +1142,10 @@ def report_csv(
             "Usuario",
             "Base de conciliacion",
             "Fecha provision",
+            "Moneda provision aplicada",
+            "Importe provision aplicado",
+            "MXN por USD",
+            "Fecha tipo de cambio",
         ]
     )
     for b in data["balances"]:
@@ -1079,6 +1172,10 @@ def report_csv(
                     b["owner_name"],
                     "",
                     b["provision_date"] or "",
+                    "",
+                    "",
+                    "",
+                    "",
                 ]
             ]
         )
@@ -1106,6 +1203,10 @@ def report_csv(
                     m.get("actor_name", ""),
                     m.get("amount_basis", "NET"),
                     "",
+                    m.get("provision_currency", ""),
+                    m.get("provision_amount", ""),
+                    m.get("fx", {}).get("mxn_per_usd", ""),
+                    m.get("fx", {}).get("rate_date", ""),
                 ]
             ]
         )
@@ -1264,6 +1365,7 @@ def reference_activity(shipment_id: UUID, session: DB, user: Actor):
                     applied=applied(session, line.id),
                     status=invoice.status,
                     amount_basis=(invoice.source_data or {}).get("amount_basis", "NET"),
+                    applications=application_details(session, line.id),
                 )
                 for line, invoice, supplier in lines
             ],

@@ -9,7 +9,7 @@
       <li>Busca la referencia del Excel en el master de la empresa indicada. También reconoce sus referencias anteriores registradas.</li>
       <li>Revisa proveedor, concepto y el importe completo de USD AMOUNT. FREIGHT, BROKER, STORAGE y OTROS se mantienen separados.</li>
       <li>Muestra las facturas listas, las que necesitan revisión y las que ya están registradas. Elige <strong>Guardar facturas</strong> para confirmar las listas.</li>
-      <li>Al guardar, aplica el importe a las provisiones compatibles en USD. Lo que no tenga provisión disponible queda pendiente.</li>
+      <li>Al guardar, aplica el importe a las provisiones compatibles. Para provisiones en MXN, indica el tipo de cambio del lote o complétalo después en Detalle.</li>
     </ol>
     <p>Usa el consolidado .xlsx con la hoja CONSOLIDADO y su año. Una referencia que no existe requiere corregirse o registrarse en el master antes de importar.</p>
   </details>
@@ -18,6 +18,14 @@
     <label class="import-file">Archivo consolidado (.xlsx)<input type="file" accept=".xlsx" (change)="choose($event)" [disabled]="busy()" /></label>
     @if (filename) { <button class="button secondary" (click)="analyze()" [disabled]="busy() || !month">Revisar archivo</button> }
   </div>
+  <details class="finance-extra">
+    <summary>Tipo de cambio del lote para provisiones en MXN</summary>
+    <p class="hint">USD AMOUNT ya está en dólares. Este cambio sirve para descontar las provisiones en pesos. Si cada factura usa un cambio distinto, complétalo después en su Detalle.</p>
+    <div class="import-controls">
+      <label>Tipo de cambio del lote (MXN por USD)<input type="text" inputmode="decimal" maxlength="21" [(ngModel)]="fxRate" (ngModelChange)="invalidate()" [disabled]="busy()" placeholder="Ej. 20.0000" /></label>
+      <label>Fecha del tipo de cambio del lote<input type="date" [(ngModel)]="fxDate" (ngModelChange)="invalidate()" [disabled]="busy()" /></label>
+    </div>
+  </details>
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="success" role="status">{{ notice() }}</p> }
   @if (busy()) { <p role="status">Revisando el Excel…</p> }

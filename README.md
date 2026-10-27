@@ -356,13 +356,26 @@ La captura de facturas ofrece **FREIGHT, BROKER, STORAGE y OTROS**. OTROS usa el
 | 500 | Sin factura | Viva; saldo 500 arrastrado |
 | 500 | 600 | Liquidada; 100 de factura pendientes/sin provisión |
 
-**Reglas:** la captura manual concilia el neto; la importación XLSX concilia **USD AMOUNT completo**, ya convertido en el archivo. Ambos flujos aplican el importe conciliable contra provisiones aprobadas de la misma referencia, empresa, proveedor, concepto y moneda. Si hay varias líneas compatibles, consume primero las de origen más antiguo. Las referencias y sus alias deben existir en el master. En captura manual los impuestos se guardan por separado. En la importación, moneda e impuestos originales se conservan como evidencia y no se vuelven a sumar ni convertir; el importe conciliable se registra en USD. Las provisiones MXN existentes no se convierten ni se cancelan con una importación USD. Una factura pendiente puede requerir una provisión adicional o corregir la captura mediante cancelación y nuevo registro.
+**Reglas:** la captura manual concilia el neto; la importación XLSX concilia **USD AMOUNT completo**, ya convertido en el archivo. Ambos flujos aplican el importe contra provisiones aprobadas de la misma referencia, empresa, proveedor y concepto. Primero se consumen las de la misma moneda; después, las de otra moneda con el tipo de cambio capturado. Dentro de cada grupo se respeta el mes de origen más antiguo. Las referencias y sus alias deben existir en el master. Los impuestos manuales se guardan por separado; la importación conserva la moneda y los impuestos originales como evidencia.
 
 El saldo de cada mes se calcula como **saldo inicial + altas + ajustes − liberaciones netas**. Las provisiones mantienen su mes de origen; el arrastre no crea copias ni nuevas provisiones. Los totales de cada moneda permanecen separados. Una provisión liquidada se conserva como `CLOSED`; no se borra ni se marca como cancelación administrativa.
 
 **Cancelar factura** exige mes abierto y motivo, registra reversiones y restituye los saldos afectados. Los movimientos originales se conservan y el reporte de meses anteriores no cambia por una reversión posterior. La conciliación y reversión no pueden retroceder respecto del último mes con movimientos de la referencia. Los importes positivos/negativos del reporte distinguen aplicación y reversión.
 
 Los reportes son consultas calculadas, **no cierres contables bloqueados**. Una captura o aprobación retroactiva en un periodo que sigue abierto puede modificar su reporte. Desde Provisiones, el reporte respeta referencia, responsable y operación consultados, incluyendo todos los estados. Desde Facturas, cubre todas las referencias autorizadas del mes elegido; la búsqueda de folio solo afecta la lista de facturas. El CSV separa filas `SALDO`, `MATCH`, `REVERSAL` y `UNPROVISIONED` para evitar sumar saldos y movimientos como si fueran el mismo dato.
+
+### Provisiones y facturas en monedas distintas
+
+- En **Agregar factura**, abre **Tipo de cambio para provisiones en otra moneda** y captura el cambio y su fecha. El formato siempre es **MXN por 1 USD**; por ejemplo, 20 indica 1 USD = 20 MXN, tanto para una factura en pesos como en dólares. El campo se abre al elegir MXN.
+- Para una factura existente, abre **Detalle**, completa el tipo de cambio y su fecha y pulsa **Aplicar a provisiones**. Las facturas pendientes que tienen provisiones en otra moneda muestran **Falta tipo de cambio**. Se puede guardar una factura y completar este dato después.
+- Ejemplo ilustrativo: provisión de 680 USD y factura de 5,600 MXN, con cambio capturado de 20 MXN/USD: se aplican 5,600 MXN a la factura, se descuentan 280 USD de la provisión y quedan 400 USD. La conversión funciona también con provisiones en MXN y facturas en USD. Cuando se cubre todo el saldo, la provisión queda **Liquidada**; un excedente de factura permanece pendiente.
+- Se conservan los importes y monedas originales. Cada movimiento registra por separado cuánto se aplicó a la factura, cuánto se descontó de la provisión, tipo de cambio, fecha, origen de captura y usuario. El cálculo usa decimales y cuatro decimales de moneda, con redondeo HALF_UP; nunca supera los saldos disponibles. Una diferencia menor al mínimo representable permanece pendiente cuando no permite un movimiento positivo en ambas monedas.
+- Si se cambia el tipo de cambio de una factura con saldo pendiente, se usa para las siguientes aplicaciones. Las aplicaciones anteriores conservan el cambio usado. Cancelar la factura devuelve exactamente los importes originales de cada aplicación y sus tasas, incluso cuando hubo varios cambios.
+- **Movimientos de referencia**, el detalle de factura, el reporte mensual y su CSV muestran lo aplicado en ambas monedas. Los totales de provisiones se mantienen en la moneda de cada provisión.
+- En **Cargar Excel**, **Tipo de cambio del lote para provisiones en MXN** permite usar un cambio y una fecha comunes. Si cada factura usa un cambio distinto, complétalo después en su Detalle. **USD AMOUNT ya está en USD**: se conserva como base conciliable; el cambio sirve para descontar las provisiones en MXN. El archivo original y su evidencia permanecen guardados.
+
+Esta mejora utiliza los campos de moneda y evidencia existentes; se activa al actualizar la aplicación, también para facturas ya registradas. La tasa se captura de manera explícita para cada factura o lote.
+
 
 ### Permisos e historial
 
@@ -389,7 +402,7 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 
 ### Verificación de este bloque
 
-- Compilación Angular de producción correcta, **327 pruebas de backend sin integración externa** y **56 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **7 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
+- Compilación Angular de producción correcta, **358 pruebas de backend sin integración externa** y **16 casos de navegador de Finanzas** verificados, incluyendo importación, aprobación automática, captura del tipo de cambio y aplicaciones entre monedas distintas. Otros **8 casos con API real y SQLite** comprueban persistencia, los cinco masters, aplicación parcial y total en otra moneda y restitución al cancelar.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 

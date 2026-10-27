@@ -350,3 +350,66 @@ test("a department is optional for new references and can be completed without r
   await expect(reopened.getByRole("dialog").getByLabel("Reference", { exact: true })).toHaveValue(created.reference_raw);
   await context.close();
 });
+
+test("peso invoices apply to dollar provisions with a recorded rate and reversals restore the balance", async ({ page }) => {
+  await page.goto("/");
+  const shipmentResponse = await page.request.post("/api/v1/shipments", { data: {
+    company_code: "MXG", process_code: "RM", operation_code: "LI", reference_year: 2026,
+    business_unit: "M23", reference_raw: "TEST-CROSS-CURRENCY-2026",
+  } });
+  expect(shipmentResponse.status()).toBe(201);
+  const shipment = await shipmentResponse.json();
+  const supplier = "f0000000-0000-0000-0000-000000000003";
+  const provision = await page.request.post("/api/v1/finance/provisions", { data: {
+    shipment_id: shipment.id, supplier_id: supplier, charge_code: "FREIGHT", provision_date: "2026-10-27",
+    amount: "680", extra_charges: "0", currency: "USD",
+  } });
+  expect(provision.status()).toBe(201);
+  const invoice = await page.request.post("/api/v1/finance/invoices", { data: {
+    company_code: "MXG", supplier_id: supplier, invoice_number: "TEST-FX-5600", issue_date: "2026-10-27",
+    accounting_period: "2026-10-01", currency: "MXN", lines: [{ reference: shipment.reference_raw, charge_code: "FREIGHT", net_amount: "5600" }],
+  } });
+  expect(invoice.status()).toBe(201);
+  expect((await invoice.json()).fx_required).toBe(true);
+  await page.reload();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Facturas", exact: true }).click();
+  await page.getByLabel("Mes contable", { exact: true }).fill("2026-10");
+  await page.getByRole("button", { name: "Consultar", exact: true }).click();
+  const invoiceRow = page.locator(".finance-table tbody tr").filter({ hasText: "TEST-FX-5600" }).first();
+  await expect(invoiceRow).toContainText("Falta tipo de cambio");
+  await invoiceRow.getByRole("button", { name: "Detalle", exact: true }).click();
+  const detail = page.locator(".invoice-detail");
+  await detail.getByLabel("Tipo de cambio (MXN por USD)", { exact: true }).fill("20");
+  await detail.getByLabel("Fecha del tipo de cambio", { exact: true }).fill("2026-10-27");
+  await detail.getByRole("button", { name: "Aplicar a provisiones", exact: true }).click();
+  await expect(invoiceRow).toContainText("Aplicada");
+  await expect(detail).toContainText("5,600.00 MXN descontaron 280.00 USD");
+  await detail.locator(".reference-link").first().click();
+  await expect(page.getByRole("dialog")).toContainText("400.00 USD");
+  await expect(page.getByRole("dialog")).toContainText("Descontado: 280.00 USD");
+  await page.getByRole("button", { name: "Cerrar movimientos", exact: true }).click();
+  await page.getByRole("button", { name: "Agregar factura", exact: true }).click();
+  await page.getByLabel("Folio de factura", { exact: true }).fill("TEST-FX-8000");
+  await page.getByLabel("Proveedor de factura", { exact: true }).selectOption(supplier);
+  await page.getByLabel("Empresa de factura", { exact: true }).selectOption("MXG");
+  await page.getByLabel("Moneda de factura", { exact: true }).selectOption("MXN");
+  await page.getByLabel("Fecha de factura", { exact: true }).fill("2026-10-27");
+  await page.getByLabel("Periodo de registro", { exact: true }).fill("2026-10");
+  await page.getByLabel("Tipo de cambio (MXN por USD)", { exact: true }).fill("20");
+  await page.getByLabel("Fecha del tipo de cambio", { exact: true }).fill("2026-10-27");
+  await page.getByLabel("Referencia 1", { exact: true }).fill(shipment.reference_raw);
+  await page.getByLabel("Neto 1", { exact: true }).fill("8000");
+  await page.getByRole("button", { name: "Guardar factura", exact: true }).click();
+  const last = page.locator(".finance-table tbody tr").filter({ hasText: "TEST-FX-8000" }).first();
+  await expect(last).toContainText("Aplicada");
+  const balances = async () => (await (await page.request.get("/api/v1/finance/balances?month=2026-10-01")).json()).items.find((b: any) => b.shipment_id === shipment.id);
+  expect(Number((await balances()).closing_amount)).toBe(0);
+  await last.getByRole("button", { name: "Detalle", exact: true }).click();
+  await detail.getByRole("button", { name: "Cancelar factura", exact: true }).click();
+  await page.getByLabel("Mes de reversión", { exact: true }).fill("2026-10");
+  await page.getByLabel("Motivo de cancelación", { exact: true }).fill("Reversión sintética de prueba");
+  await page.getByRole("button", { name: "Confirmar cancelación", exact: true }).click();
+  await expect(last).toContainText("Cancelada");
+  expect(Number((await balances()).closing_amount)).toBe(400);
+  await page.screenshot({ path: "test-results/local/cross-currency-reconciliation.png", fullPage: true });
+});

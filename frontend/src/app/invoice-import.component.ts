@@ -43,11 +43,13 @@ export class InvoiceImportComponent implements OnChanges {
   visible = computed(() => this.filtered().slice(this.offset(), this.offset() + 20));
   statuses = ["READY", "REVIEW", "DUPLICATE", "OUTSIDE"];
   pending = false;
+  fxRate = "";
+  fxDate = "";
   ngOnChanges(changes: SimpleChanges) { if (changes['month'] && this.preview() && this.month !== this.analyzedMonth) this.invalidate(); }
   dirty() { return this.pending; }
   setBusy(value: boolean) { this.busy.set(value); this.working.emit(value); }
   payload(selected: string[] = []) {
-    return { filename: this.filename, content_base64: this.content, period_month: this.month + "-01", company_map: Object.fromEntries(Object.entries(this.companyMap).filter(([, value]) => value)), supplier_map: Object.fromEntries(Object.entries(this.supplierMap).filter(([, value]) => value)), selected };
+    return { filename: this.filename, content_base64: this.content, period_month: this.month + "-01", company_map: Object.fromEntries(Object.entries(this.companyMap).filter(([, value]) => value)), supplier_map: Object.fromEntries(Object.entries(this.supplierMap).filter(([, value]) => value)), selected, ...(this.fxRate.trim() ? { fx: { mxn_per_usd: this.fxRate.trim(), rate_date: this.fxDate, source: "Captura manual del lote Excel" } } : {}) };
   }
   async choose(event: Event) {
     const input = event.target as HTMLInputElement;
@@ -56,6 +58,7 @@ export class InvoiceImportComponent implements OnChanges {
     input.value = "";
     this.error.set(""); this.preview.set(null); this.notice.set("");
     this.content = ""; this.filename = ""; this.pending = false;
+    this.fxRate = ""; this.fxDate = "";
     if (!/\.xlsx$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
       this.error.set("Selecciona un .xlsx de hasta 10 MB."); return;
     }
@@ -98,7 +101,7 @@ export class InvoiceImportComponent implements OnChanges {
         this.notice.set(`Registradas ${count} de ${keys.length} facturas. Aplicando USD AMOUNT…`);
       }
       this.pending = false;
-      this.notice.set(`${count} facturas registradas. Se aplicó USD AMOUNT a las provisiones USD compatibles; los saldos restantes siguen pendientes.`);
+      this.notice.set(`${count} facturas registradas. Se aplicó USD AMOUNT a las provisiones compatibles${this.fxRate ? ' usando el tipo de cambio indicado para saldos en MXN' : '; los saldos en MXN requieren completar el tipo de cambio en Detalle'}.`);
     } catch (e) {
       failure = `${count} facturas confirmadas en este intento. ${this.message(e)} Revisa la vista previa antes de reintentar; las ya registradas se detectan como duplicadas.`;
     } finally {

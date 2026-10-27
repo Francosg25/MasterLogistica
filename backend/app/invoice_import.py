@@ -24,7 +24,7 @@ from app.finance import (
     lock_shipments,
     register_invoice,
 )
-from app.finance_schemas import InvoiceCreate
+from app.finance_schemas import InvoiceCreate, SettlementFx
 from app.invoice_excel import normalized, read_consolidated
 from app.models import Invoice, Shipment, ShipmentIdentifier, Supplier
 from app.references import normalize_identifier, normalize_reference
@@ -57,6 +57,7 @@ class ImportRequest(Schema):
     filename: Annotated[str, Field(min_length=1, max_length=255)]
     content_base64: Annotated[str, Field(min_length=1, max_length=14_000_000)]
     period_month: date
+    fx: SettlementFx | None = None
     company_map: Annotated[dict[str, str], Field(max_length=100)] = {}
     supplier_map: Annotated[dict[str, UUID], Field(max_length=1000)] = {}
     selected: Annotated[list[str], Field(max_length=100)] = []
@@ -181,6 +182,7 @@ def prepare(data, session, request):
                     issue_date=rows[0]["issue_date"],
                     accounting_period=data.period_month,
                     currency="USD",
+                    fx=data.fx,
                     lines=lines,
                 )
             except ValidationError:
