@@ -627,7 +627,7 @@ def test_document_search_does_not_duplicate_shipments_or_expose_other_owners(env
             "id": str(e["users"]["one"]["id"]),
             "display_name": "one",
             "analyst_code": 1,
-            "layout_code": "DENI",
+            "layout_code": "MAG",
         }
     ]
 
@@ -665,7 +665,7 @@ def test_manual_master_values_preserve_links_and_audit(environment):
 def test_master_specific_columns_persist_on_native_postgresql(environment):
     e = environment
     row = create_shipment(
-        e, master_data={"container_number": "SYNTHETIC-CONT", "actual_arrival_port": "2026-10-26"}
+        e, master_data={"claim_report": "SYNTHETIC-REPORT", "claim_amount": "25 USD"}
     )
     path = "/api/v1/shipments/" + row["id"]
     response = e["client"].patch(
@@ -685,3 +685,103 @@ def test_master_specific_columns_persist_on_native_postgresql(environment):
         "/api/v1/masters/shipments", headers=e["headers"]("one"), params={"q": "daño"}
     )
     assert [r["id"] for r in result.json()["items"]] == [row["id"]]
+
+
+def test_optional_department_and_literal_historical_keys_on_native_postgresql(environment):
+    e = environment
+    row = create_shipment(e, department_code=None)
+    assert row["department_code"] is None and row["reference_raw"].endswith("-M23")
+    path = "/api/v1/shipments/" + row["id"]
+    response = e["client"].patch(
+        path,
+        headers=e["headers"]("one"),
+        json={
+            "expected_version": row["row_version"],
+            "department_code": "MAT",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["reference_raw"] == row["reference_raw"]
+    assert response.json()["reference_normalized"] == row["reference_normalized"]
+    reserved = row["reference_sequence"] + 25
+    manual = create_shipment(e, reference_raw=f"RM1-{reserved}LI26-M23", department_code=None)
+    assert manual["reference_normalized"] == f"RM1-{reserved}LI26-M23"
+    assert create_shipment(e, department_code=None)["reference_sequence"] == reserved + 1
+
+
+def test_native_code_alignment_preserves_account_ids_roles_and_references(environment):
+    import importlib
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    e = environment
+    shipment = create_shipment(e)
+    create_provision(e, shipment)
+    names = {"one": "DENI", "two": "MAG", "finance": "NAT", "admin": "ANDREA"}
+    with Session(e["admin_engine"]) as session, session.begin():
+        for key, name in names.items():
+            session.get(User, e["users"][key]["id"]).display_name = name
+        session.add(
+            User(
+                id=uuid4(),
+                entra_tenant_id=TENANT_ID,
+                entra_object_id=uuid4(),
+                email="alexa-test@example.com",
+                display_name="ALEXA",
+                role="OPERATOR",
+                analyst_code=5,
+            )
+        )
+    with e["admin_engine"].begin() as connection:
+        users_before = connection.execute(
+            text("SELECT id, display_name, role, row_version FROM users ORDER BY id")
+        ).all()
+        references_before = connection.execute(
+            text(
+                "SELECT id, owner_id, reference_raw, reference_normalized, normalization_version, row_version FROM shipments ORDER BY id"
+            )
+        ).all()
+        logs_before = connection.execute(
+            text(
+                "SELECT id, actor_user_id, shipment_id, provision_id FROM reconciliation_logs ORDER BY id"
+            )
+        ).all()
+        migration = importlib.import_module("migrations.versions.0009_optional_department")
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        users_after = connection.execute(
+            text("SELECT id, display_name, role, row_version FROM users ORDER BY id")
+        ).all()
+        assert [(r.id, r.display_name, r.role) for r in users_before] == [
+            (r.id, r.display_name, r.role) for r in users_after
+        ]
+        codes = dict(connection.execute(text("SELECT display_name, analyst_code FROM users")).all())
+        assert {name: codes[name] for name in names.values()} == {
+            "DENI": 3,
+            "MAG": 1,
+            "NAT": 5,
+            "ANDREA": 4,
+        }
+        assert codes["ALEXA"] == 2
+        assert (
+            connection.execute(
+                text(
+                    "SELECT id, owner_id, reference_raw, reference_normalized, normalization_version, row_version FROM shipments ORDER BY id"
+                )
+            ).all()
+            == references_before
+        )
+        assert (
+            connection.execute(
+                text(
+                    "SELECT id, actor_user_id, shipment_id, provision_id FROM reconciliation_logs ORDER BY id"
+                )
+            ).all()
+            == logs_before
+        )
+    assert (
+        e["client"].get("/api/v1/shipments/" + shipment["id"], headers=e["headers"]("one")).json()
+        == shipment
+    )
+    assert create_shipment(e, department_code=None)["reference_raw"].startswith("RM3-")

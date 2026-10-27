@@ -175,7 +175,7 @@ async function mock(
             id: `owner-${i + 1}`,
             display_name:
               i === 0 ? "Analista de prueba" : `Integrante ${i + 1}`,
-            analyst_code: i + 1,
+            analyst_code: options.profiles ? [3, 1, 5, 4, 2][i] : i + 1,
           }),
         ),
       );
@@ -342,6 +342,7 @@ test("creates in the selected master with manual company and an allowed BU, then
   expect(creation.body?.["owner_id"]).toBe("owner-1");
   expect(creation.body?.["company_code"]).toBe("MXG");
   expect(creation.body).not.toHaveProperty("reference_raw");
+  expect(creation.body?.["department_code"]).toBeNull();
   expect(creation.body?.["business_unit"]).toBe("M01");
   await dialog.getByLabel("Número de documento").fill("26 00 0000 0001234");
   await dialog.getByRole("button", { name: "Agregar", exact: true }).click();
@@ -921,7 +922,7 @@ test("shipment detail edits reference and all identification fields instead of s
   await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M19");
   await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("AI");
   await dialog.getByLabel("Proceso *", { exact: true }).selectOption("AF");
-  await dialog.getByLabel("Departamento *", { exact: true }).selectOption("FIX");
+  await dialog.getByLabel("Departamento", { exact: true }).selectOption("FIX");
   await dialog.getByLabel("Año de operación *", { exact: true }).fill("2027");
   await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "REFERENCIA DEL DETALLE" })).toBeVisible();

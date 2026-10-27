@@ -8,21 +8,22 @@ import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DefaultClause, MetaData, inspect, select, text
+from sqlalchemy import CheckConstraint, DefaultClause, MetaData, func, inspect, select, text
 
+from app.analysts import MASTER_ANALYST_CODES, align_named_master_codes_v1
 from app.models import Base, ReferenceCounter, Supplier, User
 from app.storage_types import ExactNumeric
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 LOCAL_TENANT = UUID("f0000000-0000-0000-0000-000000000001")
 LOCAL_USER = UUID("f0000000-0000-0000-0000-000000000002")
 LOCAL_SUPPLIER = UUID("f0000000-0000-0000-0000-000000000003")
 LOCAL_MASTERS = (
-    (LOCAL_USER, "DENI", 1),
-    (UUID("f0000000-0000-0000-0000-000000000012"), "MAG", 2),
-    (UUID("f0000000-0000-0000-0000-000000000013"), "NAT", 3),
+    (LOCAL_USER, "DENI", 3),
+    (UUID("f0000000-0000-0000-0000-000000000012"), "MAG", 1),
+    (UUID("f0000000-0000-0000-0000-000000000013"), "NAT", 5),
     (UUID("f0000000-0000-0000-0000-000000000014"), "ANDREA", 4),
-    (UUID("f0000000-0000-0000-0000-000000000015"), "ALEXA", 5),
+    (UUID("f0000000-0000-0000-0000-000000000015"), "ALEXA", 2),
 )
 MAX_MONEY = 10**18 - 1
 
@@ -221,6 +222,19 @@ def initialize_local(engine, session_factory):
                     )
                 connection.exec_driver_sql("UPDATE local_schema_version SET version = 4")
                 version = [4]
+            if version == [4]:
+                # Early local releases used this label for the same fixed account.
+                # Identify that preset by ID before aligning codes and adding masters.
+                connection.execute(
+                    User.__table__.update()
+                    .where(User.id == LOCAL_USER, User.display_name == "Desarrollo local")
+                    .values(
+                        display_name="DENI", row_version=User.row_version + 1, updated_at=func.now()
+                    )
+                )
+                align_named_master_codes_v1(connection)
+                connection.exec_driver_sql("UPDATE local_schema_version SET version = 5")
+                version = [5]
             if version != [SCHEMA_VERSION]:
                 raise ValueError(
                     "La versión de la base local requiere una actualización explícita; conserva el archivo."
@@ -240,7 +254,7 @@ def initialize_local(engine, session_factory):
                     email="local@example.com",
                     display_name="DENI",
                     role="SUPER_ADMIN",
-                    analyst_code=1,
+                    analyst_code=MASTER_ANALYST_CODES["DENI"],
                 )
             )
             session.flush()

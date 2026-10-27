@@ -93,7 +93,7 @@
               <div class="form-grid">
                 <label>Proceso<select aria-label="Proceso" formControlName="process_code">@for (code of catalogs().process_codes; track code) { <option [value]="code">{{ code }} · {{ processes[code] || code }}</option> }</select></label>
                 <label>Año de referencia<input aria-label="Año de referencia" type="number" formControlName="reference_year" min="2000" max="2099" step="1" /></label>
-                <label>Departamento<select aria-label="Departamento" formControlName="department_code">@for (code of catalogs().department_codes; track code) { <option [value]="code">{{ code }} · {{ departments[code] || code }}</option> }</select></label>
+                <label>Departamento<select aria-label="Departamento" formControlName="department_code"><option value="">Sin asignar</option>@for (code of catalogs().department_codes; track code) { <option [value]="code">{{ code }} · {{ departments[code] || code }}</option> }</select><small>Opcional. Sin departamento, la referencia automática termina en la BU.</small></label>
                 @if (shipment()) {
                   <label>Planta<input formControlName="plant_code" maxlength="32" /></label>
                   <label class="checkbox"><input type="checkbox" formControlName="damaged_material" />Material dañado · DMR</label>
@@ -159,11 +159,11 @@
               </select></label
             >
             <label
-              >Departamento *<select
-                aria-label="Departamento *"
+              >Departamento<select
+                aria-label="Departamento"
                 formControlName="department_code"
               >
-                @if (shipment()) { <option value="">Sin asignar</option> }
+                <option value="">Sin asignar</option>
                 @for (code of catalogs().department_codes; track code) {
                   <option [value]="code">
                     {{ code }} · {{ departments[code] || code }}

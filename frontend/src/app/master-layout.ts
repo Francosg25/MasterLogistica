@@ -1,7 +1,7 @@
 import { Catalogs, MasterData, MasterLayout, Owner, Shipment, ShipmentValues } from "./types";
 
 export function ownerLayout(catalog: Catalogs | null, owner: Owner | undefined): MasterLayout | null {
-  const codes: Record<number, string> = { 1: "DENI", 2: "MAG", 3: "NAT", 4: "ANDREA", 5: "ALEXA" };
+  const codes: Record<number, string> = { 1: "MAG", 2: "ALEXA", 3: "DENI", 4: "ANDREA", 5: "NAT" };
   const code = owner?.layout_code || codes[owner?.analyst_code ?? 0];
   return catalog?.master_layouts?.[code] ?? null;
 }

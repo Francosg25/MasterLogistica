@@ -3,12 +3,16 @@ from decimal import Decimal
 from typing import Annotated, Generic, Literal, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, model_validator
 
 Role = Literal["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"]
 Process = Literal["RM", "AF", "FG", "CR", "FA"]
 Operation = Annotated[str, Field(min_length=1, max_length=100)]
 Department = Literal["PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"]
+OptionalDepartment = Annotated[
+    Department | None,
+    BeforeValidator(lambda value: None if isinstance(value, str) and not value.strip() else value),
+]
 ShipmentStatus = Annotated[str, Field(max_length=100)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=4, allow_inf_nan=False)]
 ShortText = Annotated[str, Field(min_length=1, max_length=250)]
@@ -123,7 +127,7 @@ class ShipmentCreate(Schema):
     operation_code: Operation
     reference_year: Annotated[int, Field(ge=2000, le=2099)]
     business_unit: Annotated[str, Field(min_length=3, max_length=3, pattern=r"^[A-Z0-9]{3}$")]
-    department_code: Department
+    department_code: OptionalDepartment = None
     status: ShipmentStatus = "DRAFT"
     ship_date: date | None = None
     eta: date | None = None
@@ -152,7 +156,7 @@ class ShipmentPatch(Schema):
     operation_code: Operation | None = None
     reference_year: Annotated[int, Field(ge=2000, le=2099)] | None = None
     business_unit: Annotated[str, Field(pattern=r"^[A-Z0-9]{3}$")] | None = None
-    department_code: Department | None = None
+    department_code: OptionalDepartment = None
     status: ShipmentStatus | None = None
     ship_date: date | None = None
     eta: date | None = None

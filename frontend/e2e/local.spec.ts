@@ -23,7 +23,7 @@ test("local configuration creates and edits real records without corporate login
   await dialog.getByLabel("TYPE", { exact: true }).fill("SI");
   await dialog.getByLabel("BU", { exact: true }).selectOption("M01");
   await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
-  await expect(dialog.getByRole("heading", { name: "RM1-0001SI26-M01-MAT" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "RM3-0001SI26-M01" })).toBeVisible();
   await dialog.getByLabel("Comentarios", { exact: true }).fill("Nota persistente de la API local");
   await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
@@ -59,7 +59,7 @@ test("local responsible masters keep mixed operations separate and save exact pr
   const navigation = page.getByRole("navigation", { name: "Secciones" });
   await navigation.getByRole("button", { name: "Masters", exact: true }).click();
   const owner = page.getByLabel("Responsable del master", { exact: true });
-  await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "DENI", "MAG", "NAT", "ANDREA", "ALEXA"]);
+  await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "MAG", "ALEXA", "DENI", "ANDREA", "NAT"]);
   await owner.selectOption({ label: "MAG" });
   let reference = "";
   for (const operation of ["AI", "SI"]) {
@@ -69,7 +69,7 @@ test("local responsible masters keep mixed operations separate and save exact pr
     await dialog.getByLabel("TYPE", { exact: true }).fill(operation);
     await dialog.getByLabel("BU", { exact: true }).selectOption("M46");
       await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
-    await expect(dialog.getByRole("heading", { name: /RM2-/ })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: /RM1-/ })).toBeVisible();
     reference = await dialog.locator("#editor-title").innerText();
     await dialog.getByRole("button", { name: "Cerrar detalle" }).click();
   }
@@ -284,4 +284,55 @@ test("each real master uses its Excel columns and its own create and edit form",
   await context.close();
   expect(errors).toEqual([]);
   expect(unexpectedDialogs).toEqual([]);
+});
+
+test("a department is optional for new references and can be completed without renaming the record", async ({ page, browser }) => {
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await page.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "DENI" });
+  await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXG");
+  await dialog.getByLabel("TYPE", { exact: true }).fill("LI");
+  await dialog.getByLabel("BU", { exact: true }).selectOption("M01");
+  await dialog.getByText("Opciones de referencia automática", { exact: true }).click();
+  await expect(dialog.getByLabel("Departamento", { exact: true })).toHaveValue("");
+  await dialog.getByLabel("Año de referencia", { exact: true }).fill("2026");
+  const createdResponse = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/api/v1/shipments"));
+  await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
+  const created = await (await createdResponse).json();
+  expect(created.department_code).toBeNull();
+  expect(created.reference_raw).toMatch(/^RM3-\d{4}LI26-M01$/);
+  await expect(dialog.getByRole("heading", { name: created.reference_raw, exact: true })).toBeVisible();
+  await dialog.getByLabel("Departamento", { exact: true }).selectOption("MAT");
+  const savedResponse = page.waitForResponse(response => response.request().method() === "PATCH" && response.url().endsWith(`/shipments/${created.id}`));
+  await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  const saved = await (await savedResponse).json();
+  expect(saved).toMatchObject({ id: created.id, reference_raw: created.reference_raw, reference_normalized: created.reference_normalized, department_code: "MAT", row_version: created.row_version + 1 });
+  await expect(dialog.getByRole("button", { name: "Guardar cambios", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
+  await page.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "MAG" });
+  await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
+  await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXG");
+  await dialog.getByLabel("TYPE", { exact: true }).fill("LI");
+  await dialog.getByLabel("BU", { exact: true }).selectOption("M01");
+  await dialog.getByText("Opciones de referencia automática", { exact: true }).click();
+  await dialog.getByLabel("Departamento", { exact: true }).selectOption("MAT");
+  await dialog.getByLabel("Año de referencia", { exact: true }).fill("2026");
+  const completeResponse = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/api/v1/shipments"));
+  await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
+  const complete = await (await completeResponse).json();
+  expect(complete.reference_raw).toMatch(/^RM1-\d{4}LI26-M01-MAT$/);
+  expect(complete.department_code).toBe("MAT");
+  await expect(dialog.getByRole("heading", { name: complete.reference_raw, exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
+  const context = await browser.newContext();
+  const reopened = await context.newPage();
+  await reopened.goto("http://127.0.0.1:4200/");
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "DENI" });
+  await reopened.locator(".reference-link").first().click();
+  await expect(reopened.getByRole("dialog").getByLabel("Departamento", { exact: true })).toHaveValue("MAT");
+  await expect(reopened.getByRole("dialog").getByLabel("Reference", { exact: true })).toHaveValue(created.reference_raw);
+  await context.close();
 });

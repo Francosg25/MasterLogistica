@@ -1,19 +1,19 @@
-"""Reference generation v2; historical keys remain readable without rewriting them."""
+"""Optional departments in new references; historical matching keys remain stable."""
 
 import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from sqlalchemy import case
+from sqlalchemy import case, func, or_, select, union_all
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.models import ReferenceCounter, User
+from app.models import ReferenceCounter, Shipment, ShipmentIdentifier, User
 
 LEGACY_VERSION = "JE_REF_2026_10_V1"
-VERSION = "JE_REF_2026_10_V2"
+VERSION = "JE_REF_2026_10_V3"
 PROCESSES = {"RM", "AF", "FG", "CR", "FA"}
 LEGACY_PROCESSES = {"DR"}
 DEPARTMENTS = {"PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"}
@@ -57,11 +57,23 @@ def operation_classification(value):
 PATTERN = re.compile(
     r"(?P<process>RM|AF|FG|CR|DR|FA)(?P<analyst>[1-9])-"
     r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5|R1)"
-    r"(?P<year>\d{2})-(?P<bu>[A-Z0-9]{1,32})-"
-    r"(?P<department>PRJ|MAT|QUA|MAI|HUM|FIX|RAW|CTM|SCR)"
+    r"(?P<year>\d{2})-(?P<bu>[A-Z0-9]{1,32})"
+    r"(?:-(?P<department>PRJ|MAT|QUA|MAI|HUM|FIX|RAW|CTM|SCR))?"
     r"(?:\.(?P<suffix>DMR|PFA|CS\d{1,32}))?",
     re.ASCII,
 )
+NUMBER_PATTERN = re.compile(
+    r"^(?:RM|AF|FG|CR|DR|FA)(?P<analyst>[1-9])-(?P<sequence>\d{1,10})"
+    r"(?:AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5|R1)\d{2}-[A-Z0-9]",
+    re.ASCII,
+)
+
+
+def reference_number(raw: str):
+    # Reading a number must not make unrelated suffixes equivalent for matching.
+    text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", raw)).upper()
+    match = NUMBER_PATTERN.match(text)
+    return (int(match["analyst"]), int(match["sequence"])) if match else None
 
 
 @dataclass(frozen=True)
@@ -75,7 +87,7 @@ class ParsedReference:
     operation_code: str
     year: int
     business_unit: str
-    department_code: str
+    department_code: str | None
     suffix: str | None
     warnings: tuple[str, ...]
     is_current_format: bool
@@ -97,10 +109,12 @@ def parse_reference(raw: str) -> ParsedReference:
         warnings.append("SEQUENCE_WIDTH_NOT_FOUR")
     if len(match["bu"]) != 3:
         warnings.append("BUSINESS_UNIT_WIDTH_NOT_THREE")
-    base = (
-        f"{match['process']}{match['analyst']}-{sequence:04d}"
-        f"{match['operation']}{match['year']}-{match['bu']}-{match['department']}"
-    )
+    # Earlier releases treated department-free references as literal keys. Preserve
+    # their sequence spelling, including leading zeroes, when recognizing metadata.
+    digits = f"{sequence:04d}" if match["department"] else match["sequence"]
+    base = f"{match['process']}{match['analyst']}-{digits}{match['operation']}{match['year']}-{match['bu']}"
+    if match["department"]:
+        base += "-" + match["department"]
     suffix = match["suffix"]
     return ParsedReference(
         raw_value=raw,
@@ -127,12 +141,13 @@ def generate_reference(
     operation: str,
     year: int,
     business_unit: str,
-    department: str,
+    department: str | None = None,
     business_units: Mapping[str, str],
 ) -> tuple[str, int]:
     if user.analyst_code is None:
         raise ValueError("Assign an analyst code before creating operations")
-    if process not in PROCESSES or department not in DEPARTMENTS:
+    department = department or None
+    if process not in PROCESSES or (department is not None and department not in DEPARTMENTS):
         raise ValueError("Unsupported reference catalog code")
     if not operation.strip() or len(operation) > 100:
         raise ValueError("Capture an operation up to 100 characters")
@@ -141,6 +156,9 @@ def generate_reference(
         raise ValueError("Invalid reference year or business unit")
     if not business_units or business_unit not in business_units:
         raise ValueError("Business unit must belong to the configured approved catalog")
+    # A corrected analyst code may have been used by a different owner in older
+    # releases. Reserve its existing numbers across all owners and reference aliases.
+    reserve_existing_sequences(session, user)
     # UPSERT locks the owner's counter until the transaction commits; rollback consumes no number.
     insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
     statement = insert_row(ReferenceCounter).values(owner_id=user.id, last_value=1)
@@ -149,13 +167,51 @@ def generate_reference(
         set_={"last_value": ReferenceCounter.last_value + 1},
         where=ReferenceCounter.last_value < 9999,
     ).returning(ReferenceCounter.last_value)
-    sequence = session.scalar(statement)
-    if sequence is None:
-        raise ValueError("Four-digit reference counter exhausted; a reset policy must be approved")
-    return (
-        f"{process}{user.analyst_code}-{sequence:04d}{operation}{year % 100:02d}"
-        f"-{business_unit}-{department}"
-    ), sequence
+    while (sequence := session.scalar(statement)) is not None:
+        reference = (
+            f"{process}{user.analyst_code}-{sequence:04d}{operation}{year % 100:02d}-{business_unit}"
+            + (f"-{department}" if department else "")
+        )
+        normalized = normalize_reference(reference)
+        aliases = select(ShipmentIdentifier.shipment_id).where(
+            ShipmentIdentifier.kind == "REFERENCE",
+            ShipmentIdentifier.normalized_value == normalized,
+        )
+        if (
+            session.scalar(
+                select(Shipment.id)
+                .where(
+                    or_(
+                        Shipment.reference_normalized == normalized,
+                        Shipment.id.in_(aliases),
+                    )
+                )
+                .limit(1)
+            )
+            is None
+        ):
+            return reference, sequence
+    raise ValueError("Four-digit reference counter exhausted; a reset policy must be approved")
+
+
+def reserve_existing_sequences(session: Session, owner: User) -> None:
+    prefix = f"{owner.analyst_code}-"
+    values = union_all(
+        select(Shipment.reference_normalized).where(
+            func.substr(Shipment.reference_normalized, 3, 2) == prefix
+        ),
+        select(ShipmentIdentifier.normalized_value).where(
+            ShipmentIdentifier.kind == "REFERENCE",
+            func.substr(ShipmentIdentifier.normalized_value, 3, 2) == prefix,
+        ),
+    )
+    highest = 0
+    for value in session.scalars(values):
+        number = reference_number(value)
+        if number and number[0] == owner.analyst_code and 0 < number[1] <= 9999:
+            highest = max(highest, number[1])
+    if highest:
+        reserve_sequence(session, owner, highest)
 
 
 def normalize_reference(raw: str) -> str:
@@ -168,20 +224,21 @@ def normalize_reference(raw: str) -> str:
 
 def reserve_manual_sequence(session: Session, owner: User, raw: str) -> None:
     """Keep automatic numbering ahead of a manually entered number for this owner."""
-    try:
-        parsed = parse_reference(raw)
-    except ValueError:
+    number = reference_number(raw)
+    if not number or number[0] != owner.analyst_code or not 0 < number[1] <= 9999:
         return
-    if parsed.analyst_code != owner.analyst_code or parsed.sequence > 9999:
-        return
+    reserve_sequence(session, owner, number[1])
+
+
+def reserve_sequence(session: Session, owner: User, sequence: int) -> None:
     insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
-    statement = insert_row(ReferenceCounter).values(owner_id=owner.id, last_value=parsed.sequence)
+    statement = insert_row(ReferenceCounter).values(owner_id=owner.id, last_value=sequence)
     session.execute(
         statement.on_conflict_do_update(
             index_elements=[ReferenceCounter.owner_id],
             set_={
                 "last_value": case(
-                    (ReferenceCounter.last_value < parsed.sequence, parsed.sequence),
+                    (ReferenceCounter.last_value < sequence, sequence),
                     else_=ReferenceCounter.last_value,
                 )
             },

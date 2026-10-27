@@ -305,6 +305,12 @@ Cada master usa las columnas de su propia hoja «Master template», independient
 - Se excluyen únicamente la clave auxiliar oculta A y la celda auxiliar TODAY() de los masters marítimos. No se ejecutan fórmulas Excel. Los archivos fuente se usan para definir la estructura; esta actualización no importa sus movimientos.
 - Los campos adicionales se guardan en `shipments.master_data` y las actualizaciones parciales conservan los demás valores. El historial identifica cada columna modificada. Los campos operativos de versiones anteriores siguen visibles y pueden modificarse o vaciarse.
 
+El departamento es opcional y comienza en **Sin asignar**, también al generar referencias. Por ejemplo, con departamento MAT se genera `RM3-0001LI26-M23-MAT`; sin departamento, `RM3-0001LI26-M23`. Completar, cambiar o vaciar el departamento de un registro existente conserva su referencia; la referencia sigue teniendo su propia edición manual.
+
+Los códigos de analista de la nomenclatura son **MAG=1, ALEXA=2, DENI=3, ANDREA=4 y NAT=5**. El esquema local 5 y la migración PostgreSQL `0009_optional_department` corrigen las cuentas identificadas exactamente por esos cinco nombres de master, conservando sus ID, permisos y registros. Las cuentas corporativas con otros nombres mantienen el código asignado expresamente durante su aprovisionamiento; la migración no deduce identidades por nombre de pila. Si un código está ocupado por otra cuenta o un nombre de master identifica a dos cuentas, la actualización se revierte para revisar esa asignación, sin reasignar cuentas ajenas.
+
+Los textos y las claves históricas de referencias se conservan. Reconocer datos de una referencia sin departamento no rellena ni elimina ceros en su clave de búsqueda. Las referencias con y sin departamento, y sus diferentes sufijos, continúan siendo distintas. Los consecutivos nuevos respetan el contador de la cuenta y los números ya utilizados con su código de analista, incluso en referencias anteriores guardadas como alias o pertenecientes a otra cuenta antes de corregir la numeración.
+
 `backend/app/master_layouts.json` define las cinco estructuras; `/references/catalogs` las entrega a la interfaz. `frontend/public/master-layouts.json` es el espejo para demostración y práctica; una prueba comprueba que coincidan. Las pruebas usan datos ficticios y no contienen los libros originales.
 
 ## Edición del master
@@ -364,7 +370,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere **0008_master_layouts**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
+Esta versión requiere **0009_optional_department**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -375,11 +381,11 @@ docker compose run --rm migrate
 docker compose up -d api web
 ```
 
-Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. El esquema local se prepara automáticamente y las versiones 1, 2 y 3 se actualizan hasta la 4 mediante cambios aditivos. Se conservan registros, versiones de fila y vínculos financieros. Una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
+Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. El esquema local se prepara automáticamente y las versiones 1, 2, 3 y 4 se actualizan hasta la 5 mediante cambios de esquema y alineación de códigos. Se conservan registros, versiones de fila y vínculos financieros. Una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
 
 ### Verificación de este bloque
 
-- Compilación Angular de producción correcta, **295 pruebas de backend sin integración externa** y **56 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **6 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
+- Compilación Angular de producción correcta, **327 pruebas de backend sin integración externa** y **56 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **7 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
@@ -408,6 +414,6 @@ Validación de la actualización XLSX: 177 pruebas de backend sin base externa y
 
 ![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)
 
-La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1, 2 y 3 hasta la 4, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
+La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1, 2, 3 y 4 hasta la 5, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
 
 ![Captura de provisión con fecha exacta y concepto](frontend/docs/provision-date-preview.png)

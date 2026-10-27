@@ -607,7 +607,7 @@ def test_responsible_masters_manual_company_and_exact_provision_date(tmp_path):
     app = create_app(settings)
     with local_client(app) as client:
         owners = client.get("/api/v1/masters/owners").json()
-        assert [o["display_name"] for o in owners] == ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"]
+        assert [o["display_name"] for o in owners] == ["MAG", "ALEXA", "DENI", "ANDREA", "NAT"]
         assert list(client.get("/api/v1/references/catalogs").json()["business_units"]) == [
             "M01",
             "M19",

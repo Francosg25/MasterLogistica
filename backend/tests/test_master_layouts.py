@@ -184,12 +184,12 @@ def test_search_and_history_use_the_actual_master_column_labels(local_master):
 
 def test_manual_reference_creation_keeps_aliases_and_automatic_counter(local_master):
     _, _, client = local_master
-    first = create(client, reference_raw="RM1-0042LI26-M01-MAT", master_data={"sec": "42"})
-    assert first["reference_raw"] == "RM1-0042LI26-M01-MAT"
+    first = create(client, reference_raw="RM3-0042LI26-M01-MAT", master_data={"sec": "42"})
+    assert first["reference_raw"] == "RM3-0042LI26-M01-MAT"
     aliases = client.get("/api/v1/shipments/" + first["id"] + "/identifiers").json()
     assert [r["normalized_value"] for r in aliases] == [first["reference_normalized"]]
     duplicate = client.post(
-        "/api/v1/shipments", json={**BASE, "reference_raw": "rm1-0042li26-m01-mat"}
+        "/api/v1/shipments", json={**BASE, "reference_raw": "rm3-0042li26-m01-mat"}
     )
     assert duplicate.status_code == 422, duplicate.text
     second = create(client)

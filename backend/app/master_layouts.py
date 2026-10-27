@@ -5,8 +5,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from app.analysts import ANALYST_LAYOUTS
+
 LAYOUTS = json.loads(Path(__file__).with_suffix(".json").read_text(encoding="utf-8"))["layouts"]
-ANALYST_LAYOUTS = {1: "DENI", 2: "MAG", 3: "NAT", 4: "ANDREA", 5: "ALEXA"}
 
 
 def stored_master_data(row):

@@ -119,13 +119,14 @@ export const demoShipments: Shipment[] = [
 export const demoOwners: Owner[] = Array.from({ length: 5 }, (_, i) => ({
   id: `demo-owner-${i + 1}`,
   display_name: ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"][i],
-  analyst_code: i + 1,
+  analyst_code: [3, 1, 5, 4, 2][i],
+  layout_code: ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"][i],
 }));
 export const masterDemoShipments: Shipment[] = demoOwners.flatMap((owner, i) =>
   demoShipments.map((row) => ({
     ...row,
     id: `${owner.id}-${row.id}`,
     owner_id: owner.id,
-    reference_raw: row.reference_raw!.replace("RM1-", `RM${i + 1}-`),
+    reference_raw: row.reference_raw!.replace("RM1-", `RM${owner.analyst_code}-`),
   })),
 );

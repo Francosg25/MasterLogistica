@@ -83,7 +83,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       ],
     ],
     business_unit: ["", Validators.required],
-    department_code: ["MAT", Validators.required],
+    department_code: [""],
     status: ["DRAFT", Validators.maxLength(100)],
     ship_date: [""],
     eta: [""],
@@ -223,6 +223,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       "delivery_date",
       "pfa_approval_code",
       "reference_raw",
+      "department_code",
     ]) {
       data[key] =
         typeof data[key] === "string"
