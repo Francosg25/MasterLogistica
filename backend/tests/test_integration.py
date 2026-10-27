@@ -785,3 +785,51 @@ def test_native_code_alignment_preserves_account_ids_roles_and_references(enviro
         == shipment
     )
     assert create_shipment(e, department_code=None)["reference_raw"].startswith("RM3-")
+
+
+def test_automatic_sec_and_upgrade_preserve_links_on_native_postgresql(environment):
+    import importlib
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    e = environment
+    first = create_shipment(e, reference_raw="SYNTHETIC-MANUAL-SEC")
+    second = create_shipment(e)
+    assert first["master_data"]["sec"] == "1616"
+    assert second["master_data"]["sec"] == "1617"
+    provision = create_provision(e, first)
+    with e["admin_engine"].begin() as connection:
+        before = connection.execute(
+            text("SELECT id, reference_raw, reference_normalized FROM shipments ORDER BY id")
+        ).all()
+        audit = connection.scalar(text("SELECT count(*) FROM reconciliation_logs"))
+        connection.execute(
+            text(
+                "UPDATE shipments SET master_data = '{}'::jsonb, reference_sequence = NULL WHERE id = :id"
+            ),
+            {"id": first["id"]},
+        )
+        migration = importlib.import_module("migrations.versions.0010_automatic_sec")
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+        assert (
+            connection.execute(
+                text("SELECT id, reference_raw, reference_normalized FROM shipments ORDER BY id")
+            ).all()
+            == before
+        )
+        assert connection.scalar(text("SELECT count(*) FROM reconciliation_logs")) == audit
+        assert (
+            connection.scalar(
+                text("SELECT shipment_id::text FROM provisions WHERE id = :id"),
+                {"id": provision["id"]},
+            )
+            == first["id"]
+        )
+    fetched = (
+        e["client"].get("/api/v1/shipments/" + first["id"], headers=e["headers"]("one")).json()
+    )
+    assert fetched["master_data"]["sec"] == "1618"
+    assert fetched["row_version"] == first["row_version"] + 1
+    assert create_shipment(e)["master_data"]["sec"] == "1619"

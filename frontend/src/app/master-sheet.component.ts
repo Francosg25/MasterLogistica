@@ -14,7 +14,7 @@ import { ApiError, ApiService } from "./api.service";
 import { Shipment, STATUS, Supplier, OPERATIONS, EXCEL_OPERATION_LABELS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
 import { MasterPracticeService } from "./master-practice.service";
 import { IconComponent } from "./icon.component";
-import { masterValue, shipmentValues } from "./master-layout";
+import { masterOptions, masterValue, shipmentValues } from "./master-layout";
 import { MasterField, MasterLayout } from "./types";
 
 type Column = MasterField;
@@ -88,7 +88,7 @@ export class MasterSheetComponent implements OnDestroy {
     { key: "status", label: "Estado", width: 144, kind: "status", max: 100 },
     { key: "business_unit", label: "BU", width: 75, kind: "unit" },
     { key: "operation_code", label: "Tipo de operación", width: 190, kind: "operation", max: 100 },
-    { key: "company_code", label: "Empresa", width: 130, kind: "text", max: 32, required: true },
+    { key: "company_code", label: "Empresa", width: 130, kind: "choice", options: [{ value: "MXG", label: "MXG" }, { value: "MXT", label: "MXT" }], max: 32, required: true },
     { key: "ship_date", label: "Fecha de embarque", width: 175, kind: "date" },
     { key: "eta", label: "ETA", width: 135, kind: "date" },
     {
@@ -207,6 +207,7 @@ export class MasterSheetComponent implements OnDestroy {
       !this.saving() &&
       !!this.rows()[row] &&
       !!this.columns()[col] &&
+      this.columns()[col].kind !== "sequence" &&
       !this.blocked.has(this.rows()[row]?.id)
     );
   }
@@ -254,7 +255,7 @@ export class MasterSheetComponent implements OnDestroy {
   }
   begin(row: number, col: number, initial?: string): void {
     if (!this.editable(row, col)) {
-      this.notice.set(this.readOnly() ? this.readOnlyReason() :
+      this.notice.set(this.columns()[col]?.kind === "sequence" ? "SEC se asigna automáticamente al guardar la referencia." : this.readOnly() ? this.readOnlyReason() :
         "Esta fila está bloqueada. Revisa el aviso y recárgala antes de editar.");
       return;
     }
@@ -263,7 +264,11 @@ export class MasterSheetComponent implements OnDestroy {
     this.anchor.set({ row, col });
     this.directEntry.set(initial !== undefined);
     const column = this.columns()[col];
-    this.editValue = initial ?? this.display(this.rows()[row], column);
+    const options = this.columnOptions(column);
+    const current = column.kind === "operation" ? masterOperationValue(this.value(this.rows()[row], column)) : this.value(this.rows()[row], column);
+    this.editValue = options.length
+      ? initial === undefined ? current : options.find(option => option.value.toLowerCase().startsWith(initial.toLowerCase()))?.value ?? current
+      : initial ?? this.display(this.rows()[row], column);
     this.editing.set({ row, col });
     // Render and focus before returning the first key event. Deferring focus
     // loses subsequent characters when typing quickly into a selected cell.
@@ -272,6 +277,12 @@ export class MasterSheetComponent implements OnDestroy {
     control?.focus({ preventScroll: true });
     if (initial === undefined && control?.type === "text") control.select();
     else if (control?.type === "text") control.setSelectionRange(control.value.length, control.value.length);
+  }
+  columnOptions(column: Column): { value: string; label: string }[] {
+    return masterOptions(column, this.businessUnits());
+  }
+  currentOption(column: Column): string | null {
+    return this.editValue && !this.columnOptions(column).some(option => option.value === this.editValue) ? this.editValue : null;
   }
   private normalize(raw: string, column: Column): string | null {
     let value = raw.trim();
@@ -286,7 +297,13 @@ export class MasterSheetComponent implements OnDestroy {
       value = value.toUpperCase();
       if (!this.businessUnits().includes(value)) throw new Error("BU: selecciona M01, M19, M23, M45 o M46.");
     }
-    if (column.kind === "operation") return masterOperationValue(value);
+    if (column.kind === "operation") value = masterOperationValue(value);
+    if (column.kind === "choice" || column.kind === "operation") {
+      value = value.toUpperCase();
+      if (!this.columnOptions(column).some(option => option.value === value))
+        throw new Error(`${column.label}: selecciona una opción de la lista.`);
+      return value;
+    }
     if (column.kind === "date") {
       const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
       if (match)
@@ -315,7 +332,7 @@ export class MasterSheetComponent implements OnDestroy {
     if (this.readOnly() || this.saving()) return false;
     try {
       // Validate the complete paste before staging any cell, so invalid ranges never apply partially.
-      const prepared = cells.map((cell) => {
+      const prepared = cells.filter(cell => this.columns()[cell.col]?.kind !== "sequence").map((cell) => {
         if (!this.rows()[cell.row] || !this.columns()[cell.col])
           throw new Error(
             "El pegado excede las filas o columnas de esta página.",

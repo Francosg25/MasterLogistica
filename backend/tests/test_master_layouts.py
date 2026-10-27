@@ -121,9 +121,14 @@ def test_each_master_persists_its_columns_and_partial_changes(local_master, code
     owner = next(r for r in client.get("/api/v1/masters/owners").json() if r["layout_code"] == code)
     row = create(client, owner_id=owner["id"], master_data={**extras, "owner": "Nombre manual"})
     assert row["owner_id"] == owner["id"]
-    assert row["master_data"] == {**extras, "owner": "Nombre manual"}
+    assert row["master_data"] == {**extras, "owner": "Nombre manual", "sec": "1"}
     row = patch(client, row, master_data={"pedimento": "000-TEST", "owner": "Otro nombre manual"})
-    assert row["master_data"] == {**extras, "owner": "Otro nombre manual", "pedimento": "000-TEST"}
+    assert row["master_data"] == {
+        **extras,
+        "owner": "Otro nombre manual",
+        "pedimento": "000-TEST",
+        "sec": "1",
+    }
     row = patch(client, row, master_data={"owner": None})
     assert row["master_data"]["owner"] is None
     assert all(row["master_data"][key] == value for key, value in extras.items())
@@ -184,7 +189,8 @@ def test_search_and_history_use_the_actual_master_column_labels(local_master):
 
 def test_manual_reference_creation_keeps_aliases_and_automatic_counter(local_master):
     _, _, client = local_master
-    first = create(client, reference_raw="RM3-0042LI26-M01-MAT", master_data={"sec": "42"})
+    first = create(client, reference_raw="RM3-0042LI26-M01-MAT")
+    assert first["master_data"]["sec"] == "1"
     assert first["reference_raw"] == "RM3-0042LI26-M01-MAT"
     aliases = client.get("/api/v1/shipments/" + first["id"] + "/identifiers").json()
     assert [r["normalized_value"] for r in aliases] == [first["reference_normalized"]]
@@ -212,6 +218,7 @@ def test_existing_typed_values_remain_visible_and_can_be_cleared(local_master):
         stored.customs_appointment = datetime(2026, 10, 26, 14, 30, tzinfo=UTC)
     row = client.get("/api/v1/shipments/" + row["id"]).json()
     assert row["master_data"] == {
+        "sec": "1",
         "arrival_port": "Puerto existente",
         "weight": "25.5000",
         "scs_security_status": "Liberado",
@@ -284,7 +291,12 @@ def test_version_three_upgrade_preserves_records_financial_links_and_audit(tmp_p
     app = create_app(settings)
     with local_client(app) as client:
         stored = client.get("/api/v1/shipments/" + row["id"]).json()
-        assert stored == {**row, "master_data": {}}
+        assert stored == {
+            **row,
+            "row_version": row["row_version"] + 1,
+            "updated_at": stored["updated_at"],
+            "master_data": {"sec": str(row["reference_sequence"])},
+        }
         stored_invoice = client.get("/api/v1/finance/invoices?q=TEST-MIGRATION").json()["items"][0]
         assert stored_invoice == invoice
         balances = client.get("/api/v1/finance/balances?month=2026-10-01").json()["items"]
@@ -302,7 +314,7 @@ def test_version_three_upgrade_preserves_records_financial_links_and_audit(tmp_p
                     == count
                 )
         edited = patch(client, stored, master_data={"container_number": "TEST-NEW"})
-        assert edited["row_version"] == row["row_version"] + 1
+        assert edited["row_version"] == stored["row_version"] + 1
         assert client.get("/api/v1/finance/invoices?q=TEST-MIGRATION").json()["items"][0] == invoice
 
 

@@ -65,6 +65,10 @@ def merge_master_data(owner, current, changes):
         if field is None:
             raise ValueError(f"El campo {key} no pertenece al master de este responsable")
         value = value.strip() if isinstance(value, str) else value
+        if field["kind"] == "sequence":
+            if value != result.get(key):
+                raise ValueError("SEC se asigna automáticamente al guardar cada referencia")
+            continue
         if value is not None and len(value) > field["max"]:
             raise ValueError(f"{field['label']}: máximo {field['max']} caracteres")
         if value and field["kind"] == "date":
@@ -73,6 +77,10 @@ def merge_master_data(owner, current, changes):
                     raise ValueError()
             except ValueError:
                 raise ValueError(f"{field['label']}: captura una fecha válida") from None
+        if value and field.get("options") and value != result.get(key):
+            value = value.upper()
+            if value not in {option["value"] for option in field["options"]}:
+                raise ValueError(f"{field['label']}: selecciona una opción de la lista")
         result[key] = value or None
     if len(json.dumps(result, ensure_ascii=False)) > 64000:
         raise ValueError("Los datos de este registro superan 64 KB")

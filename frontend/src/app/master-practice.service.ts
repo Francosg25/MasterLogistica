@@ -31,6 +31,7 @@ export class MasterPracticeService {
     this.seed = examples.flatMap((row, index) =>
       Array.from({ length: 12 }, (_, copy) => ({
         ...row,
+        reference_sequence: copy * 8 + index % 8 + 1,
         id: `practice-${row.id}-${copy}`,
         reference_raw: row.reference_raw!.replace(/-\d{4}/, `-${String(copy * 8 + index % 8 + 1).padStart(4, "0")}`),
         comments: "Ejemplo de práctica. Los cambios se guardan solo en este navegador.",

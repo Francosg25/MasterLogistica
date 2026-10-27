@@ -62,7 +62,7 @@
         }
         <span class="user-avatar" aria-hidden="true">{{ userInitials() }}</span>
         <span class="account-name"
-          >{{ user()?.display_name }}<small>{{ roleName() }}</small></span
+          >{{ accountName() }}<small>{{ roleName() }}</small></span
         ><button
           class="button subtle account-exit"
           [attr.aria-label]="demo() ? 'Salir de demo' : auth.local ? 'Reiniciar sesión local' : 'Salir'"

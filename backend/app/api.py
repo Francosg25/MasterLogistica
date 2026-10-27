@@ -35,6 +35,7 @@ from app.references import (
     PROCESSES,
     VERSION,
     generate_reference,
+    next_reference_sequence,
     normalize_identifier,
     normalize_reference,
     operation_classification,
@@ -517,9 +518,12 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
                 department=data.department_code,
                 business_units=catalog,
             )
+        else:
+            sequence = next_reference_sequence(session, owner)
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
     mode, service, direction = operation_classification(data.operation_code)
+    values["master_data"]["sec"] = str(sequence)
     row = Shipment(
         **values,
         owner_id=owner.id,

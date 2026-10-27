@@ -9,7 +9,7 @@ import {
   output,
 } from "@angular/core";
 import { FormBuilder, FormControl, FormRecord, ReactiveFormsModule, Validators } from "@angular/forms";
-import { masterValue } from "./master-layout";
+import { masterOptions, masterValue } from "./master-layout";
 import {
   Catalogs,
   EXCEL_OPERATION_LABELS,
@@ -120,7 +120,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
         values[prefix + "_id"] = manual || this.suppliers().find(s => s.id === id)?.legal_name || id || "";
       }
       values["status"] = STATUS[row.status] ?? row.status;
-      values["operation_code"] = OPERATIONS[row.operation_code ?? ""] ?? row.operation_code ?? "";
+      values["operation_code"] = masterOperationValue(row.operation_code ?? "");
       this.form.patchValue(values);
       for (const key of ["process_code", "operation_code", "business_unit", "department_code", "reference_year"] as const) {
         this.form.controls[key].removeValidators(Validators.required);
@@ -160,6 +160,18 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   }
   fieldList(field: MasterField): string | null {
     return ({ operation: "shipment-operation-options", status: "shipment-status-options", supplier: "shipment-supplier-options" } as Record<string, string>)[field.kind] ?? null;
+  }
+  fieldOptions(field: MasterField): { value: string; label: string }[] {
+    const options = masterOptions(field, this.unitCodes());
+    const value = this.fieldControl(field).value;
+    return value && !options.some(option => option.value === value) ? [{ value, label: `${value} (actual)` }, ...options] : options;
+  }
+  get companyOptions(): string[] {
+    const value = this.form.controls.company_code.value;
+    return value && !["MXG", "MXT"].includes(value) ? [value, "MXG", "MXT"] : ["MXG", "MXT"];
+  }
+  get operationOptions(): { value: string; label: string }[] {
+    return this.fieldOptions({ key: "operation_code", label: "Tipo de operación", kind: "operation", width: 210 });
   }
   acceptSaved(row: Shipment): void {
     this.form.patchValue({ reference_raw: row.reference_raw ?? "" });
@@ -260,6 +272,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   private submitProfile(): void {
     const data: Record<string, unknown> = {}, master: MasterData = {};
     for (const field of this.layout()!.fields) {
+      if (field.kind === "sequence") continue;
       const control = this.fieldControl(field);
       if (this.shipment() && !control.dirty) continue;
       let value: string | null = control.value.trim() || null;

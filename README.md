@@ -299,9 +299,9 @@ Cada master usa las columnas de su propia hoja «Master template», independient
 | ANDREA | 47 | Seguimiento marítimo y reclamaciones por daño |
 | ALEXA | 41 | Factura, peso, bultos, PFA, solicitante, piezas, cotización y NP |
 
-- Todas las columnas de negocio se pueden editar en celdas o en el detalle, incluidas SEC y Owner. La cuenta responsable del registro sigue siendo la seleccionada al crear; escribir otro texto en Owner no transfiere registros entre cuentas.
-- En registros nuevos, **Reference** permite captura manual. Vacía genera la referencia con la BU y el tipo de operación indicados; proceso, año y departamento están en **Opciones de referencia automática**. Se conserva la captura manual de **MXG MXT** y **TYPE**, con BU M01, M19, M23, M45 o M46.
-- SEC, Owner, Week, Day, Mth., Year e I/O tienen valores iniciales cuando se puede derivarlos del registro; cualquier captura manual prevalece, incluido vaciar la celda. Los datos financieros capturados como texto en el master no crean provisiones ni facturas.
+- Las columnas de negocio se pueden editar en celdas o en el detalle. SEC se asigna automáticamente al guardar, también con referencia manual, y conserva su número al editar el registro; cada master lleva su consecutivo. Se puede editar Owner. La cuenta responsable del registro sigue siendo la seleccionada al crear; escribir otro texto en Owner no transfiere registros entre cuentas.
+- En registros nuevos, **Reference** permite captura manual. Vacía genera la referencia con la BU y el tipo de operación indicados; proceso, año y departamento están en **Opciones de referencia automática**. **MXG MXT** ofrece MXG/MXT y **TYPE** las 14 operaciones de la nomenclatura (AE, AI, SE, SI, LI, LE, PI, PE, VI, VE, A3, F4, F5 y R1), con BU M01, M19, M23, M45 o M46. Currency ofrece MXN/USD e I/O ofrece I/O. Los valores históricos siguen visibles hasta corregirlos.
+- Owner, Week, Day, Mth., Year e I/O tienen valores iniciales cuando se puede derivarlos del registro; la captura de esos campos prevalece, incluido vaciarlos. SEC es automático: no se captura en el formulario ni se sobrescribe al pegar desde Excel. El servidor reserva el número junto con el registro; una operación fallida no consume el consecutivo. Después de 9999 continúa con 10000, sin reiniciarse. Los datos financieros capturados como texto en el master no crean provisiones ni facturas.
 - Se excluyen únicamente la clave auxiliar oculta A y la celda auxiliar TODAY() de los masters marítimos. No se ejecutan fórmulas Excel. Los archivos fuente se usan para definir la estructura; esta actualización no importa sus movimientos.
 - Los campos adicionales se guardan en `shipments.master_data` y las actualizaciones parciales conservan los demás valores. El historial identifica cada columna modificada. Los campos operativos de versiones anteriores siguen visibles y pueden modificarse o vaciarse.
 
@@ -311,18 +311,22 @@ Los códigos de analista de la nomenclatura son **MAG=1, ALEXA=2, DENI=3, ANDREA
 
 Los textos y las claves históricas de referencias se conservan. Reconocer datos de una referencia sin departamento no rellena ni elimina ceros en su clave de búsqueda. Las referencias con y sin departamento, y sus diferentes sufijos, continúan siendo distintas. Los consecutivos nuevos respetan el contador de la cuenta y los números ya utilizados con su código de analista, incluso en referencias anteriores guardadas como alias o pertenecientes a otra cuenta antes de corregir la numeración.
 
+La sesión de demostración y la sesión local muestran **Usuario de pruebas** con iniciales **UP**. Los nombres de los cinco masters se conservan en su selector.
+
+El esquema local 6 y `0010_automatic_sec` completan SEC vacíos en registros anteriores: conservan el SEC capturado, recuperan el consecutivo existente cuando se conoce y asignan los faltantes en orden de creación a partir del mayor número reservado. Las referencias y su historial financiero conservan sus vínculos.
+
 `backend/app/master_layouts.json` define las cinco estructuras; `/references/catalogs` las entrega a la interfaz. `frontend/public/master-layouts.json` es el espejo para demostración y práctica; una prueba comprueba que coincidan. Las pruebas usan datos ficticios y no contienen los libros originales.
 
 ## Edición del master
 
 - La vista normal reúne navegación, selección del responsable y acciones en una cabecera compacta. Los registros ocupan la mayor parte de la ventana; los filtros empiezan plegados y se abren con **Mostrar filtros**. **Tamaño** cambia texto, altura de filas y ancho de columnas a 100/115/130 % y conserva esa preferencia. **Ampliar master** aprovecha todavía más la ventana sin descartar cambios.
-- Haz clic en una celda editable y empieza a escribir para reemplazar su contenido, incluidos fechas, estados y proveedores. Las fechas se pueden escribir como `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Tipo de operación, estado, transportista y naviera admiten texto manual; sus listas son sugerencias. Doble clic, Enter, F2 o **Editar celda** abre el valor actual. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
+- Haz clic en una celda editable y empieza a escribir para reemplazar su contenido, incluidos fechas, estados y proveedores. Las fechas se pueden escribir como `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Tipo de operación, empresa, moneda e I/O se eligen de listas. Estado, transportista y naviera admiten texto manual; sus listas son sugerencias. Doble clic, Enter, F2 o **Editar celda** abre el valor actual. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
 - Mantener una flecha mueve la selección y desplaza únicamente el interior de la hoja. Encabezados y referencia fija no ocultan la celda activa. Inicio/Fin van al extremo de la fila; Ctrl+Inicio/Ctrl+Fin a los extremos de la página cargada; RePág/AvPág desplazan la selección una pantalla dentro de esa página.
-- Todas las columnas del master permiten editar y pegar valores, incluidas **Referencia**, **BU**, **Tipo de operación** y **Empresa**. Enter abre el editor de la celda; Ctrl+Enter o el botón ↗ de la referencia abre el detalle del embarque, donde también se puede modificar su identificación.
-- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Los valores de tipo de operación, estado y proveedores se pueden pegar aunque no existan en una lista. Las BU conservan M01, M19, M23, M45 y M46. Los errores de fecha o de tamaño de rango conservan el pegado sin aplicarlo parcialmente.
+- Las columnas del master permiten editar y pegar valores, incluidas **Referencia**, **BU**, **Tipo de operación** y **Empresa**; SEC es automático. Enter abre el editor de la celda; Ctrl+Enter o el botón ↗ de la referencia abre el detalle del embarque, donde también se puede modificar su identificación.
+- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Los valores de estado y proveedores se pueden pegar aunque no existan en una lista. Tipo de operación, empresa, moneda e I/O validan las opciones del catálogo; LAND IMPO, por ejemplo, se reconoce como LI. Las BU conservan M01, M19, M23, M45 y M46. Los errores de fecha o de tamaño de rango conservan el pegado sin aplicarlo parcialmente.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
-- Cada columna se modifica de manera independiente. La BU ofrece M01, M19, M23, M45 y M46; la empresa y la referencia admiten captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación.
+- Cada columna se modifica de manera independiente. La BU ofrece M01, M19, M23, M45 y M46; la empresa ofrece MXG/MXT y la referencia admite captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación.
 - **Nuevo embarque** genera la referencia mediante el servidor. Abrir una referencia permite consultar o editar su detalle, incidencias y documentos.
 - **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros como masters; la carga del consolidado de facturación se realiza en su sección dedicada.
 
@@ -370,7 +374,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere **0009_optional_department**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
+Esta versión requiere **0010_automatic_sec**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -381,7 +385,7 @@ docker compose run --rm migrate
 docker compose up -d api web
 ```
 
-Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. El esquema local se prepara automáticamente y las versiones 1, 2, 3 y 4 se actualizan hasta la 5 mediante cambios de esquema y alineación de códigos. Se conservan registros, versiones de fila y vínculos financieros. Una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
+Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. El esquema local se prepara automáticamente y las versiones 1 a 5 se actualizan hasta la 6 mediante cambios de esquema, alineación de códigos y asignación de SEC faltantes. Se conservan registros y vínculos financieros; las filas que reciben un SEC incrementan su versión para detectar ediciones anteriores a la actualización. Una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
 
 ### Verificación de este bloque
 
@@ -414,6 +418,6 @@ Validación de la actualización XLSX: 177 pruebas de backend sin base externa y
 
 ![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)
 
-La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1, 2, 3 y 4 hasta la 5, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
+La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1 a 5 hasta la 6, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
 
 ![Captura de provisión con fecha exacta y concepto](frontend/docs/provision-date-preview.png)

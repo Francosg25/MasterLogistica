@@ -1,4 +1,10 @@
-import { Catalogs, MasterData, MasterLayout, Owner, Shipment, ShipmentValues } from "./types";
+import { Catalogs, MasterData, MasterField, MasterLayout, OPERATIONS, Owner, Shipment, ShipmentValues } from "./types";
+
+export function masterOptions(field: MasterField, businessUnits: string[] = []): { value: string; label: string }[] {
+  if (field.kind === "unit") return businessUnits.map(value => ({ value, label: value }));
+  if (field.kind === "operation") return Object.entries(OPERATIONS).map(([value, label]) => ({ value, label: `${value} · ${label}` }));
+  return field.options ?? [];
+}
 
 export function ownerLayout(catalog: Catalogs | null, owner: Owner | undefined): MasterLayout | null {
   const codes: Record<number, string> = { 1: "MAG", 2: "ALEXA", 3: "DENI", 4: "ANDREA", 5: "NAT" };
@@ -15,7 +21,7 @@ export function masterValue(row: Shipment, key: string, owner = ""): string {
     sec: String(row.reference_sequence ?? ""), owner,
     day: date ? String(Number(date.slice(8, 10))) : "",
     month: date ? String(Number(date.slice(5, 7))) : "",
-    year: date.slice(0, 4), io: row.direction ?? "",
+    year: date.slice(0, 4), io: ["I", "O"].includes(row.direction ?? "") ? row.direction! : "",
     damaged_material: row.damaged_material === true ? "Sí" : row.damaged_material === false ? "No" : "",
     ocean_bl: data["transport_document"] ?? "",
     pfa_number: row.pfa_approval_code ?? "",

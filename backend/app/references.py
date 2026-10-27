@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from app.master_sequences import positive_sequence
 from app.models import ReferenceCounter, Shipment, ShipmentIdentifier, User
 
 LEGACY_VERSION = "JE_REF_2026_10_V1"
@@ -159,15 +160,8 @@ def generate_reference(
     # A corrected analyst code may have been used by a different owner in older
     # releases. Reserve its existing numbers across all owners and reference aliases.
     reserve_existing_sequences(session, user)
-    # UPSERT locks the owner's counter until the transaction commits; rollback consumes no number.
-    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
-    statement = insert_row(ReferenceCounter).values(owner_id=user.id, last_value=1)
-    statement = statement.on_conflict_do_update(
-        index_elements=[ReferenceCounter.owner_id],
-        set_={"last_value": ReferenceCounter.last_value + 1},
-        where=ReferenceCounter.last_value < 9999,
-    ).returning(ReferenceCounter.last_value)
-    while (sequence := session.scalar(statement)) is not None:
+    while True:
+        sequence = next_reference_sequence(session, user, reserve=False)
         reference = (
             f"{process}{user.analyst_code}-{sequence:04d}{operation}{year % 100:02d}-{business_unit}"
             + (f"-{department}" if department else "")
@@ -191,7 +185,24 @@ def generate_reference(
             is None
         ):
             return reference, sequence
-    raise ValueError("Four-digit reference counter exhausted; a reset policy must be approved")
+
+
+def next_reference_sequence(session: Session, owner: User, *, reserve: bool = True) -> int:
+    """Allocate SEC for manual and automatic references in the same transaction."""
+    if reserve:
+        reserve_existing_sequences(session, owner)
+    # UPSERT locks the owner's counter until commit; rollback consumes no number.
+    insert_row = sqlite_insert if session.get_bind().dialect.name == "sqlite" else insert
+    statement = insert_row(ReferenceCounter).values(owner_id=owner.id, last_value=1)
+    statement = statement.on_conflict_do_update(
+        index_elements=[ReferenceCounter.owner_id],
+        set_={"last_value": ReferenceCounter.last_value + 1},
+        where=ReferenceCounter.last_value < 2147483646,
+    ).returning(ReferenceCounter.last_value)
+    sequence = session.scalar(statement)
+    if sequence is None:
+        raise ValueError("Se agotó el rango numérico del consecutivo de este master")
+    return sequence
 
 
 def reserve_existing_sequences(session: Session, owner: User) -> None:
@@ -206,9 +217,22 @@ def reserve_existing_sequences(session: Session, owner: User) -> None:
         ),
     )
     highest = 0
+    for existing in session.execute(
+        select(
+            Shipment.master_data["sec"].as_string().label("sec"),
+            Shipment.reference_sequence,
+            Shipment.legacy_sec,
+        ).where(Shipment.owner_id == owner.id)
+    ):
+        for value in (
+            existing.sec,
+            existing.reference_sequence,
+            existing.legacy_sec,
+        ):
+            highest = max(highest, positive_sequence(value))
     for value in session.scalars(values):
         number = reference_number(value)
-        if number and number[0] == owner.analyst_code and 0 < number[1] <= 9999:
+        if number and number[0] == owner.analyst_code and 0 < number[1] <= 2147483646:
             highest = max(highest, number[1])
     if highest:
         reserve_sequence(session, owner, highest)
@@ -225,7 +249,7 @@ def normalize_reference(raw: str) -> str:
 def reserve_manual_sequence(session: Session, owner: User, raw: str) -> None:
     """Keep automatic numbering ahead of a manually entered number for this owner."""
     number = reference_number(raw)
-    if not number or number[0] != owner.analyst_code or not 0 < number[1] <= 9999:
+    if not number or number[0] != owner.analyst_code or not 0 < number[1] <= 2147483646:
         return
     reserve_sequence(session, owner, number[1])
 

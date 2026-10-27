@@ -70,7 +70,8 @@ export class AppComponent implements OnInit {
   private practiceStore = inject(MasterPracticeService);
   phase = signal<"loading" | "login" | "workspace">("loading");
   user = signal<User | null>(null);
-  userInitials = computed(() => (this.user()?.display_name ?? "M").trim().split(/\s+/).slice(0, 2).map(part => part[0] ?? "").join("").toUpperCase());
+  accountName = computed(() => this.auth.local || this.demo() ? "Usuario de pruebas" : this.user()?.display_name ?? "Usuario");
+  userInitials = computed(() => this.auth.local || this.demo() ? "UP" : this.accountName().trim().split(/\s+/).slice(0, 2).map(part => part[0] ?? "").join("").toUpperCase());
   demo = signal(false);
   practice = signal(false);
   filtersVisible = signal(false);

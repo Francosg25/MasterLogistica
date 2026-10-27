@@ -34,6 +34,8 @@ test("production build uses real access flow and offers an isolated read-only pr
   });
   await page.getByRole("button", { name: "Ver demostración" }).click();
   await expect(page.locator(".demo-banner")).toBeVisible();
+  await expect(page.locator(".account-name")).toContainText("Usuario de pruebas");
+  await expect(page.locator(".user-avatar")).toHaveText("UP");
   await expect(page.locator("tbody tr")).toHaveCount(0);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await page
@@ -84,7 +86,11 @@ test("practice edits persist only in the browser, survive reopening and can be r
   await page.getByLabel("Editar Origin", { exact: true }).press("Enter");
   for (const [field, value] of [["reference_raw", "REFERENCIA DE PRACTICA"], ["company_code", "MXT"], ["business_unit", "M46"], ["operation_code", "R1"]]) {
     await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
-    await page.keyboard.type(value);
+    if (field === "reference_raw") await page.keyboard.type(value);
+    else {
+      await page.keyboard.press("F2");
+      await page.locator(".cell-input").selectOption(value);
+    }
     await page.keyboard.press("Enter");
   }
   await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();

@@ -69,15 +69,15 @@
                   @for (field of section.fields; track field.key) {
                     <label [class.profile-wide]="field.max === 10000" [attr.data-field]="field.key">
                       <span>{{ field.label }}{{ fieldRequired(field) ? ' *' : '' }}</span>
-                      @if (field.max === 10000) {
+                      @if (field.kind === 'sequence') {
+                        <input [formControl]="fieldControl(field)" [attr.aria-label]="field.label" readonly placeholder="Automático al guardar" />
+                        <small>Consecutivo automático de este master.</small>
+                      } @else if (field.max === 10000) {
                         <textarea [formControl]="fieldControl(field)" [attr.aria-label]="field.label" [attr.maxlength]="field.max" rows="2"></textarea>
-                      } @else if (field.kind === 'unit') {
+                      } @else if (field.kind === 'unit' || field.kind === 'choice' || field.kind === 'operation') {
                         <select [formControl]="fieldControl(field)" [attr.aria-label]="field.label" [attr.aria-required]="fieldRequired(field)">
-                          <option value="">Selecciona una BU</option>
-                          @if (shipment()?.business_unit && !unitCodes().includes(shipment()!.business_unit!)) {
-                            <option [value]="shipment()!.business_unit">{{ shipment()!.business_unit }}</option>
-                          }
-                          @for (code of unitCodes(); track code) { <option [value]="code">{{ code }}</option> }
+                          <option value="">{{ fieldRequired(field) ? 'Selecciona una opción' : 'Sin asignar' }}</option>
+                          @for (option of fieldOptions(field); track option.value) { <option [value]="option.value">{{ option.label }}</option> }
                         </select>
                       } @else {
                         <input [formControl]="fieldControl(field)" [type]="field.kind === 'date' ? 'date' : 'text'" [attr.aria-label]="field.label" [attr.aria-required]="fieldRequired(field)" [attr.list]="fieldList(field)" [attr.maxlength]="field.max ?? null" [placeholder]="field.key === 'reference_raw' && !shipment() ? 'Automática si lo dejas vacío' : ''" />
@@ -113,12 +113,7 @@
               <label>Referencia<input aria-label="Referencia" formControlName="reference_raw" maxlength="160" /></label>
             }
             <label
-              >Empresa *<input
-                aria-label="Empresa *"
-                formControlName="company_code"
-                maxlength="32"
-                placeholder="Captura la empresa como aparece en el master"
-              /><small>Captura manual de la empresa del movimiento.</small></label
+              >Empresa *<select aria-label="Empresa *" formControlName="company_code"><option value="">Selecciona una opción</option>@for (code of companyOptions; track code) { <option [value]="code">{{ code }}</option> }</select></label
             >
             <label
               >Proceso *<select
@@ -133,7 +128,7 @@
                 }
               </select></label
             >
-            <label>Tipo de operación *<input aria-label="Tipo de operación *" formControlName="operation_code" list="shipment-operation-options" maxlength="100" placeholder="Escribe o elige una operación" /></label>
+            <label>Tipo de operación *<select aria-label="Tipo de operación *" formControlName="operation_code"><option value="">Sin asignar</option>@for (option of operationOptions; track option.value) { <option [value]="option.value">{{ option.label }}</option> }</select></label>
             <label
               >Año de operación *<input
                 type="number"

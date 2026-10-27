@@ -14,16 +14,20 @@ test("local configuration creates and edits real records without corporate login
   });
   await page.goto("/");
   await expect(page.locator(".local-banner")).toContainText("Guardado local");
+  await expect(page.locator(".account-name")).toContainText("Usuario de pruebas");
+  await expect(page.locator(".user-avatar")).toHaveText("UP");
   await expect(page.getByRole("heading", { name: "Acceso al sistema" })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await page.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXG");
-  await dialog.getByLabel("TYPE", { exact: true }).fill("SI");
+  await dialog.getByLabel("MXG MXT", { exact: true }).selectOption("MXG");
+  await dialog.getByLabel("TYPE", { exact: true }).selectOption("SI");
   await dialog.getByLabel("BU", { exact: true }).selectOption("M01");
   await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "RM3-0001SI26-M01" })).toBeVisible();
+  await expect(dialog.getByLabel("SEC", { exact: true })).toHaveValue("1");
+  await expect(dialog.getByLabel("SEC", { exact: true })).toHaveJSProperty("readOnly", true);
   await dialog.getByLabel("Comentarios", { exact: true }).fill("Nota persistente de la API local");
   await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
@@ -65,8 +69,8 @@ test("local responsible masters keep mixed operations separate and save exact pr
   for (const operation of ["AI", "SI"]) {
     await page.getByRole("button", { name: "Nuevo embarque" }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXT");
-    await dialog.getByLabel("TYPE", { exact: true }).fill(operation);
+    await dialog.getByLabel("MXG MXT", { exact: true }).selectOption("MXT");
+    await dialog.getByLabel("TYPE", { exact: true }).selectOption(operation);
     await dialog.getByLabel("BU", { exact: true }).selectOption("M46");
       await dialog.getByRole("button", { name: "Crear embarque", exact: true }).click();
     await expect(dialog.getByRole("heading", { name: /RM1-/ })).toBeVisible();
@@ -132,7 +136,10 @@ test("all identification cells and the detail form persist real corrections on t
   const before = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items[0];
   for (const [field, value] of [["reference_raw", "REFERENCIA MANUAL DE PRUEBA"], ["business_unit", "M19"], ["operation_code", "R1"], ["company_code", "MXT"]]) {
     await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
-    await page.keyboard.type(value);
+    if (["business_unit", "operation_code", "company_code"].includes(field)) {
+      await page.keyboard.press("F2");
+      await page.locator(".cell-input").selectOption(value);
+    } else await page.keyboard.type(value);
     await page.keyboard.press("Enter");
   }
   await page.getByRole("button", { name: "Guardar cambios" }).click();
@@ -171,10 +178,11 @@ test("manual master capture survives a new browser and preserves catalog links w
   await page.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
   const rows = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items;
   const before = rows[0];
-  const values: Record<string, string> = { operation_code: "LAND IMPO", status: "Outgated for Transload", carrier_broker_id: "Transportista libre de prueba", shipping_line_id: "Naviera libre de prueba" };
+  const values: Record<string, string> = { operation_code: "LI", status: "Outgated for Transload", carrier_broker_id: "Transportista libre de prueba", shipping_line_id: "Naviera libre de prueba" };
   for (const [field, value] of Object.entries(values)) {
     await page.locator(`td[data-row="0"][data-field="${field}"]`).dblclick();
-    await page.locator(".cell-input").fill(value);
+    if (field === "operation_code") await page.locator(".cell-input").selectOption(value);
+    else await page.locator(".cell-input").fill(value);
     await page.keyboard.press("Enter");
   }
   await page.locator('td[data-row="0"][data-field="ship_date"]').dblclick();
@@ -190,7 +198,7 @@ test("manual master capture survives a new browser and preserves catalog links w
   await reopened.goto("http://127.0.0.1:4200/");
   await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
-  for (const [field, value] of Object.entries(values)) await expect(reopened.locator(`td[data-row="0"][data-field="${field}"]`)).toHaveText(value);
+  for (const [field, value] of Object.entries(values)) await expect(reopened.locator(`td[data-row="0"][data-field="${field}"]`)).toHaveText(field === "operation_code" ? "Terrestre · Importación" : value);
   await reopened.locator('td[data-row="0"][data-field="carrier_broker_id"]').dblclick();
   await reopened.getByLabel("Editar Carrier / Broker", { exact: true }).fill("Proveedor local de ejemplo");
   await reopened.keyboard.press("Enter");
@@ -233,8 +241,10 @@ test("each real master uses its Excel columns and its own create and edit form",
     await expect(dialog.locator('[data-field="master.export_invoice"]')).toHaveCount(code === "NAT" ? 1 : 0);
     await dialog.getByLabel("Reference", { exact: true }).fill(`TEST-LAYOUT-${code}`);
     await dialog.getByLabel("Owner", { exact: true }).fill(`Nombre manual ${code}`);
-    await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXG");
-    await dialog.getByLabel("TYPE", { exact: true }).fill("Operación manual");
+    await dialog.getByLabel("MXG MXT", { exact: true }).selectOption("MXG");
+    await dialog.getByLabel("TYPE", { exact: true }).selectOption("LI");
+    await dialog.locator('[data-field="master.currency"] select').selectOption("USD");
+    await dialog.getByLabel("I/O", { exact: true }).selectOption("I");
     await dialog.getByLabel("BU", { exact: true }).selectOption("M19");
     await dialog.getByLabel("SHIP DATE", { exact: true }).fill("2026-10-26");
     await dialog.getByLabel(field.label, { exact: true }).fill(example.value);
@@ -265,7 +275,11 @@ test("each real master uses its Excel columns and its own create and edit form",
     expect(created.owner_id).toBe(owner.id);
     expect(created.master_data[example.field.slice(7)]).toBe(example.value + " editado");
     expect(created.master_data.owner).toBe(`Nombre manual ${code}`);
+    expect(created.master_data.currency).toBe("USD");
+    expect(created.master_data.io).toBe("I");
+    expect(Number(created.master_data.sec)).toBeGreaterThan(0);
     await page.locator(".reference-link").first().click();
+    await expect(dialog.getByLabel("SEC", { exact: true })).toHaveValue(created.master_data.sec);
     await expect(dialog.getByLabel(field.label, { exact: true })).toHaveValue(example.value + " editado");
     await dialog.getByLabel(field.label, { exact: true }).fill(example.value + " detalle");
     await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
@@ -292,8 +306,8 @@ test("a department is optional for new references and can be completed without r
   await page.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "DENI" });
   await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXG");
-  await dialog.getByLabel("TYPE", { exact: true }).fill("LI");
+  await dialog.getByLabel("MXG MXT", { exact: true }).selectOption("MXG");
+  await dialog.getByLabel("TYPE", { exact: true }).selectOption("LI");
   await dialog.getByLabel("BU", { exact: true }).selectOption("M01");
   await dialog.getByText("Opciones de referencia automática", { exact: true }).click();
   await expect(dialog.getByLabel("Departamento", { exact: true })).toHaveValue("");
@@ -313,8 +327,8 @@ test("a department is optional for new references and can be completed without r
   await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
   await page.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "MAG" });
   await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
-  await dialog.getByLabel("MXG MXT", { exact: true }).fill("MXG");
-  await dialog.getByLabel("TYPE", { exact: true }).fill("LI");
+  await dialog.getByLabel("MXG MXT", { exact: true }).selectOption("MXG");
+  await dialog.getByLabel("TYPE", { exact: true }).selectOption("LI");
   await dialog.getByLabel("BU", { exact: true }).selectOption("M01");
   await dialog.getByText("Opciones de referencia automática", { exact: true }).click();
   await dialog.getByLabel("Departamento", { exact: true }).selectOption("MAT");

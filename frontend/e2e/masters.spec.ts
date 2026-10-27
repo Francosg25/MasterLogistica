@@ -324,8 +324,8 @@ test("creates in the selected master with manual company and an allowed BU, then
     .getByRole("button", { name: "Crear embarque", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toContainText("Completa");
-  await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
-  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("SI");
+  await dialog.getByLabel("Empresa *", { exact: true }).selectOption("MXG");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("SI");
   await expect(dialog.getByLabel("Business unit *", { exact: true }).locator("option")).toHaveText(["Selecciona una BU", "M01", "M19", "M23", "M45", "M46"]);
   await dialog
     .getByLabel("Business unit *", { exact: true })
@@ -364,9 +364,9 @@ test("each shipment selects its own operation and specific fields", async ({ pag
   const dialog = page.getByRole("dialog");
   const operation = dialog.getByLabel("Tipo de operación *", { exact: true });
   await expect(operation).toHaveValue("");
-  await operation.fill("SI");
+  await operation.selectOption("SI");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeVisible();
-  await operation.fill("R1");
+  await operation.selectOption("R1");
   await expect(dialog.getByLabel("Naviera", { exact: true })).toBeEnabled();
   await expect(dialog.getByRole("heading", { name: "Seguimiento de la operación" })).toBeVisible();
 });
@@ -918,9 +918,9 @@ test("shipment detail edits reference and all identification fields instead of s
   await page.locator(".reference-link").first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Referencia", { exact: true }).fill("REFERENCIA DEL DETALLE");
-  await dialog.getByLabel("Empresa *", { exact: true }).fill("MXG");
+  await dialog.getByLabel("Empresa *", { exact: true }).selectOption("MXG");
   await dialog.getByLabel("Business unit *", { exact: true }).selectOption("M19");
-  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("AI");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("AI");
   await dialog.getByLabel("Proceso *", { exact: true }).selectOption("AF");
   await dialog.getByLabel("Departamento", { exact: true }).selectOption("FIX");
   await dialog.getByLabel("Año de operación *", { exact: true }).fill("2027");
@@ -932,12 +932,12 @@ test("shipment detail edits reference and all identification fields instead of s
   });
 });
 
-test("manual operation, status and supplier cells save and refresh without a catalog blocker", async ({ page }) => {
+test("operation dropdown and manual status and suppliers save and refresh", async ({ page }) => {
   const requests = await mock(page, { collapsed: true });
   await cell(page, 0, "operation_code").dblclick();
   const operation = page.getByLabel("Editar Tipo de operación", { exact: true });
-  await expect(operation).toHaveJSProperty("tagName", "INPUT");
-  await operation.fill("LAND IMPO");
+  await expect(operation).toHaveJSProperty("tagName", "SELECT");
+  await operation.selectOption("LI");
   await operation.press("Enter");
   for (const [field, value] of [
     ["status", "On Water-Loaded"],
@@ -952,13 +952,13 @@ test("manual operation, status and supplier cells save and refresh without a cat
   await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
   await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
   expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
-    operation_code: "LAND IMPO", status: "On Water-Loaded",
+    operation_code: "LI", status: "On Water-Loaded",
     carrier_broker_id: null, carrier_broker_name: "Agente manual de prueba",
     shipping_line_id: null, shipping_line_name: "Naviera manual de prueba", expected_version: 1,
   });
   await page.getByRole("button", { name: "Mostrar filtros", exact: true }).click();
   await page.getByRole("button", { name: "Actualizar", exact: true }).click();
-  await expect(cell(page, 0, "operation_code")).toHaveText("LAND IMPO");
+  await expect(cell(page, 0, "operation_code")).toHaveText("Terrestre · Importación");
   await expect(cell(page, 0, "status")).toHaveText("On Water-Loaded");
   await expect(cell(page, 0, "carrier_broker_id")).toHaveText("Agente manual de prueba");
   await expect(cell(page, 0, "shipping_line_id")).toHaveText("Naviera manual de prueba");
@@ -972,19 +972,66 @@ test("manual operation, status and supplier cells save and refresh without a cat
   expect(requests.filter(r => r.method === "PATCH").at(-1)?.body?.["status"]).toBe("");
 });
 
-test("shipment detail accepts manual operation, state and supplier names", async ({ page }) => {
+test("shipment detail uses operation choices and accepts manual state and supplier names", async ({ page }) => {
   const requests = await mock(page);
   await page.locator(".reference-link").first().click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Tipo de operación *", { exact: true }).fill("Operación especial de prueba");
+  await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("VI");
   await dialog.getByLabel("Estado", { exact: true }).fill("En despacho");
   await dialog.getByLabel("Carrier / Agente aduanal", { exact: true }).fill("Agente temporal de prueba");
   await dialog.getByLabel("Naviera", { exact: true }).fill("Naviera temporal de prueba");
   await dialog.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await expect(dialog.locator(".error")).toHaveCount(0);
   expect(requests.find(r => r.method === "PATCH")?.body).toEqual({
-    operation_code: "Operación especial de prueba", status: "En despacho",
+    operation_code: "VI", status: "En despacho",
     carrier_broker_id: null, carrier_broker_name: "Agente temporal de prueba",
     shipping_line_id: null, shipping_line_name: "Naviera temporal de prueba", expected_version: 1,
   });
+});
+
+test("each master form uses the operation, currency, direction and company lists", async ({ page }) => {
+  await mock(page, { role: "SUPER_ADMIN", mixed: true, profiles: true, collapsed: true });
+  for (const [index, code] of ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"].entries()) {
+    await page.getByLabel("Responsable del master", { exact: true }).selectOption(`owner-${index + 1}`);
+    await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator(".profile-form")).toHaveAttribute("data-layout", code);
+    await expect(dialog.getByLabel("SEC", { exact: true })).toHaveJSProperty("readOnly", true);
+    await expect(dialog.getByLabel("MXG MXT", { exact: true }).locator("option")).toHaveText(["Selecciona una opción", "MXG", "MXT"]);
+    const currency = dialog.locator('[data-field="master.currency"] select');
+    await expect(currency.locator("option")).toHaveText(["Sin asignar", "MXN", "USD"]);
+    await expect(dialog.getByLabel("I/O", { exact: true }).locator("option")).toHaveText(["Sin asignar", "I", "O"]);
+    await expect(dialog.getByLabel("TYPE", { exact: true }).locator("option")).toHaveCount(15);
+    expect(await dialog.getByLabel("TYPE", { exact: true }).locator("option").evaluateAll(options => options.map(option => (option as HTMLOptionElement).value).filter(Boolean))).toEqual(["AI", "AE", "SI", "SE", "LI", "LE", "PI", "PE", "VI", "VE", "A3", "F4", "F5", "R1"]);
+    await dialog.getByRole("button", { name: "Cerrar detalle", exact: true }).click();
+  }
+});
+
+test("SEC stays automatic while choice cells support dropdown edits and validated pastes", async ({ page }) => {
+  const requests = await mock(page, { profiles: true, collapsed: true });
+  const sec = cell(page, 0, "master.sec");
+  await expect(sec).toHaveText("1");
+  await expect(sec).toHaveAttribute("aria-readonly", "true");
+  await sec.dblclick();
+  await expect(page.locator(".cell-input")).toHaveCount(0);
+  await expect(page.locator(".sheet-cell-notice")).toContainText("automáticamente");
+  await pasteCells(page, 0, "master.sec", "9999\tTitular de prueba");
+  await pasteCells(page, 0, "master.currency", "EUR");
+  await expect(page.getByRole("alert")).toContainText("selecciona una opción");
+  for (const [field, value] of [["master.currency", "USD"], ["master.io", "O"], ["company_code", "MXT"], ["operation_code", "AE"]]) {
+    await cell(page, 0, field).dblclick();
+    await expect(page.locator(".cell-input")).toHaveJSProperty("tagName", "SELECT");
+    await page.locator(".cell-input").selectOption(value);
+    await page.keyboard.press("Enter");
+  }
+  await page.getByRole("button", { name: "Guardar cambios", exact: false }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  expect(requests.find(request => request.method === "PATCH")?.body).toEqual({
+    master_data: { owner: "Titular de prueba", currency: "USD", io: "O" }, company_code: "MXT", operation_code: "AE", expected_version: 1,
+  });
+  await expect(sec).toHaveText("1");
+  await page.locator(".reference-link").first().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator('[data-field="master.currency"] select')).toHaveValue("USD");
+  await expect(dialog.getByLabel("I/O", { exact: true })).toHaveValue("O");
 });

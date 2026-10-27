@@ -9,7 +9,7 @@
           "key": "master.sec",
           "label": "SEC",
           "source_column": "B",
-          "kind": "text",
+          "kind": "sequence",
           "max": 40,
           "width": 110,
           "section": "Identificación",
@@ -129,11 +129,21 @@
           "key": "master.io",
           "label": "I/O",
           "source_column": "N",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "I",
+              "label": "I"
+            },
+            {
+              "value": "O",
+              "label": "O"
+            }
+          ]
         },
         {
           "key": "master.amount",
@@ -149,11 +159,21 @@
           "key": "master.currency",
           "label": "Cur.",
           "source_column": "P",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "MXN",
+              "label": "MXN"
+            },
+            {
+              "value": "USD",
+              "label": "USD"
+            }
+          ]
         },
         {
           "key": "master.extra_charges",
@@ -199,11 +219,21 @@
           "key": "company_code",
           "label": "MXG MXT",
           "source_column": "U",
-          "kind": "text",
+          "kind": "choice",
           "max": 32,
           "width": 210,
           "section": "Identificación",
-          "required": true
+          "required": true,
+          "options": [
+            {
+              "value": "MXG",
+              "label": "MXG"
+            },
+            {
+              "value": "MXT",
+              "label": "MXT"
+            }
+          ]
         },
         {
           "key": "business_unit",
@@ -525,7 +555,7 @@
           "key": "master.sec",
           "label": "SEC",
           "source_column": "B",
-          "kind": "text",
+          "kind": "sequence",
           "max": 40,
           "width": 110,
           "section": "Identificación",
@@ -645,11 +675,21 @@
           "key": "master.io",
           "label": "I/O",
           "source_column": "N",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "I",
+              "label": "I"
+            },
+            {
+              "value": "O",
+              "label": "O"
+            }
+          ]
         },
         {
           "key": "master.amount",
@@ -665,11 +705,21 @@
           "key": "master.currency",
           "label": "Cur.",
           "source_column": "P",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "MXN",
+              "label": "MXN"
+            },
+            {
+              "value": "USD",
+              "label": "USD"
+            }
+          ]
         },
         {
           "key": "master.extra_charges",
@@ -715,11 +765,21 @@
           "key": "company_code",
           "label": "MXG MXT",
           "source_column": "U",
-          "kind": "text",
+          "kind": "choice",
           "max": 32,
           "width": 210,
           "section": "Identificación",
-          "required": true
+          "required": true,
+          "options": [
+            {
+              "value": "MXG",
+              "label": "MXG"
+            },
+            {
+              "value": "MXT",
+              "label": "MXT"
+            }
+          ]
         },
         {
           "key": "business_unit",
@@ -851,7 +911,7 @@
           "key": "master.sec",
           "label": "SEC",
           "source_column": "B",
-          "kind": "text",
+          "kind": "sequence",
           "max": 40,
           "width": 110,
           "section": "Identificación",
@@ -971,11 +1031,21 @@
           "key": "master.io",
           "label": "I/O",
           "source_column": "N",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "I",
+              "label": "I"
+            },
+            {
+              "value": "O",
+              "label": "O"
+            }
+          ]
         },
         {
           "key": "master.amount",
@@ -991,11 +1061,21 @@
           "key": "master.currency",
           "label": "Cur.",
           "source_column": "P",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "MXN",
+              "label": "MXN"
+            },
+            {
+              "value": "USD",
+              "label": "USD"
+            }
+          ]
         },
         {
           "key": "master.extra_charges",
@@ -1041,11 +1121,21 @@
           "key": "company_code",
           "label": "MXG MXT",
           "source_column": "U",
-          "kind": "text",
+          "kind": "choice",
           "max": 32,
           "width": 210,
           "section": "Identificación",
-          "required": true
+          "required": true,
+          "options": [
+            {
+              "value": "MXG",
+              "label": "MXG"
+            },
+            {
+              "value": "MXT",
+              "label": "MXT"
+            }
+          ]
         },
         {
           "key": "business_unit",
@@ -1197,7 +1287,7 @@
           "key": "master.sec",
           "label": "SEC",
           "source_column": "B",
-          "kind": "text",
+          "kind": "sequence",
           "max": 40,
           "width": 110,
           "section": "Identificación",
@@ -1317,11 +1407,21 @@
           "key": "master.io",
           "label": "I/O",
           "source_column": "N",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "I",
+              "label": "I"
+            },
+            {
+              "value": "O",
+              "label": "O"
+            }
+          ]
         },
         {
           "key": "master.amount",
@@ -1337,11 +1437,21 @@
           "key": "master.currency",
           "label": "Cur.",
           "source_column": "P",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "MXN",
+              "label": "MXN"
+            },
+            {
+              "value": "USD",
+              "label": "USD"
+            }
+          ]
         },
         {
           "key": "master.extra_charges",
@@ -1387,11 +1497,21 @@
           "key": "company_code",
           "label": "MXG MXT",
           "source_column": "U",
-          "kind": "text",
+          "kind": "choice",
           "max": 32,
           "width": 210,
           "section": "Identificación",
-          "required": true
+          "required": true,
+          "options": [
+            {
+              "value": "MXG",
+              "label": "MXG"
+            },
+            {
+              "value": "MXT",
+              "label": "MXT"
+            }
+          ]
         },
         {
           "key": "business_unit",
@@ -1673,7 +1793,7 @@
           "key": "master.sec",
           "label": "SEC",
           "source_column": "B",
-          "kind": "text",
+          "kind": "sequence",
           "max": 40,
           "width": 110,
           "section": "Identificación",
@@ -1793,11 +1913,21 @@
           "key": "master.io",
           "label": "I/O",
           "source_column": "N",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "I",
+              "label": "I"
+            },
+            {
+              "value": "O",
+              "label": "O"
+            }
+          ]
         },
         {
           "key": "master.amount",
@@ -1813,11 +1943,21 @@
           "key": "master.currency",
           "label": "Cur.",
           "source_column": "P",
-          "kind": "text",
+          "kind": "choice",
           "max": 40,
           "width": 110,
           "section": "Ruta y costos",
-          "required": false
+          "required": false,
+          "options": [
+            {
+              "value": "MXN",
+              "label": "MXN"
+            },
+            {
+              "value": "USD",
+              "label": "USD"
+            }
+          ]
         },
         {
           "key": "master.extra_charges",
@@ -1863,11 +2003,21 @@
           "key": "company_code",
           "label": "MXG MXT",
           "source_column": "U",
-          "kind": "text",
+          "kind": "choice",
           "max": 32,
           "width": 210,
           "section": "Identificación",
-          "required": true
+          "required": true,
+          "options": [
+            {
+              "value": "MXG",
+              "label": "MXG"
+            },
+            {
+              "value": "MXT",
+              "label": "MXT"
+            }
+          ]
         },
         {
           "key": "business_unit",

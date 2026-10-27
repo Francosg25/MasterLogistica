@@ -159,10 +159,10 @@
               (click)="pick(r, c, $event.shiftKey)"
               (dblclick)="begin(r, c)"
               (keydown)="key($event)"
-              [title]="display(row, column) + (editable(r, c) ? ' · Haz clic y escribe para editar' : ' · Solo lectura')"
+              [title]="display(row, column) + (column.kind === 'sequence' ? ' · Consecutivo automático' : editable(r, c) ? ' · Haz clic y escribe para editar' : ' · Solo lectura')"
             >
               @if (isEditing(r, c)) {
-                @if (column.kind === "unit" && !directEntry()) {
+                @if (column.kind === "unit" || column.kind === "choice" || column.kind === "operation") {
                   <select
                     class="cell-input"
                     [attr.aria-label]="'Editar ' + column.label"
@@ -173,7 +173,8 @@
                     (blur)="commit()"
                   >
                     <option value="">Sin asignar</option>
-                    @for (code of businessUnits(); track code) { <option [value]="code">{{ code }}</option> }
+                    @if (currentOption(column); as current) { <option [value]="current">{{ current }} (actual)</option> }
+                    @for (option of columnOptions(column); track option.value) { <option [value]="option.value">{{ option.label }}</option> }
                   </select>
                 } @else {
                   <input
@@ -181,7 +182,7 @@
                     type="text"
                     [attr.inputmode]="column.kind === 'date' ? 'numeric' : null"
                     [attr.placeholder]="column.kind === 'date' ? 'dd/mm/aaaa' : null"
-                    [attr.list]="column.kind === 'status' ? 'master-status-options' : column.kind === 'supplier' ? 'master-supplier-options' : column.kind === 'unit' ? 'master-unit-options' : column.kind === 'operation' ? 'master-operation-options' : null"
+                    [attr.list]="column.kind === 'status' ? 'master-status-options' : column.kind === 'supplier' ? 'master-supplier-options' : null"
                     [attr.aria-label]="'Editar ' + column.label"
                     [value]="editValue"
                     [attr.maxlength]="column.max ?? null"

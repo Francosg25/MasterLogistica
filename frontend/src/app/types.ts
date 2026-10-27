@@ -95,7 +95,8 @@ export interface MasterField {
   key: string;
   label: string;
   source_column?: string;
-  kind: "text" | "date" | "status" | "supplier" | "unit" | "operation";
+  kind: "text" | "date" | "status" | "supplier" | "unit" | "operation" | "choice" | "sequence";
+  options?: { value: string; label: string }[];
   max?: number;
   width: number;
   section?: string;
@@ -148,10 +149,13 @@ export const DEPARTMENTS: Record<string, string> = {
   SCR: "Scrap",
 };
 
-// Lists assist capture; manual labels stay exactly as entered.
+// Preserve historical labels on read; new capture uses the operation catalog.
 export const EXCEL_OPERATION_LABELS = ["LAND IMPO", "LAND EXPO", "AIR IMPO", "AIR EXPO", "SEA IMPO", "SEA EXPO"];
 export function masterOperationValue(value: string): string {
   const text = value.trim();
+  const excelCodes: Record<string, string> = { LANDIMPO: "LI", LANDEXPO: "LE", AIRIMPO: "AI", AIREXPO: "AE", SEAIMPO: "SI", SEAEXPO: "SE" };
+  const excel = excelCodes[text.replace(/\s+/g, "").toUpperCase()];
+  if (excel) return excel;
   return Object.keys(OPERATIONS).find(code => code.toLowerCase() === text.toLowerCase() || OPERATIONS[code].toLowerCase() === text.toLowerCase()) ?? text;
 }
 export function masterStatusValue(value: string): string {

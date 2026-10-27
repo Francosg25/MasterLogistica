@@ -1,7 +1,7 @@
 import { Catalogs, Owner, Shipment, User } from "./types";
 export const demoUser: User = {
   id: "demo",
-  display_name: "Usuario de demostración",
+  display_name: "Usuario de pruebas",
   email: "",
   role: "MANAGER",
   analyst_code: null,
@@ -91,9 +91,10 @@ export const demoShipments: Shipment[] = [
 ].map(([operation, status, origin, destination, sender, consignee], i) => ({
   id: `demo-${i}`,
   row_version: 1,
+  reference_sequence: i + 1,
   owner_id: "demo",
   reference_raw: `RM1-${String(i + 1).padStart(4, "0")}${operation}26-${["M01", "M19"][i % 2]}-MAT`,
-  company_code: "DEMO",
+  company_code: i % 2 ? "MXT" : "MXG",
   process_code: "RM",
   operation_code: operation,
   reference_year: 2026,

@@ -11,10 +11,11 @@ from uuid import UUID, uuid4
 from sqlalchemy import CheckConstraint, DefaultClause, MetaData, func, inspect, select, text
 
 from app.analysts import MASTER_ANALYST_CODES, align_named_master_codes_v1
+from app.master_sequences import backfill_master_sec_v1
 from app.models import Base, ReferenceCounter, Supplier, User
 from app.storage_types import ExactNumeric
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 LOCAL_TENANT = UUID("f0000000-0000-0000-0000-000000000001")
 LOCAL_USER = UUID("f0000000-0000-0000-0000-000000000002")
 LOCAL_SUPPLIER = UUID("f0000000-0000-0000-0000-000000000003")
@@ -235,6 +236,10 @@ def initialize_local(engine, session_factory):
                 align_named_master_codes_v1(connection)
                 connection.exec_driver_sql("UPDATE local_schema_version SET version = 5")
                 version = [5]
+            if version == [5]:
+                backfill_master_sec_v1(connection)
+                connection.exec_driver_sql("UPDATE local_schema_version SET version = 6")
+                version = [6]
             if version != [SCHEMA_VERSION]:
                 raise ValueError(
                     "La versión de la base local requiere una actualización explícita; conserva el archivo."
