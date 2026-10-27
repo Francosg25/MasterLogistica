@@ -573,7 +573,7 @@
                     <dl class="audit-changes">
                       @for (change of row.changes; track change.field) {
                         <div>
-                          <dt>{{ fields[change.field] || change.field }}</dt>
+                          <dt>{{ change.label || fields[change.field] || change.field }}</dt>
                           <dd>
                             <span class="old-value">{{
                               value(change.before)

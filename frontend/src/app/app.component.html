@@ -277,6 +277,7 @@
               </div>
             } @else if (rows().length) {
               <master-sheet
+                [layout]="masterLayout()"
                 [rows]="rows()"
                 [readOnly]="!canEditSheet()"
                 [readOnlyReason]="readOnlyReason()"
@@ -344,6 +345,7 @@
 }
 @if (modal() && catalog()) {
   <shipment-editor
+    [layout]="editorLayout()"
     [catalogs]="catalog()!"
     [suppliers]="suppliers()"
     [shipment]="selected()"

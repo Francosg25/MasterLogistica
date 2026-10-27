@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 
 from fastapi import Request
@@ -17,6 +18,7 @@ def build_engine(settings: Settings):
             pool_pre_ping=True,
             connect_args={"check_same_thread": False, "timeout": 15},
             hide_parameters=True,
+            json_serializer=lambda value: json.dumps(value, ensure_ascii=False),
         )
         from app.local_schema import configure_connection
 

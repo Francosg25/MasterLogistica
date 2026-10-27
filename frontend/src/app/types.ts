@@ -15,6 +15,7 @@ export interface AuthConfig {
   scope: string | null;
 }
 export interface Catalogs {
+  master_layouts?: Record<string, MasterLayout>;
   master_access?: {
     can_edit: boolean;
     can_create: boolean;
@@ -37,6 +38,7 @@ export interface Supplier {
   is_active: boolean;
 }
 export interface Owner {
+  layout_code?: string | null;
   analyst_code: number | null;
   id: string;
   display_name: string;
@@ -58,6 +60,9 @@ export interface Identifier {
   normalized_value: string;
 }
 export interface Shipment {
+  master_data?: Record<string, string | null>;
+  reference_sequence?: number | null;
+  direction?: string;
   id: string;
   row_version: number;
   owner_id: string;
@@ -86,6 +91,19 @@ export interface Shipment {
   expedited_status: string;
   pfa_approval_code: string | null;
 }
+export interface MasterField {
+  key: string;
+  label: string;
+  source_column?: string;
+  kind: "text" | "date" | "status" | "supplier" | "unit" | "operation";
+  max?: number;
+  width: number;
+  section?: string;
+  required?: boolean;
+}
+export interface MasterLayout { code: string; label: string; fields: MasterField[]; }
+export type MasterData = Record<string, string | null>;
+export type ShipmentValues = Record<string, string | null | MasterData>;
 export const STATUS: Record<string, string> = Object.assign(Object.create(null), {
   DRAFT: "Borrador",
   PLANNED: "Programado",

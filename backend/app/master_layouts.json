@@ -1,0 +1,2085 @@
+{
+  "version": 1,
+  "layouts": {
+    "DENI": {
+      "code": "DENI",
+      "label": "DENI",
+      "fields": [
+        {
+          "key": "master.sec",
+          "label": "SEC",
+          "source_column": "B",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.owner",
+          "label": "Owner",
+          "source_column": "C",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "reference_raw",
+          "label": "Reference",
+          "source_column": "D",
+          "kind": "text",
+          "max": 160,
+          "width": 310,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.week",
+          "label": "Week",
+          "source_column": "E",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.day",
+          "label": "Day",
+          "source_column": "F",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.month",
+          "label": "Mth.",
+          "source_column": "G",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.year",
+          "label": "Year",
+          "source_column": "H",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "ship_date",
+          "label": "SHIP DATE",
+          "source_column": "I",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "sender",
+          "label": "Sender",
+          "source_column": "J",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "origin",
+          "label": "Origin",
+          "source_column": "K",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "destination",
+          "label": "Dest. 1",
+          "source_column": "L",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "consignee",
+          "label": "Cnee",
+          "source_column": "M",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.io",
+          "label": "I/O",
+          "source_column": "N",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.amount",
+          "label": "Amount",
+          "source_column": "O",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.currency",
+          "label": "Cur.",
+          "source_column": "P",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.extra_charges",
+          "label": "Extra charges",
+          "source_column": "Q",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "carrier_broker_id",
+          "label": "Carrier / Broker",
+          "source_column": "R",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.pedimento",
+          "label": "PEDIMENTO",
+          "source_column": "S",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "master.transport_document",
+          "label": "BL",
+          "source_column": "T",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "company_code",
+          "label": "MXG MXT",
+          "source_column": "U",
+          "kind": "text",
+          "max": 32,
+          "width": 210,
+          "section": "Identificación",
+          "required": true
+        },
+        {
+          "key": "business_unit",
+          "label": "BU",
+          "source_column": "V",
+          "kind": "unit",
+          "max": 3,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "operation_code",
+          "label": "TYPE",
+          "source_column": "W",
+          "kind": "operation",
+          "max": 100,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "delivery_date",
+          "label": "Delivery date",
+          "source_column": "X",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.damaged_material",
+          "label": "Damaged material",
+          "source_column": "Y",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.usd_standard_cost",
+          "label": "USD Standard Cost",
+          "source_column": "Z",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.scs_security_status",
+          "label": "SCS security status",
+          "source_column": "AA",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "status",
+          "label": "Estatus",
+          "source_column": "AB",
+          "kind": "status",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.arrival_port",
+          "label": "Arrival Port",
+          "source_column": "AC",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.container_number",
+          "label": "Container #",
+          "source_column": "AD",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.ocean_bl",
+          "label": "BL",
+          "source_column": "AE",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.vessel",
+          "label": "Vessel",
+          "source_column": "AF",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "shipping_line_id",
+          "label": "Naviera",
+          "source_column": "AG",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.etd_origin_port",
+          "label": "ETD Port of origin",
+          "source_column": "AH",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.actual_departure_port",
+          "label": "Act Dep.Port of origin",
+          "source_column": "AI",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.eta_arrival_port",
+          "label": "ETA Arrival Port",
+          "source_column": "AJ",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.actual_arrival_port",
+          "label": "Act. Arrival Port date",
+          "source_column": "AK",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.days_at_port",
+          "label": "Days at port",
+          "source_column": "AL",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.customs_appointment",
+          "label": "Cita Despacho",
+          "source_column": "AM",
+          "kind": "text",
+          "max": 100,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "eta",
+          "label": "ETA JEG Zac",
+          "source_column": "AN",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.haulage_type",
+          "label": "Tipo Arrastre",
+          "source_column": "AO",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.actual_transit_time",
+          "label": "Act. TT",
+          "source_column": "AQ",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "comments",
+          "label": "Comentarios",
+          "source_column": "AR",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Comentarios",
+          "required": false
+        },
+        {
+          "key": "master.file_record",
+          "label": "EXPEDIENTE",
+          "source_column": "AS",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.guarantee_payment",
+          "label": "PAGO DE GARANTIA",
+          "source_column": "AT",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.claim_report",
+          "label": "# Reporte queja por daño transporte",
+          "source_column": "AU",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_user",
+          "label": "Usuario del material dañado",
+          "source_column": "AV",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_amount",
+          "label": "$ Monto daño",
+          "source_column": "AW",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_status",
+          "label": "Estatus claim",
+          "source_column": "AX",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_comments",
+          "label": "Comentarios sobre claim",
+          "source_column": "AY",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.weight",
+          "label": "PESO",
+          "source_column": "AZ",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.container_type",
+          "label": "TIPO DE CONTENEDOR",
+          "source_column": "BA",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        }
+      ]
+    },
+    "MAG": {
+      "code": "MAG",
+      "label": "MAG",
+      "fields": [
+        {
+          "key": "master.sec",
+          "label": "SEC",
+          "source_column": "B",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.owner",
+          "label": "Owner",
+          "source_column": "C",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "reference_raw",
+          "label": "Reference",
+          "source_column": "D",
+          "kind": "text",
+          "max": 160,
+          "width": 310,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.week",
+          "label": "Week",
+          "source_column": "E",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.day",
+          "label": "Day",
+          "source_column": "F",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.month",
+          "label": "Mth.",
+          "source_column": "G",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.year",
+          "label": "Year",
+          "source_column": "H",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "ship_date",
+          "label": "SHIP DATE",
+          "source_column": "I",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "sender",
+          "label": "Sender",
+          "source_column": "J",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "origin",
+          "label": "Origin",
+          "source_column": "K",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "destination",
+          "label": "Dest. 1",
+          "source_column": "L",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "consignee",
+          "label": "Cnee",
+          "source_column": "M",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.io",
+          "label": "I/O",
+          "source_column": "N",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.amount",
+          "label": "Amount",
+          "source_column": "O",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.currency",
+          "label": "Cur.",
+          "source_column": "P",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.extra_charges",
+          "label": "Extra charges",
+          "source_column": "Q",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "carrier_broker_id",
+          "label": "Carrier / Broker",
+          "source_column": "R",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.pedimento",
+          "label": "PEDIMENTO",
+          "source_column": "S",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "master.transport_document",
+          "label": "AWB / BL",
+          "source_column": "T",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "company_code",
+          "label": "MXG MXT",
+          "source_column": "U",
+          "kind": "text",
+          "max": 32,
+          "width": 210,
+          "section": "Identificación",
+          "required": true
+        },
+        {
+          "key": "business_unit",
+          "label": "BU",
+          "source_column": "V",
+          "kind": "unit",
+          "max": 3,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "operation_code",
+          "label": "TYPE",
+          "source_column": "W",
+          "kind": "operation",
+          "max": 100,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "delivery_date",
+          "label": "Delivery date",
+          "source_column": "X",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.damaged_material",
+          "label": "Damaged material",
+          "source_column": "Y",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.usd_standard_cost",
+          "label": "USD Standard Cost",
+          "source_column": "Z",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.scs_security_status",
+          "label": "SCS security status",
+          "source_column": "AA",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "comments",
+          "label": "COMENTARIOS",
+          "source_column": "AB",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Comentarios",
+          "required": false
+        },
+        {
+          "key": "master.claim_report",
+          "label": "# Reporte claim",
+          "source_column": "AC",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_amount",
+          "label": "Monto claim",
+          "source_column": "AD",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_user",
+          "label": "Usuario del material dañado",
+          "source_column": "AE",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_status",
+          "label": "Estatus claim",
+          "source_column": "AF",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_comments",
+          "label": "Comentarios claim",
+          "source_column": "AG",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Reclamaciones",
+          "required": false
+        }
+      ]
+    },
+    "NAT": {
+      "code": "NAT",
+      "label": "NAT",
+      "fields": [
+        {
+          "key": "master.sec",
+          "label": "SEC",
+          "source_column": "B",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.owner",
+          "label": "Owner",
+          "source_column": "C",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "reference_raw",
+          "label": "Reference",
+          "source_column": "D",
+          "kind": "text",
+          "max": 160,
+          "width": 310,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.week",
+          "label": "Week",
+          "source_column": "E",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.day",
+          "label": "Day",
+          "source_column": "F",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.month",
+          "label": "Mth.",
+          "source_column": "G",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.year",
+          "label": "Year",
+          "source_column": "H",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "ship_date",
+          "label": "SHIP DATE",
+          "source_column": "I",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "sender",
+          "label": "Sender",
+          "source_column": "J",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "origin",
+          "label": "Origin",
+          "source_column": "K",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "destination",
+          "label": "Dest. 1",
+          "source_column": "L",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "consignee",
+          "label": "Cnee",
+          "source_column": "M",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.io",
+          "label": "I/O",
+          "source_column": "N",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.amount",
+          "label": "Amount",
+          "source_column": "O",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.currency",
+          "label": "Cur.",
+          "source_column": "P",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.extra_charges",
+          "label": "Extra charges",
+          "source_column": "Q",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "carrier_broker_id",
+          "label": "Carrier / Broker",
+          "source_column": "R",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.pedimento",
+          "label": "PEDIMENTO",
+          "source_column": "S",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "master.transport_document",
+          "label": "AWB / BL",
+          "source_column": "T",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "company_code",
+          "label": "MXG MXT",
+          "source_column": "U",
+          "kind": "text",
+          "max": 32,
+          "width": 210,
+          "section": "Identificación",
+          "required": true
+        },
+        {
+          "key": "business_unit",
+          "label": "BU",
+          "source_column": "V",
+          "kind": "unit",
+          "max": 3,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "operation_code",
+          "label": "TYPE",
+          "source_column": "W",
+          "kind": "operation",
+          "max": 100,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "delivery_date",
+          "label": "Delivery date",
+          "source_column": "X",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.damaged_material",
+          "label": "Damaged material",
+          "source_column": "Y",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.usd_standard_cost",
+          "label": "USD Standard Cost",
+          "source_column": "Z",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.scs_security_status",
+          "label": "SCS security status",
+          "source_column": "AA",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "comments",
+          "label": "COMENTARIOS",
+          "source_column": "AB",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Comentarios",
+          "required": false
+        },
+        {
+          "key": "status",
+          "label": "Estatus",
+          "source_column": "AC",
+          "kind": "status",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.export_invoice",
+          "label": "Factura exportación",
+          "source_column": "AD",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.claim_report",
+          "label": "# Reporte",
+          "source_column": "AE",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_amount",
+          "label": "Monto $",
+          "source_column": "AF",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_user",
+          "label": "Usuario",
+          "source_column": "AG",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_status",
+          "label": "Estatus reporte",
+          "source_column": "AH",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_comments",
+          "label": "Comentarios reporte",
+          "source_column": "AI",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Reclamaciones",
+          "required": false
+        }
+      ]
+    },
+    "ANDREA": {
+      "code": "ANDREA",
+      "label": "ANDREA",
+      "fields": [
+        {
+          "key": "master.sec",
+          "label": "SEC",
+          "source_column": "B",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.owner",
+          "label": "Owner",
+          "source_column": "C",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "reference_raw",
+          "label": "Reference",
+          "source_column": "D",
+          "kind": "text",
+          "max": 160,
+          "width": 310,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.week",
+          "label": "Week",
+          "source_column": "E",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.day",
+          "label": "Day",
+          "source_column": "F",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.month",
+          "label": "Mth.",
+          "source_column": "G",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.year",
+          "label": "Year",
+          "source_column": "H",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "ship_date",
+          "label": "SHIP DATE",
+          "source_column": "I",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "sender",
+          "label": "Sender",
+          "source_column": "J",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "origin",
+          "label": "Origin",
+          "source_column": "K",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "destination",
+          "label": "Dest. 1",
+          "source_column": "L",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "consignee",
+          "label": "Cnee",
+          "source_column": "M",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.io",
+          "label": "I/O",
+          "source_column": "N",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.amount",
+          "label": "Amount",
+          "source_column": "O",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.currency",
+          "label": "Cur.",
+          "source_column": "P",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.extra_charges",
+          "label": "Extra charges",
+          "source_column": "Q",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "carrier_broker_id",
+          "label": "Carrier / Broker",
+          "source_column": "R",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.pedimento",
+          "label": "PEDIMENTO",
+          "source_column": "S",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "master.transport_document",
+          "label": "BL",
+          "source_column": "T",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "company_code",
+          "label": "MXG MXT",
+          "source_column": "U",
+          "kind": "text",
+          "max": 32,
+          "width": 210,
+          "section": "Identificación",
+          "required": true
+        },
+        {
+          "key": "business_unit",
+          "label": "BU",
+          "source_column": "V",
+          "kind": "unit",
+          "max": 3,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "operation_code",
+          "label": "TYPE",
+          "source_column": "W",
+          "kind": "operation",
+          "max": 100,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "delivery_date",
+          "label": "Delivery date",
+          "source_column": "X",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.damaged_material",
+          "label": "Damaged material",
+          "source_column": "Y",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.usd_standard_cost",
+          "label": "USD Standard Cost",
+          "source_column": "Z",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.scs_security_status",
+          "label": "SCS security status",
+          "source_column": "AA",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "status",
+          "label": "Estatus",
+          "source_column": "AB",
+          "kind": "status",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.arrival_port",
+          "label": "Arrival Port",
+          "source_column": "AC",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.container_number",
+          "label": "Container #",
+          "source_column": "AD",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.ocean_bl",
+          "label": "BL",
+          "source_column": "AE",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.vessel",
+          "label": "Vessel",
+          "source_column": "AF",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "shipping_line_id",
+          "label": "Naviera",
+          "source_column": "AG",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.etd_origin_port",
+          "label": "ETD Port of origin",
+          "source_column": "AH",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.actual_departure_port",
+          "label": "Act Dep.Port of origin",
+          "source_column": "AI",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.eta_arrival_port",
+          "label": "ETA Arrival Port",
+          "source_column": "AJ",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.actual_arrival_port",
+          "label": "Act. Arrival Port date",
+          "source_column": "AK",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.days_at_port",
+          "label": "Days at port",
+          "source_column": "AL",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.customs_appointment",
+          "label": "Cita Despacho",
+          "source_column": "AM",
+          "kind": "text",
+          "max": 100,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "eta",
+          "label": "ETA JEG Zac",
+          "source_column": "AN",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.haulage_type",
+          "label": "Tipo Arrastre",
+          "source_column": "AO",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.actual_transit_time",
+          "label": "Act. TT",
+          "source_column": "AQ",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "comments",
+          "label": "Comentarios",
+          "source_column": "AR",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Comentarios",
+          "required": false
+        },
+        {
+          "key": "master.claim_report",
+          "label": "# Reporte queja por daño transporte",
+          "source_column": "AS",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_user",
+          "label": "Usuario del material dañado",
+          "source_column": "AT",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_amount",
+          "label": "$ Monto daño",
+          "source_column": "AU",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_status",
+          "label": "Estatus claim",
+          "source_column": "AV",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_comments",
+          "label": "Comentarios sobre claim",
+          "source_column": "AW",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Reclamaciones",
+          "required": false
+        }
+      ]
+    },
+    "ALEXA": {
+      "code": "ALEXA",
+      "label": "ALEXA",
+      "fields": [
+        {
+          "key": "master.sec",
+          "label": "SEC",
+          "source_column": "B",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.owner",
+          "label": "Owner",
+          "source_column": "C",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "reference_raw",
+          "label": "Reference",
+          "source_column": "D",
+          "kind": "text",
+          "max": 160,
+          "width": 310,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "master.week",
+          "label": "Week",
+          "source_column": "E",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.day",
+          "label": "Day",
+          "source_column": "F",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.month",
+          "label": "Mth.",
+          "source_column": "G",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.year",
+          "label": "Year",
+          "source_column": "H",
+          "kind": "text",
+          "max": 24,
+          "width": 110,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "ship_date",
+          "label": "SHIP DATE",
+          "source_column": "I",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "sender",
+          "label": "Sender",
+          "source_column": "J",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "origin",
+          "label": "Origin",
+          "source_column": "K",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "destination",
+          "label": "Dest. 1",
+          "source_column": "L",
+          "kind": "text",
+          "max": 150,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "consignee",
+          "label": "Cnee",
+          "source_column": "M",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.io",
+          "label": "I/O",
+          "source_column": "N",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.amount",
+          "label": "Amount",
+          "source_column": "O",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.currency",
+          "label": "Cur.",
+          "source_column": "P",
+          "kind": "text",
+          "max": 40,
+          "width": 110,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.extra_charges",
+          "label": "Extra charges",
+          "source_column": "Q",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "carrier_broker_id",
+          "label": "Carrier / Broker",
+          "source_column": "R",
+          "kind": "supplier",
+          "max": 250,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.pedimento",
+          "label": "PEDIMENTO",
+          "source_column": "S",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "master.transport_document",
+          "label": "AWB / BL",
+          "source_column": "T",
+          "kind": "text",
+          "max": 1000,
+          "width": 310,
+          "section": "Documentos",
+          "required": false
+        },
+        {
+          "key": "company_code",
+          "label": "MXG MXT",
+          "source_column": "U",
+          "kind": "text",
+          "max": 32,
+          "width": 210,
+          "section": "Identificación",
+          "required": true
+        },
+        {
+          "key": "business_unit",
+          "label": "BU",
+          "source_column": "V",
+          "kind": "unit",
+          "max": 3,
+          "width": 110,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "operation_code",
+          "label": "TYPE",
+          "source_column": "W",
+          "kind": "operation",
+          "max": 100,
+          "width": 210,
+          "section": "Identificación",
+          "required": false
+        },
+        {
+          "key": "delivery_date",
+          "label": "Delivery date",
+          "source_column": "X",
+          "kind": "date",
+          "max": 10,
+          "width": 180,
+          "section": "Fechas",
+          "required": false
+        },
+        {
+          "key": "master.damaged_material",
+          "label": "Damaged material",
+          "source_column": "Y",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.usd_standard_cost",
+          "label": "USD Standard Cost",
+          "source_column": "Z",
+          "kind": "text",
+          "max": 100,
+          "width": 210,
+          "section": "Ruta y costos",
+          "required": false
+        },
+        {
+          "key": "master.scs_security_status",
+          "label": "SCS security status",
+          "source_column": "AA",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "comments",
+          "label": "COMENTARIOS",
+          "source_column": "AB",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Comentarios",
+          "required": false
+        },
+        {
+          "key": "status",
+          "label": "Estatus",
+          "source_column": "AC",
+          "kind": "status",
+          "max": 100,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.invoice_number",
+          "label": "Factura",
+          "source_column": "AD",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.weight",
+          "label": "Peso",
+          "source_column": "AE",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.packages",
+          "label": "Bultos",
+          "source_column": "AF",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.pfa_number",
+          "label": "PFA #",
+          "source_column": "AG",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.requested_by",
+          "label": "Requested by",
+          "source_column": "AH",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.pieces",
+          "label": "Qty pcs.",
+          "source_column": "AI",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.quote",
+          "label": "Quote",
+          "source_column": "AJ",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.part_number",
+          "label": "NP",
+          "source_column": "AK",
+          "kind": "text",
+          "max": 1000,
+          "width": 210,
+          "section": "Seguimiento",
+          "required": false
+        },
+        {
+          "key": "master.claim_report",
+          "label": "# Reporte queja por daño transporte",
+          "source_column": "AL",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_user",
+          "label": "Usuario del material dañado",
+          "source_column": "AM",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_amount",
+          "label": "$ Monto daño",
+          "source_column": "AN",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_status",
+          "label": "Estatus claim",
+          "source_column": "AO",
+          "kind": "text",
+          "max": 250,
+          "width": 210,
+          "section": "Reclamaciones",
+          "required": false
+        },
+        {
+          "key": "master.claim_comments",
+          "label": "Comentarios sobre claim",
+          "source_column": "AP",
+          "kind": "text",
+          "max": 10000,
+          "width": 310,
+          "section": "Reclamaciones",
+          "required": false
+        }
+      ]
+    }
+  }
+}

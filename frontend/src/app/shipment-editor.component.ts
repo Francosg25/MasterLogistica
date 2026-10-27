@@ -8,7 +8,8 @@ import {
   input,
   output,
 } from "@angular/core";
-import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
+import { FormBuilder, FormControl, FormRecord, ReactiveFormsModule, Validators } from "@angular/forms";
+import { masterValue } from "./master-layout";
 import {
   Catalogs,
   EXCEL_OPERATION_LABELS,
@@ -22,6 +23,9 @@ import {
   Shipment,
   STATUS,
   Supplier,
+  MasterField,
+  MasterLayout,
+  MasterData,
 } from "./types";
 
 @Component({
@@ -36,6 +40,7 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   masterOwnerName = input.required<string>();
   suppliers = input<Supplier[]>([]);
   shipment = input<Shipment | null>(null);
+  layout = input<MasterLayout | null>(null);
   identifiers = input<Identifier[]>([]);
   readOnly = input(false);
   busy = input(false);
@@ -54,6 +59,13 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   departments = DEPARTMENTS;
   statusCodes = Object.keys(STATUS);
   unitCodes = computed(() => Object.keys(this.catalogs().business_units));
+  profileSections = computed(() => {
+    const fields = this.layout()?.fields ?? [];
+    return [...new Set(fields.map(field => field.section || "Datos del master"))].map(name => ({
+      name, fields: fields.filter(field => (field.section || "Datos del master") === name),
+    }));
+  });
+  profileControls = new FormRecord<FormControl<string>>({});
   submitted = false;
   private fb = new FormBuilder().nonNullable;
   form = this.fb.group({
@@ -116,7 +128,14 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       }
     } else
       this.form.patchValue({ company_code: "", operation_code: "" });
-    if (this.readOnly()) this.form.disable();
+    for (const field of this.layout()?.fields ?? []) {
+      if (!field.key.startsWith("master.")) continue;
+      const initial = row ? masterValue(row, field.key, this.masterOwnerName()) : field.key === "master.owner" ? this.masterOwnerName() : "";
+      this.profileControls.addControl(field.key.slice(7), new FormControl(initial, {
+        nonNullable: true, validators: [Validators.maxLength(field.max ?? 10000)],
+      }));
+    }
+    if (this.readOnly()) { this.form.disable(); this.profileControls.disable(); }
   }
   ngAfterViewInit(): void {
     this.dialog.nativeElement.showModal();
@@ -131,12 +150,33 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
     return ["VI", "VE", "A3", "F4", "F5", "R1"].includes(this.operation);
   }
   get invalid(): boolean {
-    return this.submitted && this.form.invalid;
+    return this.submitted && (this.form.invalid || this.profileControls.invalid);
+  }
+  fieldControl(field: MasterField): FormControl<string> {
+    return (field.key.startsWith("master.") ? this.profileControls.get(field.key.slice(7)) : this.form.get(field.key)) as FormControl<string>;
+  }
+  fieldRequired(field: MasterField): boolean {
+    return !!field.required || (!this.shipment() && ["business_unit", "operation_code"].includes(field.key));
+  }
+  fieldList(field: MasterField): string | null {
+    return ({ operation: "shipment-operation-options", status: "shipment-status-options", supplier: "shipment-supplier-options" } as Record<string, string>)[field.kind] ?? null;
+  }
+  acceptSaved(row: Shipment): void {
+    this.form.patchValue({ reference_raw: row.reference_raw ?? "" });
+    for (const field of this.layout()?.fields ?? []) {
+      if (field.key.startsWith("master.")) this.fieldControl(field).setValue(masterValue(row, field.key, this.masterOwnerName()));
+    }
+    for (const key of ["process_code", "operation_code", "business_unit", "department_code", "reference_year"] as const) {
+      this.form.controls[key].removeValidators(Validators.required);
+      this.form.controls[key].updateValueAndValidity();
+    }
+    this.form.markAsPristine();
+    this.profileControls.markAsPristine();
   }
   close(): void {
     if (this.busy()) return;
     if (
-      this.form.dirty &&
+      (this.form.dirty || this.profileControls.dirty) &&
       !this.readOnly() &&
       !window.confirm("¿Descartar los cambios sin guardar?")
     )
@@ -154,10 +194,12 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   submit(): void {
     this.submitted = true;
     if (this.readOnly() || this.busy() || this.conflict()) return;
-    if (this.form.invalid) {
+    if (this.form.invalid || this.profileControls.invalid) {
       this.form.markAllAsTouched();
+      this.profileControls.markAllAsTouched();
       return;
     }
+    if (this.layout()) { this.submitProfile(); return; }
     const values = this.form.getRawValue();
     if (
       values.expedited_status === "APPROVED" &&
@@ -212,6 +254,36 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
       const key = prefix + "_id";
       if (key in data) Object.assign(data, supplierValues(data[key] as string | null, prefix, this.suppliers()));
     }
+    this.saved.emit(data);
+  }
+  private submitProfile(): void {
+    const data: Record<string, unknown> = {}, master: MasterData = {};
+    for (const field of this.layout()!.fields) {
+      const control = this.fieldControl(field);
+      if (this.shipment() && !control.dirty) continue;
+      let value: string | null = control.value.trim() || null;
+      if (field.key.startsWith("master.")) {
+        if (this.shipment() || value !== null) master[field.key.slice(7)] = value;
+      } else if (field.key === "reference_raw") {
+        if (this.shipment() || value !== null) data[field.key] = value;
+      } else {
+        if (field.key === "operation_code") value = value ? masterOperationValue(value) : null;
+        if (field.key === "status") value = masterStatusValue(value ?? "");
+        data[field.key] = value;
+      }
+    }
+    if (Object.keys(master).length) data["master_data"] = master;
+    for (const key of ["process_code", "reference_year", "department_code", "plant_code", "damaged_material", "expedited_status", "pfa_approval_code"] as const) {
+      const control = this.form.controls[key];
+      if (this.shipment() ? control.dirty : ["process_code", "reference_year", "department_code"].includes(key)) data[key] = typeof control.value === "boolean" ? control.value : control.value || null;
+    }
+    if (data["expedited_status"] && data["expedited_status"] !== "APPROVED") data["pfa_approval_code"] = null;
+    if (data["expedited_status"] === "APPROVED") data["pfa_approval_code"] = this.form.controls.pfa_approval_code.value.trim() || null;
+    for (const prefix of ["carrier_broker", "shipping_line"] as const) {
+      const key = prefix + "_id";
+      if (key in data) Object.assign(data, supplierValues(data[key] as string | null, prefix, this.suppliers()));
+    }
+    if (this.shipment()) data["expected_version"] = this.shipment()!.row_version;
     this.saved.emit(data);
   }
   submitIdentifier(): void {

@@ -1,7 +1,7 @@
 import { Injectable } from "@angular/core";
-import { Shipment } from "./types";
+import { MasterData, MasterLayout, Shipment, ShipmentValues } from "./types";
 
-type Patch = Record<string, string | null>;
+type Patch = ShipmentValues;
 interface PracticeStore {
   version: 1;
   rows: Record<string, { version: number; patch: Patch }>;
@@ -13,12 +13,19 @@ export class MasterPracticeService {
   private readonly storageKey = "masterlogistica.master-practice.v1";
   private seed: Shipment[] = [];
   private saved: PracticeStore = { version: 1, rows: {} };
+  private extraFields = new Map<string, { max?: number; kind: string }>();
   private readonly limits: Record<string, number> = {
     reference_raw: 160, company_code: 32, business_unit: 3, operation_code: 100,
     status: 100, ship_date: 10, eta: 10, delivery_date: 10,
     sender: 250, origin: 150, consignee: 250, destination: 150,
     plant_code: 32, carrier_broker_id: 64, shipping_line_id: 64, carrier_broker_name: 250, shipping_line_name: 250, comments: 10000,
   };
+
+  configure(layouts: Record<string, MasterLayout>): void {
+    this.extraFields = new Map(Object.values(layouts).flatMap(layout => layout.fields
+      .filter(field => field.key.startsWith("master."))
+      .map(field => [field.key.slice(7), field] as const)));
+  }
 
   start(examples: Shipment[]): Shipment[] {
     this.seed = examples.flatMap((row, index) =>
@@ -37,12 +44,22 @@ export class MasterPracticeService {
     return this.seed.map(row => ({
       ...row,
       ...this.saved.rows[row.id]?.patch,
+      master_data: { ...row.master_data, ...this.saved.rows[row.id]?.patch["master_data"] as MasterData | undefined },
       row_version: this.saved.rows[row.id]?.version ?? 1,
     }));
   }
 
   private validate(patch: Patch): void {
     for (const [key, value] of Object.entries(patch)) {
+      if (key === "master_data") {
+        if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length > 80) throw new Error("Los datos del master no son válidos.");
+        for (const [name, text] of Object.entries(value)) {
+          const field = this.extraFields.get(name);
+          if (!field || (text !== null && (typeof text !== "string" || text.length > (field.max ?? 10000)))) throw new Error("La práctica contiene un campo o valor no válido.");
+          if (field.kind === "date") this.validateDate(text);
+        }
+        continue;
+      }
       if (!Object.hasOwn(this.limits, key) ||
           (value !== null && (typeof value !== "string" || value.length > this.limits[key])))
         throw new Error("La práctica contiene un campo o valor no válido.");
@@ -50,12 +67,14 @@ export class MasterPracticeService {
       if (key === "company_code" && !value?.trim()) throw new Error("Captura la empresa.");
       if (key === "business_unit" && value && !["M01", "M19", "M23", "M45", "M46"].includes(value))
         throw new Error("Selecciona una BU del catálogo.");
-      if (["ship_date", "eta", "delivery_date"].includes(key) && value) {
-        const date = new Date(`${value}T00:00:00Z`);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value)
-          throw new Error("La práctica contiene una fecha no válida.");
-      }
+      if (["ship_date", "eta", "delivery_date"].includes(key)) this.validateDate(value as string | null);
     }
+  }
+  private validateDate(value: string | null): void {
+    if (!value) return;
+    const date = new Date(`${value}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value)
+      throw new Error("La práctica contiene una fecha no válida.");
   }
 
   private load(): PracticeStore {
@@ -86,6 +105,9 @@ export class MasterPracticeService {
     if (version !== original.row_version)
       throw new Error("Esta práctica cambió en otra pestaña. Actualiza el master antes de guardar.");
     const merged = { ...latest.rows[base.id]?.patch, ...patch };
+    if (patch["master_data"]) merged["master_data"] = {
+      ...latest.rows[base.id]?.patch["master_data"] as MasterData | undefined, ...patch["master_data"] as MasterData,
+    };
     latest.rows[base.id] = { version: version + 1, patch: merged };
     const content = JSON.stringify(latest);
     if (content.length > 3000000)
@@ -93,7 +115,7 @@ export class MasterPracticeService {
     try { localStorage.setItem(this.storageKey, content); }
     catch { throw new Error("No se pudo guardar en este navegador. Conserva tus cambios y libera espacio antes de reintentar."); }
     this.saved = latest;
-    return { ...base, ...merged, row_version: version + 1 };
+    return { ...base, ...merged, master_data: { ...base.master_data, ...merged["master_data"] as MasterData | undefined }, row_version: version + 1 } as Shipment;
   }
 
   refresh(): Shipment[] {

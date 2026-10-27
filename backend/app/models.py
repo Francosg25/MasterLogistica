@@ -179,6 +179,9 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
     scs_security_status: Mapped[str | None] = mapped_column(String(64))
     damaged_material: Mapped[bool | None] = mapped_column(Boolean)
     comments: Mapped[str | None] = mapped_column(Text)
+    master_data: Mapped[dict[str, str | None]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
     arrival_port: Mapped[str | None] = mapped_column(String(150))
     vessel: Mapped[str | None] = mapped_column(String(150))
     etd_origin_port: Mapped[date | None] = mapped_column(Date)

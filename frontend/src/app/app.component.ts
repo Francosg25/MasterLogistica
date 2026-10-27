@@ -9,6 +9,7 @@ import {
 import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
 import { NgTemplateOutlet } from "@angular/common";
 import { IconComponent, IconName } from "./icon.component";
+import { ownerLayout } from "./master-layout";
 import { ApiError, ApiService } from "./api.service";
 import { FinanceWorkspaceComponent } from "./finance-workspace.component";
 import { Section } from "./finance.types";
@@ -121,6 +122,8 @@ export class AppComponent implements OnInit {
       `Tu perfil de ${this.roleName()} permite consultar los masters. La edición operativa corresponde a Operaciones y Administración.`;
   });
   masterOwner = signal("");
+  masterLayout = computed(() => ownerLayout(this.catalog(), this.owners().find(owner => owner.id === this.masterOwner())));
+  editorLayout = computed(() => ownerLayout(this.catalog(), this.owners().find(owner => owner.id === (this.selected()?.owner_id || this.masterOwner()))));
   masterReady = computed(
     () => !!this.masterOwner(),
   );
@@ -285,10 +288,17 @@ export class AppComponent implements OnInit {
   }
   async preview(practice = false): Promise<void> {
     const data = await import("./demo");
+    let layouts: Catalogs["master_layouts"];
+    try {
+      const response = await fetch("/master-layouts.json");
+      if (!response.ok) throw new Error();
+      layouts = (await response.json()).layouts;
+    } catch { this.error.set("No se pudieron cargar las columnas de los masters. Actualiza la página y vuelve a intentar."); return; }
     this.demo.set(true);
     this.practice.set(false);
     this.user.set(data.demoUser);
-    this.catalog.set(data.demoCatalogs);
+    this.catalog.set({ ...data.demoCatalogs, master_layouts: layouts });
+    this.practiceStore.configure(layouts ?? {});
     this.owners.set(data.demoOwners);
     this.suppliers.set([]);
     this.demoRows = data.masterDemoShipments;
@@ -373,7 +383,7 @@ export class AppComponent implements OnInit {
         const rows = this.demoRows.filter((row) =>
           Object.entries(this.applied).every(([key, value]) => {
             if (key === "q")
-              return [row.reference_raw, row.sender, row.consignee].some(
+              return [row.reference_raw, row.sender, row.consignee, ...Object.values(row.master_data ?? {})].some(
                 (text) => text?.toLowerCase().includes(value.toLowerCase()),
               );
             if (key === "ship_date_from")
@@ -539,10 +549,10 @@ export class AppComponent implements OnInit {
     const previous = this.selected();
     if (
       !previous &&
-      (!this.canCreate() || !this.catalog()?.operation_codes.includes(String(data["operation_code"])))
+      (!this.canCreate() || !String(data["operation_code"] ?? "").trim())
     ) {
       this.editorError.set(
-        "Selecciona un tipo de operación válido para el nuevo embarque.",
+        "Captura el tipo de operación para el nuevo embarque.",
       );
       this.saving.set(false);
       return;
@@ -556,11 +566,10 @@ export class AppComponent implements OnInit {
       );
       this.selected.set(row);
       this.rememberOperation(row.operation_code);
-      this.editor?.form.patchValue({ reference_raw: row.reference_raw ?? "" });
+      this.editor?.acceptSaved(row);
       if (!this.catalog()!.company_codes.includes(row.company_code)) {
         this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
       }
-      this.editor?.form.markAsPristine();
       this.notice.set(
         previous
           ? "Cambios guardados."

@@ -1599,3 +1599,15 @@ textarea {
   .finance-form-grid { grid-template-columns: minmax(0, 1fr); }
   .finance-form-grid .wide { grid-column: auto; }
 }
+
+/* Each master uses its own Excel columns in the same compact capture panel. */
+.profile-form .profile-section + .profile-section { margin-top: 24px; }
+.profile-form .section-title { margin-top: 0; }
+.profile-form .form-grid { gap: 14px 18px; }
+.profile-form label > span { font-size: 12px; font-weight: 600; }
+.profile-form .profile-wide { grid-column: 1 / -1; }
+.profile-form textarea { width: 100%; min-height: 70px; resize: vertical; }
+.profile-options { margin-top: 24px; padding: 14px 0; border-top: 1px solid var(--border); }
+.profile-options summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: 12px; }
+.profile-options[open] summary { margin-bottom: 16px; }
+.field-error { color: #b42318; }

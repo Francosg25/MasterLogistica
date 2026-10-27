@@ -16,7 +16,7 @@ from sqlalchemy.schema import CreateTable
 
 from app.auth import current_user
 from app.config import Settings
-from app.local_schema import LOCAL_SUPPLIER, LOCAL_TENANT
+from app.local_schema import LOCAL_SUPPLIER, LOCAL_TENANT, SCHEMA_VERSION
 from app.main import create_app
 from app.models import AccountingPeriod, Base, Provision, ReferenceCounter, Supplier, User
 from tests import test_finance as finance_cases
@@ -806,7 +806,7 @@ def test_local_version_two_upgrade_preserves_financial_records(local_version_two
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
             assert (
                 connection.exec_driver_sql("SELECT version FROM local_schema_version").scalar_one()
-                == 3
+                == SCHEMA_VERSION
             )
             assert (
                 connection.exec_driver_sql("SELECT count(*) FROM reconciliation_logs").scalar_one()

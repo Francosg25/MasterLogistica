@@ -113,6 +113,11 @@ class PeriodRead(PeriodCreate):
 
 class ShipmentCreate(Schema):
     owner_id: UUID | None = None
+    reference_raw: Annotated[str, Field(min_length=1, max_length=160)] | None = None
+    master_data: dict[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,47}$")],
+        Annotated[str, Field(max_length=10000)] | None,
+    ] = Field(default_factory=dict, max_length=80)
     company_code: Annotated[str, Field(min_length=1, max_length=32)]
     process_code: Process
     operation_code: Operation
@@ -137,6 +142,10 @@ class ShipmentCreate(Schema):
 
 class ShipmentPatch(Schema):
     expected_version: Annotated[int, Field(ge=1)]
+    master_data: dict[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,47}$")],
+        Annotated[str, Field(max_length=10000)] | None,
+    ] = Field(default_factory=dict, max_length=80)
     reference_raw: Annotated[str, Field(min_length=1, max_length=160)] | None = None
     company_code: Annotated[str, Field(min_length=1, max_length=32)] | None = None
     process_code: Process | None = None
@@ -173,7 +182,19 @@ class ShipmentPatch(Schema):
 
 
 class ShipmentRead(VersionedRead):
+    @model_validator(mode="before")
+    @classmethod
+    def include_existing_operational_values(cls, value):
+        if hasattr(value, "__table__"):
+            from app.master_layouts import stored_master_data
+
+            fields = {name: getattr(value, name) for name in cls.model_fields}
+            fields["master_data"] = stored_master_data(value)
+            return fields
+        return value
+
     owner_id: UUID
+    master_data: dict[str, str | None] = Field(default_factory=dict)
     company_code: str
     reference_raw: str | None
     reference_normalized: str | None

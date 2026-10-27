@@ -13,7 +13,7 @@ from sqlalchemy import CheckConstraint, DefaultClause, MetaData, inspect, select
 from app.models import Base, ReferenceCounter, Supplier, User
 from app.storage_types import ExactNumeric
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 LOCAL_TENANT = UUID("f0000000-0000-0000-0000-000000000001")
 LOCAL_USER = UUID("f0000000-0000-0000-0000-000000000002")
 LOCAL_SUPPLIER = UUID("f0000000-0000-0000-0000-000000000003")
@@ -212,6 +212,15 @@ def initialize_local(engine, session_factory):
                 upgrade_flexible_master(connection)
                 connection.exec_driver_sql("UPDATE local_schema_version SET version = 3")
                 version = [3]
+            if version == [3]:
+                if "master_data" not in {
+                    c["name"] for c in inspect(connection).get_columns("shipments")
+                }:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE shipments ADD COLUMN master_data JSON NOT NULL DEFAULT '{}'"
+                    )
+                connection.exec_driver_sql("UPDATE local_schema_version SET version = 4")
+                version = [4]
             if version != [SCHEMA_VERSION]:
                 raise ValueError(
                     "La versión de la base local requiere una actualización explícita; conserva el archivo."

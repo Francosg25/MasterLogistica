@@ -623,7 +623,12 @@ def test_document_search_does_not_duplicate_shipments_or_expose_other_owners(env
         assert response.json()["total"] == expected
     owners = e["client"].get("/api/v1/masters/owners", headers=e["headers"]("one")).json()
     assert owners == [
-        {"id": str(e["users"]["one"]["id"]), "display_name": "one", "analyst_code": 1}
+        {
+            "id": str(e["users"]["one"]["id"]),
+            "display_name": "one",
+            "analyst_code": 1,
+            "layout_code": "DENI",
+        }
     ]
 
 
@@ -655,3 +660,28 @@ def test_manual_master_values_preserve_links_and_audit(environment):
     from tests.master_cases import assert_manual_master_capture
 
     assert_manual_master_capture(environment)
+
+
+def test_master_specific_columns_persist_on_native_postgresql(environment):
+    e = environment
+    row = create_shipment(
+        e, master_data={"container_number": "SYNTHETIC-CONT", "actual_arrival_port": "2026-10-26"}
+    )
+    path = "/api/v1/shipments/" + row["id"]
+    response = e["client"].patch(
+        path,
+        headers=e["headers"]("one"),
+        json={
+            "expected_version": row["row_version"],
+            "master_data": {"claim_user": "Prueba daño"},
+        },
+    )
+    assert response.status_code == 200, response.text
+    expected = {**row["master_data"], "claim_user": "Prueba daño"}
+    assert response.json()["master_data"] == expected
+    assert e["client"].get(path, headers=e["headers"]("one")).json()["master_data"] == expected
+    assert e["client"].get(path, headers=e["headers"]("two")).status_code == 404
+    result = e["client"].get(
+        "/api/v1/masters/shipments", headers=e["headers"]("one"), params={"q": "daño"}
+    )
+    assert [r["id"] for r in result.json()["items"]] == [row["id"]]

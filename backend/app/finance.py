@@ -19,11 +19,13 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.api import DB, Actor, Limit, Offset, open_period, supplier_valid, version_matches
 from app.auth import current_user
 from app.finance_schemas import CancelInvoice, InvoiceCreate, ReconcileCommand, VersionCommand
+from app.master_layouts import layout_code, master_changes
 from app.models import (
     AccountingPeriod,
     Invoice,
@@ -1134,10 +1136,14 @@ def history(
 ):
     if date_from and date_to and date_from > date_to:
         raise HTTPException(422, "La fecha inicial es posterior a la final")
+    master_owner = aliased(User)
     statement = (
-        select(ReconciliationLog, User.display_name, User.email, Shipment.reference_raw)
+        select(
+            ReconciliationLog, User.display_name, User.email, Shipment.reference_raw, master_owner
+        )
         .outerjoin(User, User.id == ReconciliationLog.actor_user_id)
         .outerjoin(Shipment, Shipment.id == ReconciliationLog.shipment_id)
+        .outerjoin(master_owner, master_owner.id == Shipment.owner_id)
     )
     if user.role not in {"SUPER_ADMIN", "MANAGER", "FINANCE"}:
         statement = statement.where(Shipment.owner_id == user.id)
@@ -1180,13 +1186,16 @@ def history(
     )
     items = []
     ignored = {"id", "row_version", "created_at", "updated_at"}
-    for log, name, email, ref in rows:
+    for log, name, email, ref, owner in rows:
         before, after = log.before_values or {}, log.after_values or {}
         changes = [
             dict(field=key, before=before.get(key), after=after.get(key))
-            for key in sorted((before.keys() | after.keys()) - ignored)
+            for key in sorted((before.keys() | after.keys()) - ignored - {"master_data"})
             if before.get(key) != after.get(key)
         ]
+        changes.extend(
+            master_changes(before.get("master_data"), after.get("master_data"), layout_code(owner))
+        )
         items.append(
             dict(
                 id=log.id,

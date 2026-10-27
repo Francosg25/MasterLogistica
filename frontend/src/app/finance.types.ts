@@ -76,7 +76,7 @@ export interface HistoryRow {
   occurred_at: string;
   actor_name: string;
   actor_email: string;
-  changes: { field: string; before: unknown; after: unknown }[];
+  changes: { field: string; label?: string; before: unknown; after: unknown }[];
 }
 export interface Movement {
   id?: string;

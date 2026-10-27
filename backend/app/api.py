@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import Text, func, or_, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -18,6 +18,7 @@ from app.auth import (
     operational_user,
 )
 from app.db import get_session
+from app.master_layouts import LAYOUTS, layout_code, merge_master_data
 from app.models import (
     AccountingPeriod,
     Provision,
@@ -207,6 +208,7 @@ def reference_catalogs(request: Request, user: Actor, session: DB):
             set(OPERATIONS) | {r.operation_code for r in catalog_rows if r.operation_code}
         ),
         "shipment_statuses": sorted({r.status for r in catalog_rows if r.status}),
+        "master_layouts": LAYOUTS,
         "department_codes": sorted(DEPARTMENTS),
         "business_units": request.app.state.settings.business_units,
         "business_units_configured": bool(request.app.state.settings.business_units),
@@ -373,6 +375,7 @@ def filtered_shipments(
                 Shipment.company_code.icontains(value, autoescape=True),
                 Shipment.carrier_broker_name.icontains(value, autoescape=True),
                 Shipment.shipping_line_name.icontains(value, autoescape=True),
+                Shipment.master_data.cast(Text).icontains(value, autoescape=True),
                 Shipment.sender.icontains(value, autoescape=True),
                 Shipment.consignee.icontains(value, autoescape=True),
                 Shipment.id.in_(identifiers),
@@ -395,7 +398,12 @@ def master_owners(session: DB, user: Actor):
             or_(User.analyst_code.is_not(None), User.id.in_(select(Shipment.owner_id)))
         )
     return [
-        {"id": row.id, "display_name": row.display_name, "analyst_code": row.analyst_code}
+        {
+            "id": row.id,
+            "display_name": row.display_name,
+            "analyst_code": row.analyst_code,
+            "layout_code": layout_code(row),
+        }
         for row in session.scalars(statement)
     ]
 
@@ -487,18 +495,28 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         raise HTTPException(503, "An approved business unit catalog must be configured")
     if data.business_unit not in catalog:
         raise HTTPException(422, "Business unit is not in the approved catalog")
-    values = shipment_supplier_values(session, data.model_dump(exclude={"owner_id"}))
+    values = shipment_supplier_values(
+        session, data.model_dump(exclude={"owner_id", "reference_raw"})
+    )
     try:
-        reference, sequence = generate_reference(
-            session,
-            owner,
-            process=data.process_code,
-            operation=data.operation_code,
-            year=data.reference_year,
-            business_unit=data.business_unit,
-            department=data.department_code,
-            business_units=catalog,
-        )
+        values["master_data"] = merge_master_data(owner, {}, values["master_data"])
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    reference, sequence = None, None
+    if data.reference_raw is not None and not data.reference_raw.strip():
+        raise HTTPException(422, "Captura una referencia o deja el campo vacío para generarla")
+    try:
+        if data.reference_raw is None:
+            reference, sequence = generate_reference(
+                session,
+                owner,
+                process=data.process_code,
+                operation=data.operation_code,
+                year=data.reference_year,
+                business_unit=data.business_unit,
+                department=data.department_code,
+                business_units=catalog,
+            )
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
     mode, service, direction = operation_classification(data.operation_code)
@@ -506,8 +524,8 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         **values,
         owner_id=owner.id,
         reference_raw=reference,
-        reference_normalized=normalize_reference(reference),
-        normalization_version=VERSION,
+        reference_normalized=normalize_reference(reference) if reference else None,
+        normalization_version=VERSION if reference else None,
         reference_sequence=sequence,
         transport_mode=mode,
         service_category=service,
@@ -517,15 +535,19 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
 
     row.id = uuid4()
     session.add(row)
-    session.add(
-        ShipmentIdentifier(
-            shipment_id=row.id,
-            kind="REFERENCE",
-            raw_value=reference,
-            normalized_value=normalize_reference(reference),
-            normalization_version=VERSION,
+    if data.reference_raw is not None:
+        with session.no_autoflush:
+            edit_reference(session, row, data.reference_raw.strip())
+    else:
+        session.add(
+            ShipmentIdentifier(
+                shipment_id=row.id,
+                kind="REFERENCE",
+                raw_value=reference,
+                normalized_value=normalize_reference(reference),
+                normalization_version=VERSION,
+            )
         )
-    )
     return record_change(
         session, request, user, "SHIPMENT_CREATED", row, ShipmentRead, shipment_id=row.id
     )
@@ -607,6 +629,13 @@ def patch_shipment(
     row = shipment_for(session, user, shipment_id)
     version_matches(row, data.expected_version)
     updates = data.model_dump(exclude_unset=True, exclude={"expected_version"})
+    if "master_data" in updates:
+        try:
+            updates["master_data"] = merge_master_data(
+                session.get(User, row.owner_id), row.master_data, updates["master_data"]
+            )
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
     if (
         updates.get("business_unit") is not None
         and updates["business_unit"] != row.business_unit

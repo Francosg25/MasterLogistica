@@ -1,9 +1,59 @@
 import { expect, test, Page } from "@playwright/test";
 import { demoCatalogs, demoShipments } from "../src/app/demo";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const masterLayouts = JSON.parse(readFileSync(resolve(__dirname, "../public/master-layouts.json"), "utf8")).layouts;
 import { Supplier } from "../src/app/types";
 
 const cell = (page: Page, row: number, field: string) =>
   page.locator(`td[data-row="${row}"][data-field="${field}"]`);
+
+test("profile columns past Z paste and export with their real headers", async ({ page }) => {
+  const requests = await mock(page, { profiles: true, collapsed: true });
+  await pasteCells(page, 0, "master.weight", "100 kg\t40 HC\n200 kg\t20 DC");
+  await expect(page.locator(".save-state")).toHaveText("4 celdas sin guardar");
+  await expect(page.locator(".cell-address")).toHaveText("BA2");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  expect(requests.filter(req => req.method === "PATCH").map(req => req.body)).toEqual([
+    { expected_version: 1, master_data: { weight: "100 kg", container_type: "40 HC" } },
+    { expected_version: 1, master_data: { weight: "200 kg", container_type: "20 DC" } },
+  ]);
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar página CSV" }).click();
+  const download = await pending, stream = await download.createReadStream();
+  let csv = "";
+  for await (const chunk of stream!) csv += chunk.toString();
+  const header = csv.replace(/^\uFEFF/, "").split("\r\n")[0];
+  expect(header).toBe(masterLayouts.DENI.fields.map((field: any) => field.label).join(","));
+  expect(csv).toContain(",100 kg,40 HC");
+  expect(csv).toContain(",200 kg,20 DC");
+  await cell(page, 0, "reference_raw").click();
+  await page.keyboard.press("Control+Enter");
+  await expect(page.getByRole("dialog").locator(".profile-form")).toHaveAttribute("data-layout", "DENI");
+});
+
+test("changing a profile preserves pending edits when leaving is cancelled", async ({ page }) => {
+  await mock(page, { role: "SUPER_ADMIN", mixed: true, profiles: true, collapsed: true });
+  await pasteCells(page, 0, "master.vessel", "Buque sin guardar");
+  page.once("dialog", dialog => dialog.dismiss());
+  const owner = page.getByLabel("Responsable del master", { exact: true });
+  await owner.selectOption("owner-5");
+  await expect(owner).toHaveValue("owner-1");
+  await expect(cell(page, 0, "master.vessel")).toHaveText("Buque sin guardar");
+  page.once("dialog", dialog => dialog.accept());
+  await owner.selectOption("owner-5");
+  await expect(cell(page, 0, "master.part_number")).toHaveCount(1);
+  await expect(cell(page, 0, "master.vessel")).toHaveCount(0);
+  await expect(page.locator(".save-state")).toHaveText("Sin cambios pendientes");
+  await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".profile-form")).toHaveAttribute("data-layout", "ALEXA");
+  await expect(dialog.getByLabel("NP", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Factura exportación", { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "test-results/alexa-profile-form.png", fullPage: true });
+});
 
 test("home navigation and expanded master preserve the sheet", async ({ page }) => {
   await mock(page);
@@ -57,6 +107,7 @@ async function mock(
     collapsed?: boolean;
     accessDenied?: boolean;
     suppliers?: Supplier[];
+    profiles?: boolean;
   } = {},
 ) {
   let rows = options.empty
@@ -108,6 +159,7 @@ async function mock(
         analyst_code: 1,
       });
     if (path === "/references/catalogs") return json({ ...demoCatalogs,
+      ...(options.profiles ? { master_layouts: masterLayouts } : {}),
       ...(options.accessDenied ? { master_access: { can_edit: false, can_create: false, edit_scope: "NONE", read_only_reason: "La edición operativa no está habilitada para esta sesión." } } : {}),
     });
     if (path === "/masters/owners")
@@ -147,8 +199,8 @@ async function mock(
         ...body,
         id: "created-1",
         row_version: 1,
-        owner_id: "owner-1",
-        reference_raw: `RM1-0009${body.operation_code}26-M01-MAT`,
+        owner_id: options.profiles ? body.owner_id : "owner-1",
+        reference_raw: options.profiles && body.reference_raw ? body.reference_raw : `RM1-0009${body.operation_code}26-M01-MAT`,
       };
       rows = [row, ...rows];
       return json(row, 201);
@@ -160,7 +212,7 @@ async function mock(
         if (options.networkFailure) return route.abort("failed");
         if (options.conflict || options.conflictId === id)
           return json({ detail: "Record changed" }, 409);
-        const updated = { ...row, ...body, row_version: 2 };
+        const updated = { ...row, ...body, ...(options.profiles ? { master_data: { ...row?.master_data, ...body.master_data } } : {}), row_version: 2 };
         rows = rows.map((r) => (r.id === id ? updated : r));
         return json(updated);
       }

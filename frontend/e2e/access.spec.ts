@@ -47,7 +47,7 @@ test("production build uses real access flow and offers an isolated read-only pr
   await page.screenshot({ path: "test-results/preview.png", fullPage: true });
   await page.locator(".reference-link").first().click();
   await expect(
-    page.getByRole("dialog").getByLabel("Comentarios"),
+    page.getByRole("dialog").getByLabel("Comentarios", { exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("dialog")
@@ -80,8 +80,8 @@ test("practice edits persist only in the browser, survive reopening and can be r
   const origin = page.locator('td[data-row="0"][data-field="origin"]');
   await expect(page.locator("tbody tr")).toHaveCount(50);
   await origin.dblclick();
-  await page.getByLabel("Editar Origen", { exact: true }).fill("Origen ficticio modificado");
-  await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  await page.getByLabel("Editar Origin", { exact: true }).fill("Origen ficticio modificado");
+  await page.getByLabel("Editar Origin", { exact: true }).press("Enter");
   for (const [field, value] of [["reference_raw", "REFERENCIA DE PRACTICA"], ["company_code", "MXT"], ["business_unit", "M46"], ["operation_code", "R1"]]) {
     await page.locator(`td[data-row="0"][data-field="${field}"]`).click();
     await page.keyboard.type(value);
@@ -117,8 +117,8 @@ test("practice retains unsaved cells when browser storage cannot confirm the wri
   await page.goto("http://127.0.0.1:4301/");
   await page.getByRole("button", { name: "Practicar con el master", exact: true }).click();
   await page.locator('td[data-row="0"][data-field="origin"]').dblclick();
-  await page.getByLabel("Editar Origen", { exact: true }).fill("Conservar este cambio");
-  await page.getByLabel("Editar Origen", { exact: true }).press("Enter");
+  await page.getByLabel("Editar Origin", { exact: true }).fill("Conservar este cambio");
+  await page.getByLabel("Editar Origin", { exact: true }).press("Enter");
   await page.evaluate(() => {
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {

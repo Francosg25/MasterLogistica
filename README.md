@@ -287,6 +287,26 @@ La presentación comparte una paleta de grises con acento azul, navegación con 
 
 El master mantiene las filas como área principal incluso en ventanas de 1280 × 600. La barra superior conserva selección de responsable, filtros plegables y edición de celdas. Las fuentes son las del sistema y los iconos se incluyen en la aplicación.
 
+## Columnas y captura por responsable
+
+Cada master usa las columnas de su propia hoja «Master template», independientemente del tipo de operación del embarque. Al seleccionar al responsable se cargan su tabla y su formulario de **Nuevo embarque** y detalle. Los encabezados y las letras conservan el orden del Excel; la referencia sigue fija al desplazarse horizontalmente en escritorio.
+
+| Master | Campos de captura | Campos particulares, entre otros |
+| --- | ---: | --- |
+| DENI | 51 | Seguimiento marítimo, expediente, garantía, peso y tipo de contenedor |
+| MAG | 32 | Comentarios, número y monto de claim, usuario y seguimiento |
+| NAT | 34 | Estatus, factura de exportación y seguimiento de reportes |
+| ANDREA | 47 | Seguimiento marítimo y reclamaciones por daño |
+| ALEXA | 41 | Factura, peso, bultos, PFA, solicitante, piezas, cotización y NP |
+
+- Todas las columnas de negocio se pueden editar en celdas o en el detalle, incluidas SEC y Owner. La cuenta responsable del registro sigue siendo la seleccionada al crear; escribir otro texto en Owner no transfiere registros entre cuentas.
+- En registros nuevos, **Reference** permite captura manual. Vacía genera la referencia con la BU y el tipo de operación indicados; proceso, año y departamento están en **Opciones de referencia automática**. Se conserva la captura manual de **MXG MXT** y **TYPE**, con BU M01, M19, M23, M45 o M46.
+- SEC, Owner, Week, Day, Mth., Year e I/O tienen valores iniciales cuando se puede derivarlos del registro; cualquier captura manual prevalece, incluido vaciar la celda. Los datos financieros capturados como texto en el master no crean provisiones ni facturas.
+- Se excluyen únicamente la clave auxiliar oculta A y la celda auxiliar TODAY() de los masters marítimos. No se ejecutan fórmulas Excel. Los archivos fuente se usan para definir la estructura; esta actualización no importa sus movimientos.
+- Los campos adicionales se guardan en `shipments.master_data` y las actualizaciones parciales conservan los demás valores. El historial identifica cada columna modificada. Los campos operativos de versiones anteriores siguen visibles y pueden modificarse o vaciarse.
+
+`backend/app/master_layouts.json` define las cinco estructuras; `/references/catalogs` las entrega a la interfaz. `frontend/public/master-layouts.json` es el espejo para demostración y práctica; una prueba comprueba que coincidan. Las pruebas usan datos ficticios y no contienen los libros originales.
+
 ## Edición del master
 
 - La vista normal reúne navegación, selección del responsable y acciones en una cabecera compacta. Los registros ocupan la mayor parte de la ventana; los filtros empiezan plegados y se abren con **Mostrar filtros**. **Tamaño** cambia texto, altura de filas y ancho de columnas a 100/115/130 % y conserva esa preferencia. **Ampliar master** aprovecha todavía más la ventana sin descartar cambios.
@@ -344,7 +364,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere **0007_flexible_master**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
+Esta versión requiere **0008_master_layouts**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -355,11 +375,11 @@ docker compose run --rm migrate
 docker compose up -d api web
 ```
 
-Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. Este primer esquema local se prepara automáticamente. Una futura actualización del esquema local debe incluir su procedimiento de migración; una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
+Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejecuta `python -m alembic upgrade head` desde `backend` con el rol migrador. Después reinicia ambos servicios. Con SQLite local, detén la aplicación, respalda el archivo y actualiza el código; no ejecutes las migraciones PostgreSQL. El esquema local se prepara automáticamente y las versiones 1, 2 y 3 se actualizan hasta la 4 mediante cambios aditivos. Se conservan registros, versiones de fila y vínculos financieros. Una versión incompatible detiene el inicio y conserva el archivo. Recarga el navegador con Ctrl+F5.
 
 ### Verificación de este bloque
 
-- Compilación Angular de producción correcta, **279 pruebas de backend sin integración externa** y **54 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **5 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
+- Compilación Angular de producción correcta, **295 pruebas de backend sin integración externa** y **56 casos de navegador** verificados, incluyendo apertura automática del master, edición de todas las columnas, importación y aprobación automática de provisiones. Otros **6 casos con API real y SQLite** comprueban el guardado persistente y la aplicación de una factura sin aprobación manual.
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
@@ -388,6 +408,6 @@ Validación de la actualización XLSX: 177 pruebas de backend sin base externa y
 
 ![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)
 
-La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1 y 2 hasta la 3, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
+La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1, 2 y 3 hasta la 4, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
 
 ![Captura de provisión con fecha exacta y concepto](frontend/docs/provision-date-preview.png)

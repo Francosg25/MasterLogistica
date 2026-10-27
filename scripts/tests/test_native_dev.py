@@ -59,7 +59,8 @@ class NativeTests(unittest.TestCase):
             status = native.control_request(self.app.state, "status")
             self.assertEqual(status, {"mode": "database", "ready": False})
             self.assertTrue(native.control_request(self.app.state, "stop")["stopping"])
-        self.assertTrue(self.app.stop.is_set())
+        # The response can reach the client before the server thread sets the signal.
+        self.assertTrue(self.app.stop.wait(timeout=2))
 
     def test_cleanup_preserves_other_session_record(self):
         other = secrets.token_urlsafe(32)

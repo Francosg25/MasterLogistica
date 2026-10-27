@@ -113,7 +113,7 @@
         <th class="row-number"></th>
         @for (column of columns(); track column.key; let c = $index) {
           <th
-            [class.frozen]="c === 0"
+            [class.frozen]="column.key === 'reference_raw'"
             [class.active-column]="active().col === c"
           >
             {{ letter(c) }}
@@ -123,7 +123,7 @@
       <tr>
         <th class="row-number" scope="col">#</th>
         @for (column of columns(); track column.key; let c = $index) {
-          <th scope="col" [class.frozen]="c === 0">{{ column.label }}</th>
+          <th scope="col" [class.frozen]="column.key === 'reference_raw'">{{ column.label }}</th>
         }
       </tr>
     </thead>
@@ -148,10 +148,10 @@
               [attr.data-field]="column.key"
               [attr.tabindex]="isActive(r, c) ? 0 : -1"
               [attr.aria-label]="column.label + ', fila ' + (offset() + r + 1)"
-              [attr.aria-description]="c === 0 ? 'Pulsa Enter para abrir el detalle del embarque.' : null"
+              [attr.aria-description]="column.key === 'reference_raw' ? 'Ctrl+Enter abre el detalle del embarque.' : null"
               [attr.aria-selected]="isSelected(r, c)"
               [attr.aria-readonly]="!editable(r, c)"
-              [class.frozen]="c === 0"
+              [class.frozen]="column.key === 'reference_raw'"
               [class.selected-cell]="isSelected(r, c)"
               [class.active-cell]="isActive(r, c)"
               [class.dirty-cell]="isDirty(row, column)"
@@ -191,7 +191,7 @@
                     (blur)="commit()"
                   />
                 }
-              } @else if (c === 0) {
+              } @else if (column.key === 'reference_raw') {
                 <span class="cell-text">{{ display(row, column) || "Sin referencia" }}</span>
                 <button
                   class="reference-link"

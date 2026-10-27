@@ -14,15 +14,10 @@ import { ApiError, ApiService } from "./api.service";
 import { Shipment, STATUS, Supplier, OPERATIONS, EXCEL_OPERATION_LABELS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
 import { MasterPracticeService } from "./master-practice.service";
 import { IconComponent } from "./icon.component";
+import { masterValue, shipmentValues } from "./master-layout";
+import { MasterField, MasterLayout } from "./types";
 
-interface Column {
-  key: keyof Shipment;
-  label: string;
-  width: number;
-  kind: "text" | "date" | "status" | "supplier" | "unit" | "operation";
-  max?: number;
-  required?: boolean;
-}
+type Column = MasterField;
 type Changes = Record<string, Record<string, string | null>>;
 interface Position {
   row: number;
@@ -41,6 +36,7 @@ export class MasterSheetComponent implements OnDestroy {
   private element: ElementRef<HTMLElement> = inject(ElementRef);
   private changeDetector = inject(ChangeDetectorRef);
   rows = input.required<Shipment[]>();
+  layout = input<MasterLayout | null>(null);
   readOnly = input(true);
   readOnlyReason = input("Tu perfil permite consultar esta hoja. La edición requiere permisos de Operaciones o Administración.");
   practice = input(false);
@@ -87,7 +83,7 @@ export class MasterSheetComponent implements OnDestroy {
   readonly operations = OPERATIONS;
   readonly operationCodes = Object.keys(OPERATIONS);
   private supplierNames = computed(() => new Map(this.suppliers().map(s => [s.id, s.legal_name])));
-  readonly columns = computed<Column[]>(() => [
+  readonly columns = computed<Column[]>(() => this.layout()?.fields ?? [
     { key: "reference_raw", label: "Referencia", width: 265, kind: "text", max: 160 },
     { key: "status", label: "Estado", width: 144, kind: "status", max: 100 },
     { key: "business_unit", label: "BU", width: 75, kind: "unit" },
@@ -159,16 +155,22 @@ export class MasterSheetComponent implements OnDestroy {
     return this.history.length > 0;
   }
   letter(index: number): string {
-    return String.fromCharCode(65 + index);
+    if (this.columns()[index]?.source_column) return this.columns()[index].source_column!;
+    let label = "";
+    for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) label = String.fromCharCode(65 + (n - 1) % 26) + label;
+    return label;
   }
   value(row: Shipment, column: Column): string {
     const patch = this.drafts()[row.id];
     if (patch && column.key in patch) return String(patch[column.key] ?? "");
+    return this.storedValue(row, column);
+  }
+  private storedValue(row: Shipment, column: Column): string {
     if (column.kind === "supplier") {
       const name = column.key === "carrier_broker_id" ? row.carrier_broker_name : row.shipping_line_name;
-      return String(row[column.key] || name || "");
+      return String(row[column.key as keyof Shipment] || name || "");
     }
-    return String(row[column.key] ?? "");
+    return masterValue(row, column.key, this.masterName());
   }
   display(row: Shipment, column: Column): string {
     const value = this.value(row, column);
@@ -225,11 +227,13 @@ export class MasterSheetComponent implements OnDestroy {
       const headers = host.querySelector("thead")!.getBoundingClientRect().height;
       const frozen = host.querySelector<HTMLElement>("tbody .frozen")!;
       const pinned = getComputedStyle(frozen).position === "sticky";
-      const left = box.left + 44 + (pinned && col > 0 ? frozen.offsetWidth : 0) + 2;
+      const referenceCol = this.columns().findIndex(column => column.key === "reference_raw");
+      const left = pinned && col > referenceCol ? frozen.getBoundingClientRect().right + 2 : box.left + 46;
       const right = box.left + viewport.clientWidth - 2;
       const top = box.top + headers + 2;
       const bottom = box.top + viewport.clientHeight - 2;
-      if (!(pinned && col === 0)) {
+      if (pinned && col < referenceCol) viewport.scrollLeft = 0;
+      else if (!(pinned && col === referenceCol)) {
         if (target.width > right - left) viewport.scrollLeft += target.left - left;
         else if (target.left < left) viewport.scrollLeft -= left - target.left;
         else if (target.right > right) viewport.scrollLeft += target.right - right;
@@ -330,7 +334,7 @@ export class MasterSheetComponent implements OnDestroy {
         const row = this.rows()[cell.row],
           key = this.columns()[cell.col].key;
         next[row.id] ??= {};
-        if ((row[key] ?? null) === cell.value) delete next[row.id][key];
+        if ((this.storedValue(row, this.columns()[cell.col]) || null) === cell.value) delete next[row.id][key];
         else next[row.id][key] = cell.value;
         if (!Object.keys(next[row.id]).length) delete next[row.id];
       }
@@ -632,10 +636,10 @@ export class MasterSheetComponent implements OnDestroy {
       if (this.blocked.has(id)) continue;
       const original = this.rows().find((row) => row.id === id)!;
       try {
-        const values = { ...patch };
+        const values = shipmentValues(patch);
         for (const prefix of ["carrier_broker", "shipping_line"] as const) {
           const key = prefix + "_id";
-          if (key in values) Object.assign(values, supplierValues(values[key], prefix, this.suppliers()));
+          if (key in values) Object.assign(values, supplierValues(values[key] as string | null, prefix, this.suppliers()));
         }
         const row = this.practice() ? this.practiceStore.save(original, values) : await this.api.request<Shipment>(
           `/shipments/${id}`,
