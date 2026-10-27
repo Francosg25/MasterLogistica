@@ -981,6 +981,7 @@ def balances(
 
 def report_data(session, user, month, q="", owner_id=None, operation_code=None):
     balances = balance_rows(session, user, month, q, owner_id, operation_code)
+    by_provision = {b["id"]: b for b in balances}
     statement = finance_scope(
         select(
             Allocation,
@@ -992,6 +993,8 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
             Provision.month_accrued,
             User.display_name,
             Provision.currency,
+            Invoice.issue_date,
+            Provision.charge_code,
         )
         .join(Provision, Provision.id == Allocation.provision_id)
         .join(Shipment, Shipment.id == Provision.shipment_id)
@@ -1022,6 +1025,7 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
     movements = [
         dict(
             id=a.id,
+            provision_id=a.provision_id,
             reference=ref,
             invoice_number=number,
             supplier_name=supplier,
@@ -1035,9 +1039,13 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
             fx=a.fx_evidence or {},
             actor_name=actor,
             occurred_at=a.accepted_at,
+            issue_date=issue_date,
+            charge_code=charge_code,
+            closing_amount=by_provision[a.provision_id]["closing_amount"],
+            provision_status=by_provision[a.provision_id]["status"],
             amount_basis=(source or {}).get("amount_basis", "NET"),
         )
-        for a, number, currency, source, ref, supplier, origin, actor, provision_currency in session.execute(
+        for a, number, currency, source, ref, supplier, origin, actor, provision_currency, issue_date, charge_code in session.execute(
             statement.order_by(Allocation.accepted_at, Allocation.id)
         )
     ]
@@ -1071,6 +1079,7 @@ def report_data(session, user, month, q="", owner_id=None, operation_code=None):
                 dict(
                     reference=ref,
                     invoice_number=inv.invoice_number_raw,
+                    issue_date=inv.issue_date,
                     supplier_name=supplier,
                     period_month=inv.accounting_period,
                     currency=inv.currency,
@@ -1146,6 +1155,11 @@ def report_csv(
             "Importe provision aplicado",
             "MXN por USD",
             "Fecha tipo de cambio",
+            "Fecha factura",
+            "Fecha aplicacion UTC",
+            "Mes aplicacion",
+            "Saldo provision al cierre",
+            "Estado provision al cierre",
         ]
     )
     for b in data["balances"]:
@@ -1176,6 +1190,11 @@ def report_csv(
                     "",
                     "",
                     "",
+                    "",
+                    "",
+                    "",
+                    b["closing_amount"],
+                    b["status"],
                 ]
             ]
         )
@@ -1207,6 +1226,11 @@ def report_csv(
                     m.get("provision_amount", ""),
                     m.get("fx", {}).get("mxn_per_usd", ""),
                     m.get("fx", {}).get("rate_date", ""),
+                    m.get("issue_date", ""),
+                    m.get("occurred_at", ""),
+                    m["period_month"] if m["entry_type"] != "UNPROVISIONED" else "",
+                    m.get("closing_amount", ""),
+                    m.get("provision_status", ""),
                 ]
             ]
         )

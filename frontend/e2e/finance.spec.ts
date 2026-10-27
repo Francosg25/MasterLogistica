@@ -2,7 +2,7 @@ import { test, expect, Page } from "@playwright/test";
 import { demoCatalogs } from "../src/app/demo";
 import { demoReport, demoInvoices, demoHistory } from "../src/app/finance-demo";
 
-test("Excel preview imports only ready invoices and requires refreshing changed mappings", async ({ page }) => {
+test("simple consolidation uses source months and keeps failed or changed previews from being saved", async ({ page }) => {
   await setup(page);
   let confirmed = false;
   let previewFailure = false;
@@ -14,46 +14,45 @@ test("Excel preview imports only ready invoices and requires refreshing changed 
     }
     if (previewFailure) return route.fulfill({ status: 503, json: { detail: "No se pudo actualizar la vista previa" } });
     return route.fulfill({ json: {
-      sheet: "CONSOLIDADO 2026", row_count: 3, invoice_count: 3,
-      counts: { READY: confirmed ? 0 : 1, REVIEW: 1, DUPLICATE: confirmed ? 1 : 0, OUTSIDE: 1 },
+      sheet: "CONSOLIDADO 2026", row_count: 2, invoice_count: 2,
+      counts: { READY: confirmed ? 0 : 1, REVIEW: 1, DUPLICATE: confirmed ? 1 : 0, OUTSIDE: 0 },
       companies: ["DEMO"], suppliers: ["TRANSPORTES DEMO"],
       groups: [
-        { key: "ready", invoice_number: "EXCEL-001", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: confirmed ? "DUPLICATE" : "READY", usd_amount: "500", issues: [], rows: [{ row: 2, reference: "RM1-0001LI26-M01-MAT", charge_code: "FREIGHT", usd_amount: "500" }] },
-        { key: "review", invoice_number: "EXCEL-002", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: "REVIEW", usd_amount: "0", issues: ["Importe cero: revisar reparto"], rows: [{ row: 3, reference: "PAQUETERIA", charge_code: "FREIGHT", usd_amount: "0" }] },
+        { key: "ready", invoice_number: "EXCEL-001", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: confirmed ? "DUPLICATE" : "READY", usd_amount: "500", issues: [], source_periods: ["2026-09-01"], rows: [{ row: 2, reference: "RM1-0001LI26-M01-MAT", charge_code: "FREIGHT", usd_amount: "500", reference_match: { status: "MATCHED" } }] },
+        { key: "review", invoice_number: "EXCEL-002", company: "DEMO", supplier_name: "Transportes Demo", source_supplier: "TRANSPORTES DEMO", source_company: "DEMO", status: "REVIEW", usd_amount: "0", issues: ["Importe cero: revisar reparto"], rows: [{ row: 3, reference: "RM1-0002LI26-M01-MAT", charge_code: "FREIGHT", usd_amount: "0", reference_match: { status: "MATCHED" } }] },
       ],
     } });
   });
   await section(page, "Facturas");
   await page.getByRole("button", { name: "Cargar Excel" }).click();
-  await page.getByLabel("Mes del consolidado").fill("2026-10");
+  await expect(page.getByLabel("Mes del consolidado")).toHaveCount(0);
   await page.getByLabel("Archivo consolidado (.xlsx)").setInputFiles({ name: "consolidado.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic upload; parser tested on backend") });
-  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeEnabled();
-  await page.getByText("Tipo de cambio del lote para provisiones en MXN", { exact: true }).click();
+  const save = page.getByRole("button", { name: "Consolidar 1 factura", exact: true });
+  await expect(save).toBeEnabled();
+  await page.getByText("Tipo de cambio para provisiones en pesos", { exact: true }).click();
   await page.getByLabel("Tipo de cambio del lote (MXN por USD)", { exact: true }).fill("20");
-  await page.getByLabel("Fecha del tipo de cambio del lote", { exact: true }).fill("2026-10-27");
-  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeDisabled();
-  await page.getByRole("button", { name: "Revisar archivo", exact: true }).click();
+  await page.getByLabel("Fecha del tipo de cambio del lote", { exact: true }).fill("2026-09-27");
+  await expect(save).toBeDisabled();
   previewFailure = true;
-  await page.getByRole("button", { name: "Revisar archivo" }).click();
+  await page.getByRole("button", { name: "Actualizar revisión" }).click();
   await expect(page.getByRole("alert")).toContainText("El servicio no está disponible");
-  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeDisabled();
+  await expect(save).toBeDisabled();
   previewFailure = false;
-  await page.getByRole("button", { name: "Revisar archivo" }).click();
-  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeEnabled();
-  await page.getByText("Corregir nombres del Excel").click();
-  await page.getByLabel("Compañía para DEMO", { exact: true }).selectOption("DEMO");
-  await expect(page.getByRole("button", { name: "Guardar 1 facturas" })).toBeDisabled();
-  await page.getByRole("button", { name: "Revisar archivo" }).click();
-  await page.getByLabel("Mostrar facturas del Excel", { exact: true }).selectOption("REVIEW");
+  await page.getByRole("button", { name: "Actualizar revisión" }).click();
+  await expect(save).toBeEnabled();
+  await page.getByText("Ajustar proveedor o empresa", { exact: true }).click();
+  await page.getByLabel("Empresa para DEMO", { exact: true }).first().selectOption("DEMO");
+  await expect(save).toBeEnabled();
+  await page.getByRole("button", { name: "Por revisar 1", exact: true }).click();
   await expect(page.getByText("Importe cero: revisar reparto")).toBeVisible();
-  await page.screenshot({ path: "test-results/import-preview.png", fullPage: true });
-  await page.getByRole("button", { name: "Guardar 1 facturas" }).click();
-  await expect(page.getByText("1 facturas registradas.", { exact: false })).toBeVisible();
+  await save.click();
+  await expect(page.locator(".import-panel .success")).toContainText("1 factura consolidada");
   expect(submitted.selected).toEqual(["ready"]);
-  expect(submitted.fx).toEqual({ mxn_per_usd: "20", rate_date: "2026-10-27", source: "Captura manual del lote Excel" });
-  expect(submitted.period_month).toBe("2026-10-01");
+  expect(submitted.fx.mxn_per_usd).toBe("20");
+  expect(submitted.use_source_period).toBe(true);
+  expect(submitted.create_suppliers).toBe(true);
   expect(submitted.company_map).toEqual({ DEMO: "DEMO" });
-  await expect(page.getByRole("button", { name: "Guardar 0 facturas" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Consolidar 0 facturas" })).toBeDisabled();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
@@ -169,13 +168,17 @@ test("carry-forward totals and full report export", async ({ page }) => {
     "8,000.00",
   );
   await expect(page.getByText("2026-05")).toBeVisible();
-  await page.locator(".finance-tools summary").click();
   await page
     .getByRole("button", { name: "Reporte mensual", exact: true })
     .click();
   await expect(
     page.getByRole("region", { name: "Reporte de conciliación" }),
-  ).toContainText("DEMO-001");
+  ).toContainText("Liquidada");
+  await page.getByRole("button", { name: "Facturas aplicadas", exact: true }).click();
+  await expect(page.locator(".report-movements")).toContainText("DEMO-001");
+  await expect(page.locator(".report-movements")).toContainText("08/10/2026");
+  await expect(page.locator(".report-movements")).toContainText("12/10/2026");
+  await expect(page.locator(".report-movements")).toContainText("Liquidada");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Descargar CSV para Excel" }).click();
   const stream = await (await download).createReadStream();
@@ -237,7 +240,7 @@ test("multi-reference invoice preserves decimal values", async ({ page }) => {
   expect(body.lines).toHaveLength(2);
   expect(body.lines[0].net_amount).toBe("500.1234");
   expect(body.accounting_period).toBe("2026-11-01");
-  await expect(page.getByLabel("Mes contable", { exact: true })).toHaveValue("2026-11");
+  await expect(page.getByLabel("Mes", { exact: true })).toHaveValue("2026-11");
   expect(new URL((await page.requests()).filter(request => request.url().includes("/finance/invoices?")).at(-1)!.url()).searchParams.get("month")).toBe("2026-11-01");
 });
 test("provision is saved with automatic approval and preserves unsaved navigation warning", async ({ page }) => {
@@ -269,7 +272,7 @@ test("provision is saved with automatic approval and preserves unsaved navigatio
   expect(writes[0].body.provision_date).toBe("2026-11-23");
   expect(writes[0].body.month_accrued).toBe("2026-11-01");
   expect(writes[0].body.charge_code).toBe("BROKER");
-  await expect(page.getByLabel("Mes contable", { exact: true })).toHaveValue("2026-11");
+  await expect(page.getByLabel("Mes", { exact: true })).toHaveValue("2026-11");
   expect(new URL((await page.requests()).filter(request => request.url().includes("/finance/balances?")).at(-1)!.url()).searchParams.get("month")).toBe("2026-11-01");
 });
 test("invoice cancellation requires reason and accounting month", async ({
@@ -534,10 +537,10 @@ test("pending invoice detail requests the missing rate and shows both applied cu
   await expect(page.locator(".finance-status")).toHaveText("Aplicada");
 });
 
-test("known Excel references remain visible across months and the detected month can be selected", async ({ page }) => {
+test("known Excel references are ready in their source month without a month selector", async ({ page }) => {
   await setup(page);
   await page.route("**/api/v1/finance/import/preview", async route => {
-    const outside = route.request().postDataJSON().period_month !== "2026-09-01";
+    const outside = !route.request().postDataJSON().use_source_period;
     await route.fulfill({ json: {
       sheet: "CONSOLIDADO 2026", row_count: 2, invoice_count: 2,
       counts: { READY: outside ? 0 : 1, REVIEW: outside ? 0 : 1, DUPLICATE: 0, OUTSIDE: outside ? 2 : 0 },
@@ -552,28 +555,26 @@ test("known Excel references remain visible across months and the detected month
   });
   await section(page, "Facturas");
   await page.getByRole("button", { name: "Cargar Excel", exact: true }).click();
-  await page.getByLabel("Mes del consolidado", { exact: true }).fill("2026-10");
   await page.getByLabel("Archivo consolidado (.xlsx)", { exact: true }).setInputFiles({ name: "synthetic.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic; parser tested separately") });
-  await expect(page.getByLabel("Mostrar facturas del Excel", { exact: true })).toHaveValue("FOUND");
-  await expect(page.locator(".import-review-bar")).toContainText("1 facturas con referencia encontrada");
-  await expect(page.locator(".import-panel .notice")).toContainText("no contiene movimientos de octubre");
+  await expect(page.getByRole("button", { name: "Coincidencias 1", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".import-review-bar")).toContainText("1 factura lista");
+  await expect(page.locator(".import-table")).toContainText("septiembre de 2026");
   await expect(page.locator(".import-table tbody")).toContainText("SYNTHETIC-FOUND-REFERENCE");
   await expect(page.locator(".import-match")).toHaveText("Encontrada · Master de Analista de prueba · DEMO");
-  await expect(page.getByRole("button", { name: "Guardar 0 facturas", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Consolidar 1 factura", exact: true })).toBeEnabled();
   await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill(" synthetic- found-reference ");
   await expect(page.locator(".import-table tbody tr")).toHaveCount(1);
-  await page.getByLabel("Mes encontrado en el Excel", { exact: true }).selectOption("2026-09-01");
-  await expect(page.getByLabel("Mes del consolidado", { exact: true })).toHaveValue("2026-09");
-  await expect(page.getByRole("button", { name: "Guardar 1 facturas", exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Mes del consolidado")).toHaveCount(0);
   await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill("");
-  await page.getByLabel("Mostrar facturas del Excel", { exact: true }).selectOption("ALL");
-  await expect(page.locator(".import-table tbody tr")).toHaveCount(2);
+  await page.screenshot({ path: "test-results/simple-consolidation.png", fullPage: true });
+  await page.getByRole("button", { name: "Sin referencia 1", exact: true }).click();
+  await expect(page.locator(".import-table tbody")).toContainText("SYNTHETIC-MISSING");
   await page.screenshot({ path: "test-results/import-reference-detection.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
-test("an Excel with no ready invoices opens its other-month rows instead of an empty ready list", async ({ page }) => {
+test("unmatched invoices are visible without a catalog of irrelevant supplier mappings", async ({ page }) => {
   await setup(page);
   await page.route("**/api/v1/finance/import/preview", route => route.fulfill({ json: {
     sheet: "CONSOLIDADO 2026", row_count: 1, invoice_count: 1, counts: { READY: 0, REVIEW: 0, DUPLICATE: 0, OUTSIDE: 1 }, companies: ["DEMO"], suppliers: [],
@@ -582,9 +583,33 @@ test("an Excel with no ready invoices opens its other-month rows instead of an e
   } }));
   await section(page, "Facturas");
   await page.getByRole("button", { name: "Cargar Excel", exact: true }).click();
-  await page.getByLabel("Mes del consolidado", { exact: true }).fill("2026-10");
   await page.getByLabel("Archivo consolidado (.xlsx)", { exact: true }).setInputFiles({ name: "synthetic.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic preview") });
-  await expect(page.getByLabel("Mostrar facturas del Excel", { exact: true })).toHaveValue("OUTSIDE");
+  await expect(page.getByRole("button", { name: "Sin referencia 1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".import-table tbody")).toContainText("VISIBLE-OUTSIDE-TEST");
-  await expect(page.getByText("Corregir nombres del Excel", { exact: true })).toBeVisible();
+  await expect(page.getByText("Corregir nombres del Excel", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Consolidar 0 facturas", exact: true })).toBeDisabled();
+});
+
+
+test("monthly report opens from invoices and refreshes month and reference together", async ({ page }) => {
+  await setup(page);
+  const queries: URLSearchParams[] = [];
+  await page.route("**/api/v1/finance/report?**", route => {
+    const query = new URL(route.request().url()).searchParams;
+    queries.push(query);
+    return route.fulfill({ json: { ...demoReport, month: query.get("month") } });
+  });
+  await section(page, "Facturas");
+  await page.getByLabel("Factura o referencia", { exact: true }).fill("DEMO-001");
+  await page.getByRole("button", { name: "Reporte mensual", exact: true }).click();
+  await expect(page.locator(".report-balances")).toContainText("Viva · parcial");
+  expect(queries[0].get("q")).toBeNull();
+  await page.getByLabel("Mes", { exact: true }).fill("2026-09");
+  await page.getByLabel("Referencia", { exact: true }).fill("RM1");
+  await page.getByRole("button", { name: "Consultar", exact: true }).click();
+  await expect(page.locator(".report-overview")).toContainText("2026-09");
+  expect(queries.at(-1)!.get("q")).toBe("RM1");
+  expect(queries.at(-1)!.get("month")).toBe("2026-09-01");
+  await page.getByRole("button", { name: "Volver a facturas", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Facturas", exact: true })).toBeVisible();
 });

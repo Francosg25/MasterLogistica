@@ -70,6 +70,7 @@ export const demoReport: Report = {
   movements: [
     {
       id: "m1",
+      provision_id: "01", issue_date: "2026-10-08", occurred_at: "2026-10-12T16:30:00Z", charge_code: "FREIGHT", provision_amount: "500", provision_currency: "USD", closing_amount: "0", provision_status: "CLOSED",
       reference: balances[0].reference,
       invoice_number: "DEMO-001",
       supplier_name: "Transporte Ejemplo",
@@ -82,6 +83,7 @@ export const demoReport: Report = {
     },
     {
       id: "m2",
+      provision_id: "02", issue_date: "2026-10-08", occurred_at: "2026-10-12T16:30:00Z", charge_code: "FREIGHT", provision_amount: "300", provision_currency: "USD", closing_amount: "200", provision_status: "PARTIALLY_MATCHED",
       reference: balances[1].reference,
       invoice_number: "DEMO-002",
       supplier_name: "Transporte Ejemplo",

@@ -91,6 +91,12 @@ export interface HistoryRow {
   changes: { field: string; label?: string; before: unknown; after: unknown }[];
 }
 export interface Movement {
+  provision_id?: string;
+  occurred_at?: string;
+  issue_date?: string;
+  charge_code?: string;
+  closing_amount?: string;
+  provision_status?: string;
   provision_amount?: string;
   provision_currency?: string;
   fx?: Partial<SettlementFx>;
@@ -115,7 +121,7 @@ export interface Report {
 export const FINANCE_STATUS: Record<string, string> = {
   DRAFT: "Borrador",
   OPEN: "Viva",
-  PARTIALLY_MATCHED: "Parcial",
+  PARTIALLY_MATCHED: "Viva · parcial",
   CLOSED: "Liquidada",
   CANCELLED: "Cancelada",
   RECEIVED: "Recibida",

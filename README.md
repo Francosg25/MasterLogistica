@@ -346,7 +346,7 @@ La captura de facturas ofrece **FREIGHT, BROKER, STORAGE y OTROS**. OTROS usa el
 
 1. En **Provisiones**, pulsa **Nueva provisión**, selecciona una referencia, proveedor, concepto **FREIGHT**, **BROKER** o **STORAGE**, fecha, moneda e importe. **Guardar provisión** la aprueba automáticamente y la incorpora al saldo. Los cargos extra y la línea de costo están en **Más datos**. Los borradores completos anteriores se activan al consultar la tabla con acceso de Finanzas o Administración.
 2. En **Facturas**, usa **Cargar Excel** para elegir el consolidado, revisar las filas y guardar las facturas listas. El importe se aplica a sus provisiones automáticamente. **Agregar factura** permite la captura manual.
-3. La tabla muestra importe, aplicado y pendiente. **Detalle** abre las referencias, los impuestos y las acciones especiales de la factura. **Más opciones** contiene el reporte mensual y la explicación de las coincidencias.
+3. La tabla muestra importe, aplicado y pendiente. **Detalle** abre las referencias, los impuestos y las acciones especiales de la factura. **Reporte mensual** abre una vista independiente con el estado de las provisiones y las facturas aplicadas; está disponible directamente junto a Cargar Excel.
 4. Los meses nuevos se preparan automáticamente al guardar la primera provisión o factura. Los meses cerrados conservan su cierre. **Historial** muestra quién registró, aprobó, modificó o canceló cada movimiento.
 
 | Provisión | Neto facturado | Resultado |
@@ -372,7 +372,7 @@ Los reportes son consultas calculadas, **no cierres contables bloqueados**. Una 
 - Se conservan los importes y monedas originales. Cada movimiento registra por separado cuánto se aplicó a la factura, cuánto se descontó de la provisión, tipo de cambio, fecha, origen de captura y usuario. El cálculo usa decimales y cuatro decimales de moneda, con redondeo HALF_UP; nunca supera los saldos disponibles. Una diferencia menor al mínimo representable permanece pendiente cuando no permite un movimiento positivo en ambas monedas.
 - Si se cambia el tipo de cambio de una factura con saldo pendiente, se usa para las siguientes aplicaciones. Las aplicaciones anteriores conservan el cambio usado. Cancelar la factura devuelve exactamente los importes originales de cada aplicación y sus tasas, incluso cuando hubo varios cambios.
 - **Movimientos de referencia**, el detalle de factura, el reporte mensual y su CSV muestran lo aplicado en ambas monedas. Los totales de provisiones se mantienen en la moneda de cada provisión.
-- En **Cargar Excel**, **Tipo de cambio del lote para provisiones en MXN** permite usar un cambio y una fecha comunes. Si cada factura usa un cambio distinto, complétalo después en su Detalle. **USD AMOUNT ya está en USD**: se conserva como base conciliable; el cambio sirve para descontar las provisiones en MXN. El archivo original y su evidencia permanecen guardados.
+- En **Cargar Excel**, **Tipo de cambio para provisiones en pesos** permite usar un cambio y una fecha comunes. Si cada factura usa un cambio distinto, complétalo después en su Detalle. **USD AMOUNT ya está en USD**: se conserva como base conciliable; el cambio sirve para descontar las provisiones en MXN. El archivo original y su evidencia permanecen guardados.
 
 Esta mejora utiliza los campos de moneda y evidencia existentes; se activa al actualizar la aplicación, también para facturas ya registradas. La tasa se captura de manera explícita para cada factura o lote.
 
@@ -406,22 +406,19 @@ Con PostgreSQL sin Docker, detén los servicios, actualiza el repositorio y ejec
 - Casos de API/migración probados con datos ficticios sobre PGlite (motor PostgreSQL embebido): liquidación exacta, arrastre, parciales, excedentes, duplicados, reversiones, moneda/concepto/proveedor, varias referencias, permisos de API, auditoría, periodos cerrados y FIFO.
 - La batería de integración está preparada para PostgreSQL nativo y el rol restringido de producción en GitHub Actions. **PGlite no sustituye esa validación de permisos de base de datos ni la prueba de concurrencia nativa**. Docker y SSO real requieren validación en el entorno autorizado antes del piloto.
 
-![Facturas simplificadas con datos ficticios](frontend/docs/invoices-simple-preview.png)
 
 ![Historial con datos ficticios](frontend/docs/history-preview.png)
 
 ### Importar el consolidado de facturación
 
-1. En **Facturas**, abre **Cargar Excel** y elige un mes.
-2. Selecciona un `.xlsx` de hasta 10 MB con la hoja `CONSOLIDADO <año>`. Se lee esa hoja; las hojas auxiliares no se importan.
-3. El mes se obtiene de `MOUTH` y el año del nombre de la hoja. Las facturas de otros meses se muestran aparte. La fecha de factura se conserva independientemente del periodo del gasto.
-4. Si una compañía o proveedor no coincide con el catálogo, abre **Corregir nombres del Excel**, selecciona su equivalencia y pulsa **Revisar archivo**. No se crean proveedores ni embarques automáticamente.
-5. **Encontradas** muestra las facturas cuya referencia existe en un master, incluso si pertenecen a otro mes o requieren revisar proveedor o empresa. La vista se abre automáticamente cuando hay coincidencias. **Todas** permite revisar el archivo completo; **Listas**, **Revisar**, **Ya registradas** y **Otros meses** conservan su clasificación. Solo las facturas listas se pueden guardar. El periodo contable se prepara automáticamente si es nuevo.
-6. **Guardar N facturas** registra y aplica los importes por lotes de hasta 100 facturas. Cada lote es atómico. Si falla un lote, los anteriores confirmados permanecen guardados; la vista previa reconoce sus facturas al reintentar.
+1. En **Facturas**, abre **Cargar Excel** y selecciona un `.xlsx` de hasta 10 MB con la hoja `CONSOLIDADO <año>`. La revisión comienza automáticamente.
+2. El mes de cada factura se obtiene de `MOUTH` y el año del nombre de la hoja. Una carga puede incluir varios meses; se procesan en orden cronológico. La fecha de la factura se conserva por separado.
+3. **Coincidencias** muestra las facturas relacionadas con los masters. **Por revisar** reúne las coincidencias con algún dato pendiente. **Ya registradas** y **Sin referencia** permiten consultar el resto sin saturar la revisión principal. La búsqueda filtra la vista, pero no cambia el conjunto que se consolidará.
+4. Si el nombre del proveedor es nuevo, se indica en su fila y se registra automáticamente al consolidar esa factura. La vista previa no crea registros. Los nombres existentes se reutilizan por coincidencia exacta normalizada; un proveedor inactivo o ambiguo requiere una selección explícita. **Ajustar proveedor o empresa**, dentro de la factura, permite elegir un registro existente; el ajuste se vuelve a revisar automáticamente y afecta al mismo nombre en todo el archivo.
+5. **Consolidar N facturas** registra todas las listas y aplica sus importes a las provisiones compatibles. Solo se crean proveedores para las facturas confirmadas. Los lotes de hasta 100 facturas son atómicos; si falla un lote, los anteriores permanecen registrados y se reconocen como duplicados al reintentar.
+6. **Volver a facturas** muestra el mes más reciente de la carga. **Reporte mensual** permite consultar cada mes: estado de provisiones (vivas, vivas parciales, liquidadas o canceladas), importes aplicados y saldo pendiente. La vista **Facturas aplicadas** incluye referencia, folio, fecha de factura, fecha de aplicación, importes en ambas monedas y estado al cierre. El CSV incluye esas fechas, el mes de aplicación y el saldo histórico; no reemplaza el saldo del mes consultado por el actual.
 
-La búsqueda usa la columna **REFERENCIA** por su encabezado, aunque esté en G; **NO TOCAR** es auxiliar. Se reconocen la referencia actual y sus alias registrados, normalizando espacios y mayúsculas. El mes seleccionado no oculta las coincidencias: cada fila muestra **Encontrada**, el master y la empresa, o explica si hay varias coincidencias, falta el registro o existe en otra empresa. La empresa se revisa antes de permitir el registro; una coincidencia en otra empresa no se vincula automáticamente.
-
-**Buscar referencia o factura** filtra el archivo leído. **Meses encontrados en el Excel** permite cambiar al mes de origen sin modificar el libro. Si el mes elegido no contiene filas, se muestra un aviso y los otros meses disponibles. El encabezado incluye filas leídas, facturas encontradas y facturas de otros meses para distinguir una búsqueda sin coincidencias de un filtro de fecha.
+La búsqueda utiliza el encabezado **REFERENCIA**, aunque esté en G; **NO TOCAR** es auxiliar. Reconoce la referencia actual y sus alias, normalizando espacios y mayúsculas. No crea embarques ni relaciona automáticamente una referencia con otra empresa. Los proveedores de las filas sin referencia registrada no se añaden al catálogo. Las provisiones sin factura conservan su saldo y aparecen en el reporte de meses posteriores.
 
 La identidad de factura usa compañía, proveedor y folio normalizado. El concepto se toma del primer `TYPE` (Freight, Broker, Storage y Other/OTROS); se respeta cada concepto sin sumarlos entre sí. La referencia debe coincidir de manera única con un embarque o alias registrado. Un movimiento `PAQUETERIA` sin referencia concreta necesita corregirse o vincularse antes de importar.
 
@@ -433,7 +430,6 @@ Desde el master, selecciona una celda y pulsa **Movimientos de referencia**. Des
 
 Validación de la actualización XLSX: 177 pruebas de backend sin base externa y 30 casos de parser/finanzas sobre PGlite aprobados. La lectura se comprobó también contra el consolidado suministrado, sin incorporar datos operativos al repositorio. Las pruebas de navegador usan respuestas de API y datos ficticios; la integración con PostgreSQL nativo y Microsoft Entra ID sigue pendiente en el entorno autorizado.
 
-![Vista previa de importación con datos ficticios](frontend/docs/invoice-import-preview.png)
 
 La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1 a 5 hasta la 6, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
 

@@ -9,15 +9,17 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from typing import Annotated
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field, ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api import DB
 from app.finance import (
     FinanceWriter,
+    audit_event,
     commit,
     ensure_period,
     financial_json,
@@ -57,6 +59,8 @@ class ImportRequest(Schema):
     filename: Annotated[str, Field(min_length=1, max_length=255)]
     content_base64: Annotated[str, Field(min_length=1, max_length=14_000_000)]
     period_month: date
+    use_source_period: bool = False
+    create_suppliers: bool = False
     fx: SettlementFx | None = None
     company_map: Annotated[dict[str, str], Field(max_length=100)] = {}
     supplier_map: Annotated[dict[str, UUID], Field(max_length=1000)] = {}
@@ -77,7 +81,9 @@ def prepare(data, session, request):
         parsed = read_consolidated(content)
     except (ValueError, binascii.Error) as error:
         raise HTTPException(422, str(error)) from None
-    suppliers = session.scalars(select(Supplier).where(Supplier.is_active.is_(True))).all()
+    all_suppliers = session.scalars(select(Supplier)).all()
+    suppliers = [s for s in all_suppliers if s.is_active]
+    known_names = {normalized(name) for s in all_suppliers for name in (s.legal_name, s.code)}
     by_name = defaultdict(set)
     by_id = {str(s.id): s for s in suppliers}
     for supplier in suppliers:
@@ -127,11 +133,27 @@ def prepare(data, session, request):
             next(iter(matched)) if len(matched) == 1 else ""
         )
         supplier = by_id.get(supplier_id)
-        if supplier and company in companies:
+        new_supplier = None
+        if (
+            not supplier
+            and not supplier_id
+            and data.create_suppliers
+            and source_supplier not in known_names
+            and 0 < len(rows[0]["supplier"].strip()) <= 250
+        ):
+            supplier_id = str(
+                uuid5(NAMESPACE_URL, "MasterLogistica:excel-supplier:" + source_supplier)
+            )
+            new_supplier = dict(
+                id=supplier_id,
+                code="XL-" + hashlib.sha256(source_supplier.encode()).hexdigest()[:32],
+                legal_name=rows[0]["supplier"].strip(),
+            )
+        if (supplier or new_supplier) and company in companies:
             destinations[(company, supplier_id, number)].append(key)
         issues = [f"Fila {r['row']}: {error}" for r in rows for error in r["errors"]]
         source_months = {MONTHS.get(normalized(r["source"].get("MOUTH"))) for r in rows}
-        outside = bool(
+        outside = not data.use_source_period and bool(
             year
             and None not in source_months
             and (
@@ -147,7 +169,7 @@ def prepare(data, session, request):
             )
         if company not in companies:
             issues.append("Vincula la compañía del Excel con una compañía configurada")
-        if not supplier:
+        if not supplier and not new_supplier:
             issues.append("Vincula el proveedor con un proveedor activo del catálogo")
         if len({r["issue_date"] for r in rows}) != 1:
             issues.append("La factura tiene fechas distintas entre sus movimientos")
@@ -212,7 +234,9 @@ def prepare(data, session, request):
                     company_code=company,
                     invoice_number=rows[0]["invoice_number"],
                     issue_date=rows[0]["issue_date"],
-                    accounting_period=data.period_month,
+                    accounting_period=date(int(year[1]), next(iter(source_months)), 1)
+                    if data.use_source_period
+                    else data.period_month,
                     currency="USD",
                     fx=data.fx,
                     lines=lines,
@@ -227,6 +251,8 @@ def prepare(data, session, request):
                 supplier_name=supplier.legal_name if supplier else rows[0]["supplier"],
                 source_supplier=source_supplier,
                 source_company=source_company,
+                supplier_action="NEW" if new_supplier else "MATCHED" if supplier else "REVIEW",
+                new_supplier=new_supplier,
                 status="OUTSIDE"
                 if outside
                 else "DUPLICATE"
@@ -289,7 +315,9 @@ def preview(data: ImportRequest, session: DB, user: FinanceWriter, request: Requ
         },
         companies=sorted({r["company"] for r in parsed["rows"]}),
         suppliers=sorted({normalized(r["supplier"]) for r in parsed["rows"]}),
-        groups=[{k: v for k, v in g.items() if k != "evidence"} for g in groups],
+        groups=[
+            {k: v for k, v in g.items() if k not in {"evidence", "new_supplier"}} for g in groups
+        ],
     )
 
 
@@ -297,7 +325,6 @@ def preview(data: ImportRequest, session: DB, user: FinanceWriter, request: Requ
 def confirm(data: ImportRequest, session: DB, user: FinanceWriter, request: Request):
     if not data.selected or len(set(data.selected)) != len(data.selected):
         raise HTTPException(422, "Selecciona de 1 a 100 facturas distintas por lote")
-    ensure_period(session, user, request, data.period_month)
     parsed, groups, payloads = prepare(data, session, request)
     selected = set(data.selected)
     candidates = [g for g in groups if g["key"] in selected]
@@ -310,6 +337,35 @@ def confirm(data: ImportRequest, session: DB, user: FinanceWriter, request: Requ
     # All-or-nothing per batch; unique invoice keys also prevent concurrent double imports.
     created = []
     try:
+        for period in sorted({payloads[g["key"]].accounting_period for g in candidates}):
+            ensure_period(session, user, request, period)
+        for group in candidates:
+            values = group["new_supplier"]
+            if not values or session.get(Supplier, UUID(values["id"])):
+                continue
+            # Same normalized name always gets the same identity, including concurrent batches.
+            try:
+                with session.begin_nested():
+                    supplier = Supplier(**{**values, "id": UUID(values["id"])}, is_active=True)
+                    session.add(supplier)
+                    session.flush()
+                    audit_event(
+                        session,
+                        request,
+                        user,
+                        "SUPPLIER_CREATED",
+                        after={
+                            "code": supplier.code,
+                            "legal_name": supplier.legal_name,
+                            "source": "Excel de facturas",
+                        },
+                    )
+            except IntegrityError:
+                supplier = session.get(Supplier, UUID(values["id"]))
+                if supplier is None or not supplier.is_active:
+                    raise HTTPException(
+                        409, "El proveedor cambió. Revisa el archivo de nuevo"
+                    ) from None
         references = [
             line.reference for group in candidates for line in payloads[group["key"]].lines
         ]
@@ -319,7 +375,9 @@ def confirm(data: ImportRequest, session: DB, user: FinanceWriter, request: Requ
                 select(Shipment.id).where(Shipment.reference_raw.in_(references))
             ).all(),
         )
-        for group in sorted(candidates, key=lambda g: g["key"]):
+        for group in sorted(
+            candidates, key=lambda g: (payloads[g["key"]].accounting_period, g["key"])
+        ):
             evidence = dict(
                 amount_basis="USD_AMOUNT",
                 filename=data.filename,

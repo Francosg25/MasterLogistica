@@ -1,27 +1,27 @@
-<section class="finance-workspace" [class.invoice-workspace]="section === 'invoices'" [class.finance-capture]="formOpen() || importOpen() || cancelTarget()">
+<section class="finance-workspace" [class.finance-reporting]="reportOpen()" [class.invoice-workspace]="section === 'invoices'" [class.finance-capture]="formOpen() || importOpen() || cancelTarget()">
+  @if (!importOpen()) {
   <div class="workspace-heading finance-heading">
     <div>
-      <h1>{{ title }}</h1>
-      <p class="hint">{{ section === 'history' ? 'Quién cambió cada dato y cuándo.' : section === 'provisions' ? 'Las provisiones se aprueban automáticamente al guardarlas.' : 'Carga el Excel y revisa cuánto se aplicó a cada provisión.' }}</p>
+      <h1>{{ reportOpen() ? "Reporte mensual" : title }}</h1>
+      <p class="hint">{{ reportOpen() ? 'Facturas aplicadas y saldo de las provisiones al cierre del mes.' : section === 'history' ? 'Quién cambió cada dato y cuándo.' : section === 'provisions' ? 'Las provisiones se aprueban automáticamente al guardarlas.' : 'Carga el Excel y revisa cuánto se aplicó a cada provisión.' }}</p>
     </div>
     <div class="finance-buttons">
-      @if (canWrite && section === 'provisions') {
+      @if (canWrite && section === 'provisions' && !reportOpen()) {
         <button class="button primary" (click)="openForm()" [disabled]="busy() || formOpen()"><app-icon name="plus" />Nueva provisión</button>
       }
-      @if (canWrite && section === 'invoices') {
+      @if (canWrite && section === 'invoices' && !reportOpen()) {
         <button class="button primary" (click)="importOpen.set(true)" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()"><app-icon name="upload" />Cargar Excel</button>
         <button class="button secondary" (click)="openForm()" [disabled]="busy() || formOpen() || importOpen() || cancelTarget()"><app-icon name="plus" />Agregar factura</button>
       }
       @if (section !== 'history') {
-        <details class="finance-tools"><summary>Más opciones</summary>
-          <button class="button subtle" (click)="showReport()" [disabled]="loading() || busy()">Reporte mensual</button>
-          <p>Las facturas se aplican por referencia, empresa, proveedor y concepto. Si las monedas son distintas, se usa el tipo de cambio capturado. El Excel usa USD AMOUNT; la captura manual usa el importe neto.</p>
-        </details>
+        @if (reportOpen()) {<button class="button subtle" (click)="closeReport()" [disabled]="busy()">Volver a {{ section === 'provisions' ? 'provisiones' : 'facturas' }}</button>}
+        @else {<button class="button secondary" (click)="showReport()" [disabled]="loading() || busy() || formOpen() || cancelTarget()">Reporte mensual</button>}
       }
     </div>
   </div>
+  }
   @if (section === 'invoices' && importOpen()) {
-    <invoice-import [suppliers]="suppliers" [companies]="catalogs.company_codes" [month]="filters.controls.month.value" (working)="busy.set($event)" (closed)="importOpen.set(false)" (imported)="invoiceImported()" />
+    <invoice-import [suppliers]="suppliers" [companies]="catalogs.company_codes" [month]="filters.controls.month.value" (working)="busy.set($event)" (closed)="importOpen.set(false)" (imported)="invoiceImported($event)" />
   }
   @if (demo) {
     <p class="notice">
@@ -37,7 +37,7 @@
   <form class="finance-filters" [class.history-filters]="section === 'history'" [formGroup]="filters" (ngSubmit)="apply()">
     @if (section !== "history") {
       <label
-        >Mes contable<input
+        >Mes<input
           type="month"
           formControlName="month"
           [readOnly]="demo"
@@ -45,7 +45,7 @@
       /></label>
     }
     <label class="finance-search"
-      >{{ section === "invoices" ? "Factura o referencia" : "Referencia"
+      >{{ section === "invoices" && !reportOpen() ? "Factura o referencia" : "Referencia"
       }}<input formControlName="q" placeholder="Buscar…" maxlength="160"
     /></label>
     @if (section !== "invoices" && !demo) {
@@ -82,7 +82,7 @@
       >
       <label>Desde (UTC)<input type="date" formControlName="date_from" /></label
       ><label>Hasta (UTC)<input type="date" formControlName="date_to" /></label>
-    } @else {
+    } @else if (!reportOpen()) {
       <label
         >Estado<select formControlName="status">
           <option value="">Todos</option>
@@ -417,10 +417,8 @@
               <th>Fecha de provisión</th>
               <th>Moneda</th>
               <th class="number">Provisión</th>
-              <th class="number">Inicial</th>
-              <th class="number">Alta del mes</th>
-              <th class="number">Provisión aplicada</th>
-              <th class="number">Saldo final</th>
+              <th class="number">Aplicado este mes</th>
+              <th class="number">Saldo pendiente</th>
               <th>Estado</th>
             </tr>
           </thead>
@@ -441,8 +439,6 @@
                 <td>{{ row.provision_date ? row.provision_date!.split('-').reverse().join('/') : row.month_accrued.slice(0, 7) }}@if (!row.provision_date) {<small>Día no registrado</small>}</td>
                 <td>{{ row.currency || "—" }}</td>
                 <td class="number">{{ money(row.total_amount) }}</td>
-                <td class="number">{{ money(row.opening_amount) }}</td>
-                <td class="number">{{ money(row.new_amount) }}</td>
                 <td class="number">{{ money(row.released_amount) }}</td>
                 <td class="number">
                   <strong>{{ money(row.closing_amount) }}</strong>
@@ -463,6 +459,7 @@
           <thead>
             <tr>
               <th>Factura / proveedor</th>
+              <th>Referencia</th>
               <th>Fecha</th>
               <th>Moneda</th>
               <th class="number">Importe</th>
@@ -481,6 +478,7 @@
                     >{{ row.supplier_name }} · {{ row.company_code }}</small
                   >
                 </td>
+                <td>@for (line of row.lines; track line.id) {<button class="reference-link" [disabled]="!demo && !line.shipment_id" (click)="activity.set({id: line.shipment_id || line.id, reference: line.reference})">{{ line.reference }}</button><small>{{ conceptLabel(line.charge_code) }}</small>}</td>
                 <td>{{ row.issue_date.split('-').reverse().join('/') }}</td>
                 <td>{{ row.currency }}</td>
                 <td class="number">{{ money(row.net_amount) }}</td>
@@ -507,7 +505,7 @@
               </tr>
               @if (expandedInvoice() === row.id) {
                 <tr>
-                  <td colspan="8">
+                  <td colspan="9">
                     <div class="invoice-detail">
                       <h3>Referencias de {{ row.invoice_number }}</h3>
                       @if (row.amount_basis === 'USD_AMOUNT') {<p>Base de conciliación: USD AMOUNT completo. Importes originales conservados en el registro de importación.</p><p>{{ row.source_data?.filename }} · {{ row.source_data?.sheet }} · Filas {{ row.source_data?.row_numbers?.join(', ') }}</p>}
@@ -639,117 +637,29 @@
   }
   @if (reportOpen() && report(); as data) {
     <section class="finance-report" aria-label="Reporte de conciliación">
-      <div class="workspace-heading">
-        <div>
-          <h2>Facturas vs. provisiones · {{ data.month.slice(0, 7) }}</h2>
-          <p class="hint">
-            Consulta mensual calculada, sin cierre contable bloqueado. Incluye
-            todas las filas del alcance, no solo la página visible. Desde
-            Facturas, abarca todas las referencias autorizadas del mes.
-          </p>
-        </div>
-        <div class="finance-buttons">
-          <button
-            class="button primary"
-            (click)="exportReport()"
-            [disabled]="busy() || demo"
-          >
-            Descargar CSV para Excel</button
-          ><button class="button subtle" (click)="reportOpen.set(false)">
-            Cerrar reporte
-          </button>
-        </div>
+      <div class="report-overview">
+        <div><strong>{{ data.month.slice(0, 7) }}</strong><span>{{ reportCount('live') }} {{ reportCount('live') === 1 ? 'viva' : 'vivas' }} · {{ reportCount('CLOSED') }} {{ reportCount('CLOSED') === 1 ? 'liquidada' : 'liquidadas' }}</span></div>
+        <button class="button secondary" (click)="exportReport()" [disabled]="busy() || demo">Descargar CSV para Excel</button>
       </div>
-      <div class="finance-summary">
-        @for (total of data.totals; track total.currency) {
-          <div>
-            <span class="currency-label">{{ total.currency }}</span
-            ><span
-              >Inicial <strong>{{ money(total.opening_amount) }}</strong></span
-            ><span
-              >Altas <strong>{{ money(total.new_amount) }}</strong></span
-            ><span
-              >Provisión aplicada
-              <strong>{{ money(total.released_amount) }}</strong></span
-            ><span class="live-balance"
-              >Arrastre siguiente mes
-              <strong>{{ money(total.closing_amount) }}</strong></span
-            >
-          </div>
-        }
-      </div>
-      <h3>Movimientos del mes</h3>
-      <div class="finance-table-scroll">
-        <table class="finance-table">
-          <thead>
-            <tr>
-              <th>Referencia</th>
-              <th>Factura</th>
-              <th>Proveedor</th>
-              <th>Origen provisión</th>
-              <th>Movimiento</th>
-              <th>Moneda</th>
-              <th class="number">Importe</th>
-              <th>Usuario</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (m of data.movements; track $index) {
-              <tr>
-                <td class="reference-cell">{{ m.reference }}</td>
-                <td>{{ m.invoice_number }}</td>
-                <td>{{ m.supplier_name }}</td>
-                <td>{{ m.month_accrued?.slice(0, 7) }}</td>
-                <td>
-                  {{ m.entry_type === "REVERSAL" ? "Reversión" : "Aplicación" }}
-                </td>
-                <td>{{ m.currency }}</td>
-                <td class="number">{{ money(m.amount) }}@if (m.fx?.mxn_per_usd) {<small>Provisión: {{ money(m.provision_amount) }} {{ m.provision_currency }} · TC {{ m.fx?.mxn_per_usd }} MXN/USD</small>}</td>
-                <td>{{ m.actor_name }}</td>
-              </tr>
-            } @empty {
-              <tr>
-                <td colspan="8">
-                  Sin aplicaciones ni reversiones en este mes.
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-      <h3>Facturas con importe sin provisión compatible al cierre del mes</h3>
-      <div class="finance-table-scroll">
-        <table class="finance-table">
-          <thead>
-            <tr>
-              <th>Referencia</th>
-              <th>Factura</th>
-              <th>Proveedor</th>
-              <th>Mes de registro</th>
-              <th>Moneda</th>
-              <th class="number">Pendiente / excedente</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (m of data.pending_invoices; track $index) {
-              <tr>
-                <td class="reference-cell">{{ m.reference }}</td>
-                <td>{{ m.invoice_number }}</td>
-                <td>{{ m.supplier_name }}</td>
-                <td>{{ m.period_month.slice(0, 7) }}</td>
-                <td>{{ m.currency }}</td>
-                <td class="number">{{ money(m.amount) }}</td>
-              </tr>
-            } @empty {
-              <tr>
-                <td colspan="6">Sin facturas pendientes de aplicación.</td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
+      <div class="finance-summary">@for (total of data.totals; track total.currency) {<div><span class="currency-label">{{ total.currency }}</span><span>Aplicado en el mes <strong>{{ money(total.released_amount) }}</strong></span><span class="live-balance">Saldo pendiente <strong>{{ money(total.closing_amount) }}</strong></span></div>}</div>
+      <div class="segmented-tabs report-tabs" aria-label="Vistas del reporte"><button [attr.aria-pressed]="reportTab() === 'balances'" (click)="reportTab.set('balances')">Estado de provisiones</button><button [attr.aria-pressed]="reportTab() === 'movements'" (click)="reportTab.set('movements')">Facturas aplicadas</button></div>
+      @if (reportTab() === 'balances') {
+        <p class="hint">Viva: tiene saldo pendiente. Viva · parcial: ya recibió facturas. Liquidada: saldo en cero. Los saldos pendientes pasan al siguiente mes.</p>
+        <div class="finance-table-scroll"><table class="finance-table report-balances"><thead><tr><th>Referencia</th><th>Proveedor / concepto</th><th>Fecha de provisión</th><th>Moneda</th><th class="number">Provisionado</th><th class="number">Aplicado este mes</th><th class="number">Saldo pendiente</th><th>Estado al cierre</th></tr></thead><tbody>
+        @for (b of data.balances; track b.id) {<tr><td class="reference-cell"><button class="reference-link" (click)="activity.set({id: b.shipment_id || b.id, reference: b.reference})">{{ b.reference }}</button><small>{{ b.owner_name }}</small></td><td>{{ b.supplier_name }}<small>{{ conceptLabel(b.charge_code) }}</small></td><td>{{ b.provision_date ? calendarDate(b.provision_date) : b.month_accrued.slice(0, 7) }}</td><td>{{ b.currency }}</td><td class="number">{{ money(b.total_amount) }}</td><td class="number">{{ money(b.released_amount) }}</td><td class="number"><strong>{{ money(b.closing_amount) }}</strong></td><td><span class="finance-status" [class.settled]="b.status === 'CLOSED'">{{ labels[b.status] }}</span></td></tr>}
+        @empty {<tr><td colspan="8">No hay provisiones para este mes y referencia.</td></tr>}
+        </tbody></table></div>
+      } @else {
+        <p class="hint">Aplicaciones del mes consultado. La fecha de aplicación indica cuándo se registró el movimiento. El saldo corresponde al cierre del mes, en la moneda de la provisión.</p>
+        <div class="finance-table-scroll"><table class="finance-table report-movements"><thead><tr><th>Referencia / concepto</th><th>Factura</th><th>Fecha factura</th><th>Fecha aplicación</th><th class="number">Importe de factura aplicado</th><th class="number">Descontado de provisión</th><th class="number">Saldo al cierre</th><th>Estado al cierre</th></tr></thead><tbody>
+        @for (m of data.movements; track $index) {<tr><td class="reference-cell">{{ m.reference }}<small>{{ conceptLabel(m.charge_code || '') }}</small></td><td>{{ m.invoice_number }}<small>{{ m.supplier_name }}</small>@if (m.entry_type === 'REVERSAL') {<small>Reversión</small>}</td><td>{{ calendarDate(m.issue_date) }}</td><td>{{ m.occurred_at ? dateTime(m.occurred_at) : '—' }}</td><td class="number">{{ money(m.amount) }} {{ m.currency }}</td><td class="number">{{ money(m.provision_amount ?? m.amount) }} {{ m.provision_currency || m.currency }}@if (m.fx?.mxn_per_usd) {<small>TC {{ m.fx?.mxn_per_usd }} MXN/USD</small>}</td><td class="number">{{ m.closing_amount === undefined ? '—' : money(m.closing_amount) }} {{ m.provision_currency }}</td><td><span class="finance-status" [class.settled]="m.provision_status === 'CLOSED'">{{ labels[m.provision_status || ''] || '—' }}</span></td></tr>}
+        @empty {<tr><td colspan="8">No se aplicaron facturas en este mes.</td></tr>}
+        </tbody></table></div>
+      }
+      @if (data.pending_invoices.length) {<details class="report-pending"><summary>{{ data.pending_invoices.length }} movimientos de factura con importe pendiente de aplicar</summary><p class="hint">La factura está registrada. Revisa si falta una provisión compatible o su tipo de cambio.</p><div class="finance-table-scroll"><table class="finance-table"><thead><tr><th>Referencia</th><th>Factura</th><th>Concepto</th><th>Mes</th><th class="number">Pendiente</th></tr></thead><tbody>@for (m of data.pending_invoices; track $index) {<tr><td>{{ m.reference }}</td><td>{{ m.invoice_number }}</td><td>{{ conceptLabel(m.charge_code || '') }}</td><td>{{ m.period_month.slice(0, 7) }}</td><td class="number">{{ money(m.amount) }} {{ m.currency }}</td></tr>}</tbody></table></div></details>}
     </section>
   }
+
 </section>
 
 @if (activity(); as target) {<reference-activity [shipmentId]="target.id" [reference]="target.reference" [demo]="demo" (closed)="activity.set(null)" />}

@@ -1,6 +1,9 @@
 import {
   Component,
   Input,
+  Output,
+  EventEmitter,
+  SimpleChanges,
   OnChanges,
   OnDestroy,
   HostListener,
@@ -52,6 +55,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) catalogs!: Catalogs;
   @Input() suppliers: Supplier[] = [];
   @Input() demo = false;
+  @Output() suppliersChanged = new EventEmitter<Supplier[]>();
   private api = inject(ApiService);
   private fb = new FormBuilder().nonNullable;
   loading = signal(false);
@@ -72,6 +76,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   limit = 20;
   formOpen = signal(false);
   reportOpen = signal(false);
+  reportTab = signal("balances");
   cancelTarget = signal<InvoiceRow | null>(null);
   expandedInvoice = signal("");
   labels = FINANCE_STATUS;
@@ -169,7 +174,8 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   get lines() {
     return this.invoiceForm.controls.lines;
   }
-  ngOnChanges() {
+  ngOnChanges(changes: SimpleChanges) {
+    if (Object.keys(changes).every(key => key === "suppliers")) return;
     this.expandedInvoice.set("");
     this.importOpen.set(false);
     this.formOpen.set(false);
@@ -256,6 +262,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       this.filters.markAllAsTouched();
       return;
     }
+    if (this.reportOpen()) { await this.showReport(); return; }
     const v = this.filters.getRawValue();
     const keys =
       this.section === "history"
@@ -459,9 +466,18 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
       this.expandedInvoice.set("");
     }, () => message);
   }
-  async invoiceImported() {
-    if (this.importer?.month) this.filters.controls.month.setValue(this.importer.month);
+  async invoiceImported(month: string) {
+    if (month) this.filters.controls.month.setValue(month);
     await this.apply();
+    try {
+      const suppliers: Supplier[] = [];
+      let total = 1;
+      for (let offset = 0; offset < total; offset += 100) {
+        const page = await this.api.request<Page<Supplier>>(`/suppliers?limit=100&offset=${offset}`);
+        suppliers.push(...page.items); total = page.total;
+      }
+      this.suppliersChanged.emit(suppliers);
+    } catch (e) { this.error.set(this.message(e)); }
   }
   async reconcile(row: InvoiceRow) {
     const values = this.reconciliationFxForm.getRawValue();
@@ -508,17 +524,19 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   }
   private reportParams = "";
   reportQuery() {
-    // Capture the full visible filter scope; status intentionally omitted for a complete reconciliation.
-    const scope =
-      this.section === "provisions" ? this.applied : { month: this.month };
-    const { status, ...rest } = scope;
-    return new URLSearchParams(rest).toString();
+    const v = this.filters.getRawValue();
+    return new URLSearchParams(Object.fromEntries(Object.entries({ month: this.month, q: v.q, owner_id: this.section === "provisions" ? v.owner_id : "", operation_code: this.section === "provisions" ? v.operation_code : "" }).filter(([, value]) => !!value))).toString();
   }
+  closeReport() { this.reportOpen.set(false); void this.apply(); }
+  calendarDate(value?: string) { return value ? value.slice(0, 10).split("-").reverse().join("/") : "—"; }
+  reportCount(state: string) { return this.report()?.balances.filter(b => state === "live" ? ["OPEN", "PARTIALLY_MATCHED"].includes(b.status) : b.status === state).length ?? 0; }
+
   async showReport() {
     if (this.busy() || this.loading()) return;
     this.busy.set(true);
     this.error.set("");
     try {
+      if (!this.reportOpen() && this.section === "invoices") this.filters.controls.q.setValue("");
       this.reportParams = this.reportQuery();
       if (this.demo) {
         const { demoReport } = await import("./finance-demo");

@@ -333,6 +333,7 @@
         }
       } @else {
         <finance-workspace
+          (suppliersChanged)="suppliers.set($event)"
           [section]="section()"
           [user]="user()!"
           [catalogs]="catalog()!"

@@ -1,77 +1,50 @@
-<section class="import-panel" aria-label="Importar consolidado">
+<section class="import-panel simple-import" aria-label="Importar consolidado">
   <div class="workspace-heading">
-    <div><h2>Cargar facturas de Excel</h2><p class="hint">Elige el archivo, revisa las facturas y guarda las que están listas.</p></div>
+    <div><h2>Consolidar facturas</h2><p class="hint">Relacionamos las facturas con tus referencias y actualizamos sus provisiones.</p></div>
     <button class="button subtle" (click)="close()" [disabled]="busy()">Volver a facturas</button>
   </div>
-  <details class="import-guide">
-    <summary>¿Cómo se relacionan las facturas?</summary>
-    <ol>
-      <li>Busca la referencia del Excel en el master de la empresa indicada. También reconoce sus referencias anteriores registradas.</li>
-      <li>Revisa proveedor, concepto y el importe completo de USD AMOUNT. FREIGHT, BROKER, STORAGE y OTROS se mantienen separados.</li>
-      <li>Muestra las facturas listas, las que necesitan revisión y las que ya están registradas. Elige <strong>Guardar facturas</strong> para confirmar las listas.</li>
-      <li>Al guardar, aplica el importe a las provisiones compatibles. Para provisiones en MXN, indica el tipo de cambio del lote o complétalo después en Detalle.</li>
-    </ol>
-    <p>Usa el consolidado .xlsx con la hoja CONSOLIDADO y su año. Una referencia que no existe requiere corregirse o registrarse en el master antes de importar.</p>
-  </details>
-  <div class="import-controls">
-    <label>Mes del consolidado<input type="month" [(ngModel)]="month" (ngModelChange)="invalidate()" [disabled]="busy()" required /></label>
-    <label class="import-file">Archivo consolidado (.xlsx)<input type="file" accept=".xlsx" (change)="choose($event)" [disabled]="busy()" /></label>
-    @if (filename) { <button class="button secondary" (click)="analyze()" [disabled]="busy() || !month">Revisar archivo</button> }
+  <div class="import-upload" [class.has-file]="!!filename">
+    <label class="import-file"><span>{{ filename || 'Seleccionar Excel de facturas' }}</span><input aria-label="Archivo consolidado (.xlsx)" type="file" accept=".xlsx" (change)="choose($event)" [disabled]="busy()" /></label>
+    <p class="hint">{{ filename ? 'El mes y las referencias se toman del Excel.' : 'Archivo .xlsx · Los meses se detectan automáticamente.' }}</p>
   </div>
-  <details class="finance-extra">
-    <summary>Tipo de cambio del lote para provisiones en MXN</summary>
-    <p class="hint">USD AMOUNT ya está en dólares. Este cambio sirve para descontar las provisiones en pesos. Si cada factura usa un cambio distinto, complétalo después en su Detalle.</p>
-    <div class="import-controls">
-      <label>Tipo de cambio del lote (MXN por USD)<input type="text" inputmode="decimal" maxlength="21" [(ngModel)]="fxRate" (ngModelChange)="invalidate()" [disabled]="busy()" placeholder="Ej. 20.0000" /></label>
-      <label>Fecha del tipo de cambio del lote<input type="date" [(ngModel)]="fxDate" (ngModelChange)="invalidate()" [disabled]="busy()" /></label>
-    </div>
-  </details>
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="success" role="status">{{ notice() }}</p> }
-  @if (busy()) { <p role="status">Revisando el Excel…</p> }
-  @if (stale()) { <p class="notice">Los datos cambiaron. Pulsa Revisar archivo antes de guardar.</p> }
+  @if (busy()) { <p role="status">Procesando facturas…</p> }
   @if (preview(); as p) {
-    @if (periodMismatch()) {
-      <p class="notice">El archivo no contiene movimientos de {{ monthLabel(month) }}. Las referencias se buscan en todo el archivo; para registrar una factura, selecciona su mes de origen.</p>
-    }
-      <div class="import-controls import-detection-controls">
-        @if (p.available_periods?.length) {
-        <label>Meses encontrados en el Excel<select aria-label="Mes encontrado en el Excel" [ngModel]="''" (ngModelChange)="usePeriod($event)" [disabled]="busy()"><option value="">Ir a un mes del archivo</option>@for (period of p.available_periods; track period.period_month) { <option [value]="period.period_month">{{ monthLabel(period.period_month) }} · {{ period.invoice_count }} facturas</option> }</select></label>
-        }
-        <label>Buscar referencia o factura<input aria-label="Buscar referencia o factura en el Excel" type="search" [ngModel]="search()" (ngModelChange)="search.set($event); offset.set(0)" placeholder="Escribe o pega la referencia" /></label>
-      </div>
     <div class="import-review-bar">
-      <span>{{ filename }} · {{ p.row_count }} filas leídas · {{ found().length }} facturas con referencia encontrada · {{ p.counts['READY'] }} listas · {{ p.counts['REVIEW'] }} por revisar · {{ p.counts['OUTSIDE'] }} de otros meses</span>
-      <label>Mostrar<select aria-label="Mostrar facturas del Excel" [ngModel]="filter()" (ngModelChange)="filter.set($event); offset.set(0)">
-        @for (s of statuses; track s) { <option [value]="s">{{ labels[s] }} ({{ count(s) }})</option> }
-      </select></label>
-      <button class="button primary" [disabled]="busy() || stale() || !p.counts['READY']" (click)="confirm()">Guardar {{ p.counts['READY'] }} facturas</button>
+      <div><strong>{{ ready().length }} {{ ready().length === 1 ? 'factura lista' : 'facturas listas' }}</strong><small>{{ count('REVIEW') }} por revisar · {{ count('DUPLICATE') }} ya registradas · {{ count('UNMATCHED') }} sin referencia registrada</small></div>
+      <button class="button primary" [disabled]="busy() || stale() || !ready().length" (click)="confirm()">Consolidar {{ ready().length }} {{ ready().length === 1 ? 'factura' : 'facturas' }}</button>
     </div>
-    <div class="finance-scroll"><table class="finance-table import-table"><thead><tr><th>Factura</th><th>Proveedor / empresa</th><th>Referencia</th><th class="number">Importe USD</th><th>Estado</th></tr></thead><tbody>
+    <div class="import-table-tools">
+      <div class="segmented-tabs" aria-label="Vistas del Excel">@for (s of statuses; track s) {<button type="button" [attr.aria-pressed]="filter() === s" (click)="filter.set(s); offset.set(0)">{{ labels[s] }} <span>{{ count(s) }}</span></button>}</div>
+      <input aria-label="Buscar referencia o factura en el Excel" type="search" [ngModel]="search()" (ngModelChange)="search.set($event); offset.set(0)" placeholder="Buscar referencia o factura" />
+    </div>
+    <div class="finance-scroll"><table class="finance-table import-table"><thead><tr><th>Referencia</th><th>Factura / proveedor</th><th>Mes</th><th class="number">Importe USD</th><th>Resultado</th></tr></thead><tbody>
       @for (group of visible(); track group.key) {
         <tr>
-          <td><strong>{{ group.invoice_number || 'Sin folio' }}</strong></td>
-          <td>{{ group.supplier_name }}<small>{{ group.company }}</small></td>
-          <td>
-            @if (group.rows.length === 1) {
-              {{ group.rows[0].reference }}<small>{{ conceptLabel(group.rows[0].charge_code) }}</small>
-              @if (group.rows[0].reference_match) { <small class="import-match" [class.import-match-found]="referenceFound(group.rows[0])">{{ matchLabel(group.rows[0]) }}</small> }
-            }
-            @else { <details [open]="!!search() || filter() === 'FOUND' && group.rows.length <= 5"><summary>{{ group.rows.length }} referencias</summary>@for (row of group.rows; track row.row) { <p>{{ row.reference }} · {{ conceptLabel(row.charge_code) }} · {{ money(row.usd_amount) }} USD@if (row.reference_match) { <small class="import-match" [class.import-match-found]="referenceFound(row)">{{ matchLabel(row) }}</small> }</p> }</details> }
-          </td>
+          <td>@for (row of group.rows; track row.row) {<div class="import-reference"><strong>{{ row.reference || 'Sin referencia' }}</strong><small>{{ conceptLabel(row.charge_code) }}</small>@if (row.reference_match) {<small class="import-match" [class.import-match-found]="referenceFound(row)">{{ matchLabel(row) }}</small>}</div>}</td>
+          <td><strong>{{ group.invoice_number || 'Sin folio' }}</strong><small>{{ group.supplier_name }}</small>@if (group.supplier_action === 'NEW') {<small>Se añadirá este proveedor al consolidar.</small>}</td>
+          <td>@for (period of group.source_periods || []; track period) {<span>{{ monthLabel(period) }}</span>}</td>
           <td class="number">{{ money(group.usd_amount) }}</td>
-          <td>{{ labels[group.status] }}@for (period of group.source_periods || []; track period) { <small>Mes del Excel: {{ monthLabel(period) }}</small> }@for (issue of group.issues; track $index) { <p class="import-issue">{{ issue }}</p> }</td>
+          <td><span class="finance-status" [class.settled]="group.status === 'READY' || group.status === 'DUPLICATE'">{{ labels[group.status] }}</span>
+            @for (issue of group.issues; track $index) {<p class="import-issue">{{ issue }}</p>}
+            @if (group.status !== 'DUPLICATE' && groupFound(group)) {
+              <details class="import-row-options"><summary>{{ group.issues.length ? 'Resolver esta factura' : 'Ajustar proveedor o empresa' }}</summary>
+                <label>Proveedor para {{ group.supplier_name }}<select [attr.aria-label]="'Proveedor para ' + group.supplier_name" [ngModel]="supplierMap[group.source_supplier] || ''" (ngModelChange)="mapSupplier(group, $event)" [disabled]="busy()"><option value="">Usar nombre del Excel</option>@for (s of suppliers; track s.id) {@if (s.is_active) {<option [value]="s.id">{{ s.legal_name }}</option>}}</select></label>
+                <label>Empresa para {{ group.source_company }}<select [attr.aria-label]="'Empresa para ' + group.source_company" [ngModel]="companyMap[group.source_company] || ''" (ngModelChange)="mapCompany(group, $event)" [disabled]="busy()"><option value="">Usar empresa del Excel</option>@for (c of companies; track c) {<option [value]="c">{{ c }}</option>}</select></label>
+                <small>El ajuste se aplica al mismo nombre en todo este archivo.</small>
+              </details>
+            }
+          </td>
         </tr>
-      } @empty { <tr><td colspan="5">{{ search() ? 'No hay coincidencias para esta búsqueda en la vista seleccionada.' : 'No hay facturas en esta vista. Consulta Todas para revisar el archivo completo.' }}</td></tr> }
+      } @empty {<tr><td colspan="5">{{ search() ? 'No hay coincidencias para esta búsqueda.' : 'No hay facturas en esta vista.' }}</td></tr>}
     </tbody></table></div>
-    <div class="table-footer"><span>{{ filtered().length }} facturas · {{ filtered().length ? offset() + 1 : 0 }}–{{ offset() + visible().length }}</span><div class="pagination"><button class="button subtle" [disabled]="offset() === 0" (click)="offset.set(offset() - 20)">Anterior</button><button class="button subtle" [disabled]="offset() + 20 >= filtered().length" (click)="offset.set(offset() + 20)">Siguiente</button></div></div>
-    @if (hasIssues()) {
-      <p class="hint">Las facturas por revisar no se guardan. Corrige las filas indicadas en el Excel y vuelve a cargarlo.</p>
-      <details class="import-mappings"><summary>Corregir nombres del Excel</summary>
-        <p class="hint">Úsalo si una empresa o proveedor tiene un nombre distinto en el Excel. Después pulsa Revisar archivo.</p>
-        <div class="import-controls">@for (company of p.companies; track company) {<label>{{ company }}<select [attr.aria-label]="'Compañía para ' + company" [ngModel]="companyMap[company] || ''" (ngModelChange)="companyMap[company] = $event; invalidate()" [disabled]="busy()"><option value="">Usar código del Excel</option>@for (c of companies; track c) {<option [value]="c">{{ c }}</option>}</select></label>}</div>
-        <div class="supplier-mappings">@for (supplier of p.suppliers; track supplier) {<label>{{ supplier }}<select [attr.aria-label]="'Proveedor para ' + supplier" [ngModel]="supplierMap[supplier] || ''" (ngModelChange)="supplierMap[supplier] = $event; invalidate()" [disabled]="busy()"><option value="">Usar nombre del Excel</option>@for (s of suppliers; track s.id) {@if (s.is_active) {<option [value]="s.id">{{ s.legal_name }}</option>}}</select></label>}</div>
-      </details>
-    }
+    <div class="table-footer"><span>{{ filtered().length }} {{ filtered().length === 1 ? 'factura' : 'facturas' }}</span><div class="pagination"><button class="button subtle" [disabled]="offset() === 0" (click)="offset.set(offset() - 20)">Anterior</button><button class="button subtle" [disabled]="offset() + 20 >= filtered().length" (click)="offset.set(offset() + 20)">Siguiente</button></div></div>
+    <details class="finance-extra"><summary>Tipo de cambio para provisiones en pesos</summary>
+      <p class="hint">El importe del consolidado ya está en USD. Si tienes provisiones en MXN, indica el cambio para descontarlas. También puedes completarlo después en la factura.</p>
+      <div class="import-controls"><label>Tipo de cambio del lote (MXN por USD)<input type="text" inputmode="decimal" [(ngModel)]="fxRate" (ngModelChange)="invalidate()" [disabled]="busy()" placeholder="Ej. 20.0000" /></label><label>Fecha del tipo de cambio del lote<input type="date" [(ngModel)]="fxDate" (ngModelChange)="invalidate()" [disabled]="busy()" /></label></div>
+    </details>
+    <p class="hint">Se consolidan todas las facturas listas del archivo, incluso si usas el buscador. Las demás quedan pendientes.</p>
   }
+  @if (filename && (stale() || error())) {<button class="button secondary" (click)="analyze()" [disabled]="busy()">Actualizar revisión</button>}
 </section>
