@@ -8,7 +8,7 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 
 ## Estado
 
-- Referencias: nomenclatura versionada y catálogo de BU M01, M19, M23, M45 y M46.
+- Referencias: nomenclatura versionada y catálogo de BU M00, M01, M19, M20, M23, M45, M46 y M65.
 - Inicio con accesos a Masters, Provisiones, Facturas e Historial. Masters por responsable (DENI, MAG, NAT, ANDREA y ALEXA), con todos sus tipos de operación, con vista ampliada y 50 filas por página. Se conserva la propiedad y autorización de cada registro.
 - Detalle: edición con control de concurrencia, pedimentos, BL, contenedores, guías y seguimiento de incidencias.
 - Desarrollo local: API real, base SQLite persistente y usuario local con permisos de edición; sin Docker, servidor de base de datos ni cuenta Microsoft.
@@ -18,6 +18,12 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 - Finanzas: provisiones por referencia, aprobación, conciliación de facturas con varias referencias, arrastre mensual, cancelación con reversión y reporte CSV.
 - Historial: usuario, fecha, acción, referencia y valores anteriores/nuevos; filtros y registros inmutables.
 - Importación del consolidado XLSX con vista previa, equivalencias de compañías/proveedores, prevención de duplicados y USD AMOUNT completo. Pendientes: lectura directa de PDF/XML, cierre contable bloqueado y validación en PostgreSQL nativo, Docker y Microsoft Entra ID real.
+
+## Centro de referencias
+
+La navegación lateral conecta Referencias, Consolidar, Provisiones, Facturas y Reporte mensual. **Ctrl + K** abre la búsqueda de referencias. La ficha reúne la operación, su familia de movimientos y las finanzas. Desde ella puedes crear un movimiento numerado o iniciar una provisión/factura con la referencia capturada.
+
+Los cinco masters conservan sus columnas. Los analistas 6–8 disponen de una vista común de Compliance. El esquema local actual es **7**; la migración corporativa es **0011_reference_families**. Consulta [arquitectura y alcance](docs/centro-referencias.md).
 
 ## Inicio local con un comando
 
@@ -41,7 +47,7 @@ Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `n
 
 Sin configuración adicional, el lanzador prepara `.venv`, inicia **la API real y Angular** y crea automáticamente **`.data/masterlogistica.db`** en la raíz del proyecto. Entras en el master local de **DENI**, con acceso de administración para seleccionar los cinco responsables, con permisos para crear y editar embarques, documentos, provisiones y facturas. Los cambios se guardan en ese archivo y continúan después de cerrar el navegador, detener la aplicación o reiniciar el equipo. La misma API aplica validaciones, control de versiones y auditoría.
 
-Se preparan las identidades locales DENI, MAG, NAT, ANDREA y ALEXA, las BU `M01`/`M19`/`M23`/`M45`/`M46` y un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
+Se preparan las identidades locales DENI, MAG, NAT, ANDREA y ALEXA, las ocho BU de la nomenclatura y las identidades de prueba Compliance 6–8, además de un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
 
 `.env.native` es opcional. Si quieres cambiar catálogos o la ubicación del archivo, copia `.env.native.example` a `.env.native` y edita sus valores. Si ya tenías una `.env.native` con PostgreSQL/Entra, se conserva y sigue utilizando esa conexión: para elegir SQLite, renómbrala como respaldo y usa la nueva plantilla. No se migra ni borra la base anterior.
 
@@ -216,7 +222,7 @@ El perfil corporativo (`AUTH_MODE=entra`) necesita dos registros de Entra: API y
 
 Registra **http://127.0.0.1:4200/** como URI de redirección de tipo **Single-page application**. Si usas `localhost`, registra también **http://localhost:4200/**. La URL debe coincidir con la que abras. La SPA no usa secretos de cliente.
 
-`Empresa` se captura manualmente como en el master (hasta 32 caracteres). `COMPANY_CODES` aporta sugerencias iniciales; las empresas registradas aparecen también en el catálogo para facturación e importación. Las BU permitidas son M01, M19, M23, M45 y M46. Se pueden personalizar sus descripciones desde un JSON, por ejemplo `{"M01":"Descripción interna"}`:
+`Empresa` se captura manualmente como en el master (hasta 32 caracteres). `COMPANY_CODES` aporta sugerencias iniciales; las empresas registradas aparecen también en el catálogo para facturación e importación. Las BU permitidas son M00, M01, M19, M20, M23, M45, M46 y M65. Se pueden personalizar sus descripciones desde un JSON, por ejemplo `{"M01":"Descripción interna"}`:
 
 ```powershell
 py -3.13 scripts/configure_business_units.py ruta\catalogo.business-units.json
@@ -300,7 +306,7 @@ Cada master usa las columnas de su propia hoja «Master template», independient
 | ALEXA | 41 | Factura, peso, bultos, PFA, solicitante, piezas, cotización y NP |
 
 - Las columnas de negocio se pueden editar en celdas o en el detalle. SEC se asigna automáticamente al guardar, también con referencia manual, y conserva su número al editar el registro; cada master lleva su consecutivo. Se puede editar Owner. La cuenta responsable del registro sigue siendo la seleccionada al crear; escribir otro texto en Owner no transfiere registros entre cuentas.
-- En registros nuevos, **Reference** permite captura manual. Vacía genera la referencia con la BU y el tipo de operación indicados; proceso, año y departamento están en **Opciones de referencia automática**. **MXG MXT** ofrece MXG/MXT y **TYPE** las 14 operaciones de la nomenclatura (AE, AI, SE, SI, LI, LE, PI, PE, VI, VE, A3, F4, F5 y R1), con BU M01, M19, M23, M45 o M46. Currency ofrece MXN/USD e I/O ofrece I/O. Los valores históricos siguen visibles hasta corregirlos.
+- En registros nuevos, **Reference** permite captura manual. Vacía genera la referencia con la BU y el tipo de operación indicados; proceso, año y departamento están en **Opciones de referencia automática**. **MXG MXT** ofrece MXG/MXT y **TYPE** las 14 operaciones de la nomenclatura (AE, AI, SE, SI, LI, LE, PI, PE, VI, VE, A3, F4, F5 y R1), con BU M00, M01, M19, M20, M23, M45, M46 o M65. Currency ofrece MXN/USD e I/O ofrece I/O. Los valores históricos siguen visibles hasta corregirlos.
 - Owner, Week, Day, Mth., Year e I/O tienen valores iniciales cuando se puede derivarlos del registro; la captura de esos campos prevalece, incluido vaciarlos. SEC es automático: no se captura en el formulario ni se sobrescribe al pegar desde Excel. El servidor reserva el número junto con el registro; una operación fallida no consume el consecutivo. Después de 9999 continúa con 10000, sin reiniciarse. Los datos financieros capturados como texto en el master no crean provisiones ni facturas.
 - Se excluyen únicamente la clave auxiliar oculta A y la celda auxiliar TODAY() de los masters marítimos. No se ejecutan fórmulas Excel. Los archivos fuente se usan para definir la estructura; esta actualización no importa sus movimientos.
 - Los campos adicionales se guardan en `shipments.master_data` y las actualizaciones parciales conservan los demás valores. El historial identifica cada columna modificada. Los campos operativos de versiones anteriores siguen visibles y pueden modificarse o vaciarse.
@@ -323,10 +329,10 @@ El esquema local 6 y `0010_automatic_sec` completan SEC vacíos en registros ant
 - Haz clic en una celda editable y empieza a escribir para reemplazar su contenido, incluidos fechas, estados y proveedores. Las fechas se pueden escribir como `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Tipo de operación, empresa, moneda e I/O se eligen de listas. Estado, transportista y naviera admiten texto manual; sus listas son sugerencias. Doble clic, Enter, F2 o **Editar celda** abre el valor actual. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
 - Mantener una flecha mueve la selección y desplaza únicamente el interior de la hoja. Encabezados y referencia fija no ocultan la celda activa. Inicio/Fin van al extremo de la fila; Ctrl+Inicio/Ctrl+Fin a los extremos de la página cargada; RePág/AvPág desplazan la selección una pantalla dentro de esa página.
 - Las columnas del master permiten editar y pegar valores, incluidas **Referencia**, **BU**, **Tipo de operación** y **Empresa**; SEC es automático. Enter abre el editor de la celda; Ctrl+Enter o el botón ↗ de la referencia abre el detalle del embarque, donde también se puede modificar su identificación.
-- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Los valores de estado y proveedores se pueden pegar aunque no existan en una lista. Tipo de operación, empresa, moneda e I/O validan las opciones del catálogo; LAND IMPO, por ejemplo, se reconoce como LI. Las BU conservan M01, M19, M23, M45 y M46. Los errores de fecha o de tamaño de rango conservan el pegado sin aplicarlo parcialmente.
+- Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Los valores de estado y proveedores se pueden pegar aunque no existan en una lista. Tipo de operación, empresa, moneda e I/O validan las opciones del catálogo; LAND IMPO, por ejemplo, se reconoce como LI. Las BU corresponden al catálogo de nomenclatura de ocho códigos. Los errores de fecha o de tamaño de rango conservan el pegado sin aplicarlo parcialmente.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
-- Cada columna se modifica de manera independiente. La BU ofrece M01, M19, M23, M45 y M46; la empresa ofrece MXG/MXT y la referencia admite captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación.
+- Cada columna se modifica de manera independiente. La BU ofrece los ocho códigos de la nomenclatura; la empresa ofrece MXG/MXT y la referencia admite captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación.
 - **Nuevo embarque** genera la referencia mediante el servidor. Abrir una referencia permite consultar o editar su detalle, incidencias y documentos.
 - **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros como masters; la carga del consolidado de facturación se realiza en su sección dedicada.
 
@@ -387,7 +393,7 @@ El servidor obtiene la identidad del usuario autenticado. Los eventos nuevos gua
 
 ### Actualizar una instalación existente
 
-Esta versión requiere **0010_automatic_sec**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
+Esta versión requiere **0011_reference_families**, además de las migraciones anteriores; `0005_invoice_excel` conserva la evidencia original de la importación. No regeneres `.env`.
 
 Con Docker, desde la raíz:
 
@@ -434,3 +440,11 @@ Validación de la actualización XLSX: 177 pruebas de backend sin base externa y
 La migración `0006_provision_date` agrega la fecha exacta en PostgreSQL. La base SQLite local se actualiza automáticamente desde las versiones 1 a 5 hasta la 6, conservando filas, identificadores y vínculos financieros. La versión 3 permite las operaciones y estados manuales y los nombres libres de transportista y naviera. Las provisiones históricas sin día conocido conservan su mes y muestran «Día no registrado»; no se les atribuye una fecha inventada.
 
 ![Captura de provisión con fecha exacta y concepto](frontend/docs/provision-date-preview.png)
+
+### Vistas del centro de referencias
+
+Capturas de la aplicación implementada con datos de prueba.
+
+![Centro de referencias](frontend/docs/centro-referencias.png)
+
+![Familia de referencias](frontend/docs/familia-referencias.png)

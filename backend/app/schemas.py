@@ -117,6 +117,7 @@ class PeriodRead(PeriodCreate):
 
 class ShipmentCreate(Schema):
     owner_id: UUID | None = None
+    parent_shipment_id: UUID | None = None
     reference_raw: Annotated[str, Field(min_length=1, max_length=160)] | None = None
     master_data: dict[
         Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,47}$")],
@@ -198,6 +199,8 @@ class ShipmentRead(VersionedRead):
         return value
 
     owner_id: UUID
+    parent_shipment_id: UUID | None = None
+    movement_number: int | None = None
     master_data: dict[str, str | None] = Field(default_factory=dict)
     company_code: str
     reference_raw: str | None

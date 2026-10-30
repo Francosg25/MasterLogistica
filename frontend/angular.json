@@ -21,7 +21,10 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.css"]
+            "styles": [
+              "src/styles.css",
+              "src/workspace.css"
+            ]
           },
           "configurations": {
             "production": {

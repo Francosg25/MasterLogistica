@@ -489,7 +489,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
         if user.role != "SUPER_ADMIN":
             raise HTTPException(403, "Solo Administración puede crear en otro master")
         owner = session.get(User, data.owner_id)
-        if owner is None or not owner.is_active or owner.analyst_code not in range(1, 6):
+        if owner is None or not owner.is_active or owner.analyst_code not in range(1, 9):
             raise HTTPException(422, "Selecciona un responsable activo del master")
     catalog = request.app.state.settings.business_units
     if not catalog:
@@ -497,17 +497,26 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
     if data.business_unit not in catalog:
         raise HTTPException(422, "Business unit is not in the approved catalog")
     values = shipment_supplier_values(
-        session, data.model_dump(exclude={"owner_id", "reference_raw"})
+        session, data.model_dump(exclude={"owner_id", "reference_raw", "parent_shipment_id"})
     )
     try:
         values["master_data"] = merge_master_data(owner, {}, values["master_data"])
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
-    reference, sequence = None, None
+    reference = None
+    parent = None
+    movement_number = None
+    if data.parent_shipment_id:
+        from app.reference_families import prepare_movement
+
+        parent, reference, movement_number = prepare_movement(session, user, data)
+    sequence = None
     if data.reference_raw is not None and not data.reference_raw.strip():
         raise HTTPException(422, "Captura una referencia o deja el campo vacío para generarla")
     try:
-        if data.reference_raw is None:
+        if parent is not None:
+            sequence = next_reference_sequence(session, owner)
+        elif data.reference_raw is None:
             reference, sequence = generate_reference(
                 session,
                 owner,
@@ -527,6 +536,8 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
     row = Shipment(
         **values,
         owner_id=owner.id,
+        parent_shipment_id=parent.id if parent else None,
+        movement_number=movement_number,
         reference_raw=reference,
         reference_normalized=normalize_reference(reference) if reference else None,
         normalization_version=VERSION if reference else None,
@@ -539,7 +550,7 @@ def create_shipment(data: ShipmentCreate, request: Request, session: DB, user: M
 
     row.id = uuid4()
     session.add(row)
-    if data.reference_raw is not None:
+    if data.reference_raw is not None and parent is None:
         with session.no_autoflush:
             edit_reference(session, row, data.reference_raw.strip())
     else:
@@ -645,7 +656,12 @@ def patch_shipment(
         and updates["business_unit"] != row.business_unit
         and updates["business_unit"] not in request.app.state.settings.business_units
     ):
-        raise HTTPException(422, "Selecciona M01, M19, M23, M45 o M46")
+        raise HTTPException(422, "Selecciona una BU del catálogo de nomenclatura")
+    if "company_code" in updates and updates["company_code"] != row.company_code:
+        if row.parent_shipment_id or session.scalar(
+            select(Shipment.id).where(Shipment.parent_shipment_id == row.id).limit(1)
+        ):
+            raise HTTPException(422, "La empresa debe coincidir en toda la familia de referencias")
     shipment_supplier_values(session, updates)
     expedited = updates.get("expedited_status", row.expedited_status)
     approval = updates.get("pfa_approval_code", row.pfa_approval_code)

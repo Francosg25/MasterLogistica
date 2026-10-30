@@ -11,7 +11,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
-from app.catalogs import BUSINESS_UNIT_CODES
+from app.catalogs import BUSINESS_UNIT_CODES, BUSINESS_UNITS
 
 
 def local_database_url():
@@ -38,9 +38,7 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:4200"])
     allowed_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
     company_codes: list[str] = Field(default_factory=lambda: ["JE_MX"])
-    business_units: dict[str, str] = Field(
-        default_factory=lambda: {code: code for code in BUSINESS_UNIT_CODES}
-    )
+    business_units: dict[str, str] = Field(default_factory=lambda: dict(BUSINESS_UNITS))
     enforce_https: bool = False
     trusted_proxy_ips: list[str] = Field(default_factory=list)
     entra_ca_bundle: str | None = None
@@ -98,7 +96,9 @@ class Settings(BaseSettings):
             not description.strip() or len(description) > 250 for description in values.values()
         ):
             raise ValueError("Business unit descriptions must contain 1 to 250 characters")
-        return {code: values.get(code, code).strip() for code in BUSINESS_UNIT_CODES}
+        return {
+            code: values.get(code, BUSINESS_UNITS[code]).strip() for code in BUSINESS_UNIT_CODES
+        }
 
     @model_validator(mode="after")
     def production_controls(self):

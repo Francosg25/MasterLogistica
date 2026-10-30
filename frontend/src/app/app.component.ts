@@ -1,5 +1,6 @@
 import {
   Component,
+  HostListener,
   OnInit,
   ViewChild,
   computed,
@@ -13,6 +14,8 @@ import { ownerLayout } from "./master-layout";
 import { ApiError, ApiService } from "./api.service";
 import { FinanceWorkspaceComponent } from "./finance-workspace.component";
 import { Section } from "./finance.types";
+import { WorkspaceHomeComponent } from "./workspace-home.component";
+import { CommandSearchComponent } from "./command-search.component";
 import { ReferenceActivityComponent } from "./reference-activity.component";
 import { AuthService } from "./auth.service";
 import { ShipmentEditorComponent } from "./shipment-editor.component";
@@ -37,6 +40,8 @@ import {
   imports: [
     ReactiveFormsModule,
     NgTemplateOutlet,
+    WorkspaceHomeComponent,
+    CommandSearchComponent,
     IconComponent,
     ShipmentEditorComponent,
     MasterSheetComponent,
@@ -49,11 +54,30 @@ export class AppComponent implements OnInit {
   activity = signal<Shipment | null>(null);
   @ViewChild(FinanceWorkspaceComponent) finance?: FinanceWorkspaceComponent;
   section = signal<Section>("home");
+  mobileNav = signal(false);
+  commandOpen = signal(false);
+  activeLabel = computed(() => this.sections.find(item => item.id === this.section())?.label ?? "Inicio");
+  @HostListener("window:keydown", ["$event"])
+  keyboard(event: KeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && this.phase() === "workspace" && !this.modal() && !this.activity()) { event.preventDefault(); this.commandOpen.set(!this.commandOpen()); }
+  }
+  openReference(target: { id: string; reference: string }) { this.activity.set({ id: target.id, reference_raw: target.reference } as Shipment); this.commandOpen.set(false); }
+  captureTarget = signal<{kind:"provision"|"invoice";reference:string;company:string}|null>(null);
+  captureFinance(target:{kind:"provision"|"invoice";reference:string;company:string}) {
+    const section=target.kind === "provision" ? "provisions" : "invoices";
+    if(section === this.section() && this.finance && !this.finance.canLeave()) return;
+    this.changeSection(section);
+    if(this.section() === section) {this.activity.set(null);this.captureTarget.set(target);}
+  }
+  movementCreated() { if (this.section() === "masters") void this.refresh(); }
+
   readonly sections: { id: Section; label: string; icon: IconName }[] = [
     { id: "home", label: "Inicio", icon: "home" },
-    { id: "masters", label: "Masters", icon: "grid" },
+    { id: "masters", label: "Referencias", icon: "grid" },
+    { id: "consolidate", label: "Consolidar", icon: "upload" },
     { id: "provisions", label: "Provisiones", icon: "wallet" },
     { id: "invoices", label: "Facturas", icon: "document" },
+    { id: "reports", label: "Reporte mensual", icon: "document" },
     { id: "history", label: "Historial", icon: "history" },
   ];
   changeSection(section: Section) {
@@ -61,7 +85,10 @@ export class AppComponent implements OnInit {
       return;
     if (this.sheet && !this.sheet.canLeave()) return;
     if (this.finance && !this.finance.canLeave()) return;
+    this.captureTarget.set(null);
     this.section.set(section);
+    this.mobileNav.set(false);
+    if (section === "masters" && !this.masterReady() && this.masterSelection.controls.owner_id.value) void this.chooseMaster();
   }
   @ViewChild(ShipmentEditorComponent) editor?: ShipmentEditorComponent;
   @ViewChild(MasterSheetComponent) sheet?: MasterSheetComponent;
@@ -136,7 +163,7 @@ export class AppComponent implements OnInit {
       (owner) =>
         owner.analyst_code != null &&
         owner.analyst_code >= 1 &&
-        owner.analyst_code <= 5,
+        owner.analyst_code <= 8,
     ),
   );
   otherOwners = computed(() =>
@@ -182,6 +209,7 @@ export class AppComponent implements OnInit {
     )
       return;
     this.masterOwner.set(owner ?? "");
+    try { localStorage.setItem("masterlogistica.last-master." + this.user()?.id, owner); } catch { /* Optional preference. */ }
     await this.apply();
   }
   canCreate = computed(
@@ -282,9 +310,9 @@ export class AppComponent implements OnInit {
     this.owners.set(owners);
     this.suppliers.set(suppliers);
     this.resetMaster();
-    this.masterSelection.reset({
-      owner_id: this.consolidated() ? "" : this.user()!.id,
-    });
+    let previous = "";
+    try { previous = localStorage.getItem("masterlogistica.last-master." + this.user()!.id) ?? ""; } catch { /* Optional preference. */ }
+    this.masterSelection.reset({owner_id: this.logisticsOwners().some(owner => owner.id === previous) ? previous : this.consolidated() ? "" : this.user()!.id});
     this.phase.set("workspace");
   }
   async preview(practice = false): Promise<void> {

@@ -18,7 +18,7 @@ test("local configuration creates and edits real records without corporate login
   await expect(page.locator(".account-name")).toContainText("Usuario de pruebas");
   await expect(page.locator(".user-avatar")).toHaveText("UP");
   await expect(page.getByRole("heading", { name: "Acceso al sistema" })).toHaveCount(0);
-  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await page.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
   await page.getByRole("button", { name: "Nuevo embarque" }).click();
   const dialog = page.getByRole("dialog");
@@ -48,7 +48,7 @@ test("local configuration creates and edits real records without corporate login
   const reopened = await context.newPage();
   await reopened.goto("http://127.0.0.1:4200/");
   await expect(reopened.locator(".local-banner")).toBeVisible();
-  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption("f0000000-0000-0000-0000-000000000002");
   await expect(reopened.locator('td[data-row="0"][data-field="origin"]')).toHaveText("Origen guardado en SQLite");
   await expect(reopened.locator('td[data-row="0"][data-field="eta"]')).toHaveText("27/10/2026");
@@ -62,9 +62,9 @@ test("local configuration creates and edits real records without corporate login
 test("local responsible masters keep mixed operations separate and save exact provision dates", async ({ page }) => {
   await page.goto("/");
   const navigation = page.getByRole("navigation", { name: "Secciones" });
-  await navigation.getByRole("button", { name: "Masters", exact: true }).click();
+  await navigation.getByRole("button", { name: "Referencias", exact: true }).click();
   const owner = page.getByLabel("Responsable del master", { exact: true });
-  await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "MAG", "ALEXA", "DENI", "ANDREA", "NAT"]);
+  await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "MAG", "ALEXA", "DENI", "ANDREA", "NAT", "Compliance 6", "Compliance 7", "Compliance 8"]);
   await owner.selectOption({ label: "MAG" });
   let reference = "";
   for (const operation of ["AI", "SI"]) {
@@ -131,7 +131,7 @@ test("saving an invoice applies an automatically approved provision without extr
 
 test("all identification cells and the detail form persist real corrections on the same shipment", async ({ page, browser }) => {
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   const owner = "f0000000-0000-0000-0000-000000000002";
   await page.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
   const before = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items[0];
@@ -161,7 +161,7 @@ test("all identification cells and the detail form persist real corrections on t
   const context = await browser.newContext();
   const reopened = await context.newPage();
   await reopened.goto("http://127.0.0.1:4200/");
-  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
   await expect(reopened.locator('td[data-field="reference_raw"] .cell-text').first()).toHaveText("REFERENCIA CORREGIDA EN DETALLE");
   await expect(reopened.locator('td[data-field="business_unit"]').first()).toHaveText("M19");
@@ -174,7 +174,7 @@ test("all identification cells and the detail form persist real corrections on t
 
 test("manual master capture survives a new browser and preserves catalog links when chosen again", async ({ page, browser }) => {
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   const owner = "f0000000-0000-0000-0000-000000000002";
   await page.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
   const rows = (await (await page.request.get(`/api/v1/masters/shipments?owner_id=${owner}`)).json()).items;
@@ -197,7 +197,7 @@ test("manual master capture survives a new browser and preserves catalog links w
   const context = await browser.newContext();
   const reopened = await context.newPage();
   await reopened.goto("http://127.0.0.1:4200/");
-  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption(owner);
   for (const [field, value] of Object.entries(values)) await expect(reopened.locator(`td[data-row="0"][data-field="${field}"]`)).toHaveText(field === "operation_code" ? "Terrestre · Importación" : value);
   await reopened.locator('td[data-row="0"][data-field="carrier_broker_id"]').dblclick();
@@ -219,7 +219,7 @@ test("each real master uses its Excel columns and its own create and edit form",
   const unexpectedDialogs: string[] = [];
   page.on("dialog", async dialog => { unexpectedDialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   const owners = await (await page.request.get("/api/v1/masters/owners")).json();
   const examples: Record<string, { field: string; value: string }> = {
     DENI: { field: "master.container_type", value: "40 HC" },
@@ -293,7 +293,7 @@ test("each real master uses its Excel columns and its own create and edit form",
   const context = await browser.newContext();
   const reopened = await context.newPage();
   await reopened.goto("http://127.0.0.1:4200/");
-  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "ALEXA" });
   await expect(reopened.locator('td[data-row="0"][data-field="master.part_number"]')).toHaveText("NP-SYNTHETIC detalle");
   await context.close();
@@ -303,7 +303,7 @@ test("each real master uses its Excel columns and its own create and edit form",
 
 test("a department is optional for new references and can be completed without renaming the record", async ({ page, browser }) => {
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await page.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "DENI" });
   await page.getByRole("button", { name: "Nuevo embarque", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -344,7 +344,7 @@ test("a department is optional for new references and can be completed without r
   const context = await browser.newContext();
   const reopened = await context.newPage();
   await reopened.goto("http://127.0.0.1:4200/");
-  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
+  await reopened.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
   await reopened.getByLabel("Responsable del master", { exact: true }).selectOption({ label: "DENI" });
   await reopened.locator(".reference-link").first().click();
   await expect(reopened.getByRole("dialog").getByLabel("Departamento", { exact: true })).toHaveValue("MAT");
@@ -386,6 +386,7 @@ test("peso invoices apply to dollar provisions with a recorded rate and reversal
   await expect(invoiceRow).toContainText("Aplicada");
   await expect(detail).toContainText("5,600.00 MXN descontaron 280.00 USD");
   await detail.locator(".reference-link").first().click();
+  await page.getByRole("dialog").getByRole("button", {name:"Provisiones y facturas",exact:true}).click();
   await expect(page.getByRole("dialog")).toContainText("400.00 USD");
   await expect(page.getByRole("dialog")).toContainText("Descontado: 280.00 USD");
   await page.getByRole("button", { name: "Cerrar movimientos", exact: true }).click();
@@ -450,4 +451,56 @@ test("Excel upload finds a registered column G reference even when October is se
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Provisiones", exact: true }).click();
   await page.getByRole("button", { name: "Nueva provisión", exact: true }).click();
   await expect(page.locator('select[formControlName="supplier_id"] option').filter({ hasText: "Example Test Carrier" })).toHaveCount(1);
+});
+
+test("reference family creates a numbered movement and captures its provision and invoice without retyping the reference", async ({ page }) => {
+  const rootRef="RM8-0099VI26-M65-MAT";
+  const rootResponse=await page.request.post("/api/v1/shipments",{data:{owner_id:"f0000000-0000-0000-0000-000000000018",reference_raw:rootRef,company_code:"MXG",process_code:"RM",operation_code:"VI",reference_year:2026,business_unit:"M65",department_code:"MAT"}});
+  expect(rootResponse.status()).toBe(201);
+  const root=await rootResponse.json();
+  await page.goto("/");
+  await expect(page.getByRole("heading",{name:"Centro de referencias",exact:true})).toBeVisible();
+  await page.keyboard.press("Control+k");
+  await page.getByLabel("Buscar referencia en todos los masters").fill(rootRef);
+  await expect(page.getByRole("dialog",{name:"Buscar referencia",exact:true}).getByRole("option")).toHaveCount(1);
+  await page.getByLabel("Buscar referencia en todos los masters").press("Enter");
+  let dialog=page.getByRole("dialog",{name:rootRef,exact:true});
+  await dialog.getByRole("button",{name:"Añadir movimiento",exact:true}).click();
+  await dialog.getByLabel("Responsable del movimiento",{exact:true}).selectOption("f0000000-0000-0000-0000-000000000002");
+  await dialog.getByLabel("Transportista o agente",{exact:true}).fill("Transportista de prueba");
+  await dialog.getByLabel("Descripción del movimiento",{exact:true}).fill("Movimiento de transporte de prueba ligado a Compliance");
+  await dialog.getByRole("button",{name:"Crear movimiento",exact:true}).click();
+  await expect(dialog.locator(".reference-family")).toContainText(rootRef+".1");
+  const member=dialog.locator(".family-member").filter({hasText:rootRef+".1"});
+  await member.click();
+  dialog=page.getByRole("dialog",{name:rootRef+".1",exact:true});
+  await dialog.getByRole("button",{name:"Provisiones y facturas",exact:true}).click();
+  await dialog.getByRole("button",{name:"Nueva provisión",exact:true}).click();
+  await expect(page.getByLabel("Referencia del master",{exact:true})).toHaveValue(rootRef+".1");
+  await page.getByLabel("Proveedor",{exact:true}).selectOption("f0000000-0000-0000-0000-000000000003");
+  await page.getByLabel("Fecha de provisión",{exact:true}).fill("2026-10-30");
+  await page.getByLabel("Importe neto",{exact:true}).fill("300");
+  await page.getByRole("button",{name:"Guardar provisión",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Provisiones por referencia",exact:true})).toBeVisible();
+  await page.keyboard.press("Control+k");
+  await page.getByLabel("Buscar referencia en todos los masters").fill(rootRef+".1");
+  await expect(page.getByRole("dialog",{name:"Buscar referencia",exact:true}).getByRole("option")).toHaveCount(1);
+  await page.getByLabel("Buscar referencia en todos los masters").press("Enter");
+  dialog=page.getByRole("dialog",{name:rootRef+".1",exact:true});
+  await dialog.getByRole("button",{name:"Provisiones y facturas",exact:true}).click();
+  await expect(dialog).toContainText("300.00 USD");
+  await page.screenshot({path:"test-results/local/reference-family-finance.png",fullPage:true});
+  await dialog.getByRole("button",{name:"Agregar factura",exact:true}).click();
+  await expect(page.getByLabel("Referencia 1",{exact:true})).toHaveValue(rootRef+".1");
+  await page.getByLabel("Folio de factura",{exact:true}).fill("FAMILY-INVOICE-TEST");
+  await page.getByLabel("Proveedor de factura",{exact:true}).selectOption("f0000000-0000-0000-0000-000000000003");
+  await expect(page.getByLabel("Empresa de factura",{exact:true})).toHaveValue("MXG");
+  await page.getByLabel("Neto 1",{exact:true}).fill("300");
+  await page.getByRole("button",{name:"Guardar factura",exact:true}).click();
+  const response=await page.request.get("/api/v1/finance/balances?month=2026-10-01");
+  const balance=(await response.json()).items.find((b:any)=>b.reference===rootRef+".1");
+  expect(balance.status).toBe("CLOSED");
+  expect(Number(balance.closing_amount)).toBe(0);
+  const family=await (await page.request.get(`/api/v1/shipments/${root.id}/family`)).json();
+  expect(family.members).toHaveLength(2);
 });

@@ -18,13 +18,13 @@ def test_sec_is_sequential_for_manual_and_automatic_references_in_each_master(lo
     settings, _, client = local_master
     owners = client.get("/api/v1/masters/owners").json()
     for owner in owners:
-        first = create(client, owner_id=owner["id"], reference_raw=f"MANUAL-{owner['layout_code']}")
+        first = create(client, owner_id=owner["id"], reference_raw=f"MANUAL-{owner['id']}")
         assert first["master_data"]["sec"] == "1"
         assert first["reference_sequence"] == 1
         second = create(client, owner_id=owner["id"])
         assert second["master_data"]["sec"] == "2"
         assert second["reference_raw"].startswith(f"RM{owner['analyst_code']}-0002")
-        edited = patch(client, first, reference_raw=f"CORREGIDA-{owner['layout_code']}")
+        edited = patch(client, first, reference_raw=f"CORREGIDA-{owner['id']}")
         assert edited["master_data"]["sec"] == "1"
         assert create(client, owner_id=owner["id"])["master_data"]["sec"] == "3"
     with local_client(create_app(settings)) as restarted:

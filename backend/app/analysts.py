@@ -2,8 +2,17 @@
 
 from sqlalchemy import column, func, select, table, update
 
-ANALYST_LAYOUTS = {1: "MAG", 2: "ALEXA", 3: "DENI", 4: "ANDREA", 5: "NAT"}
-MASTER_ANALYST_CODES = {name: code for code, name in ANALYST_LAYOUTS.items()}
+ANALYST_LAYOUTS = {
+    1: "MAG",
+    2: "ALEXA",
+    3: "DENI",
+    4: "ANDREA",
+    5: "NAT",
+    6: "COMPLIANCE",
+    7: "COMPLIANCE",
+    8: "COMPLIANCE",
+}
+MASTER_ANALYST_CODES = {name: code for code, name in ANALYST_LAYOUTS.items() if code <= 5}
 
 
 def align_named_master_codes_v1(connection):

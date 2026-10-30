@@ -68,6 +68,7 @@ test("reference detail shows its provisions invoices and audit trail", async ({ 
   await section(page, "Provisiones");
   await page.locator(".reference-link").first().click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Provisiones y facturas", exact: true }).click();
   await expect(dialog).toContainText("200.00 USD");
   await expect(dialog).toContainText("EXCEL-01");
   await expect(dialog).toContainText("USD AMOUNT completo");
@@ -153,6 +154,8 @@ async function setup(page: Page, role = "FINANCE") {
   return writes;
 }
 async function section(page: Page, name: string) {
+  const menu=page.getByRole("button",{name:"Abrir navegación",exact:true});
+  if(await menu.isVisible()) await menu.click();
   await page
     .getByRole("navigation", { name: "Secciones" })
     .getByRole("button", { name, exact: true })
@@ -169,7 +172,7 @@ test("carry-forward totals and full report export", async ({ page }) => {
   );
   await expect(page.getByText("2026-05")).toBeVisible();
   await page
-    .getByRole("button", { name: "Reporte mensual", exact: true })
+    .getByRole("button", { name: "Ver reporte de este mes", exact: true })
     .click();
   await expect(
     page.getByRole("region", { name: "Reporte de conciliación" }),
@@ -601,7 +604,7 @@ test("monthly report opens from invoices and refreshes month and reference toget
   });
   await section(page, "Facturas");
   await page.getByLabel("Factura o referencia", { exact: true }).fill("DEMO-001");
-  await page.getByRole("button", { name: "Reporte mensual", exact: true }).click();
+  await page.getByRole("button", { name: "Ver reporte de este mes", exact: true }).click();
   await expect(page.locator(".report-balances")).toContainText("Viva · parcial");
   expect(queries[0].get("q")).toBeNull();
   await page.getByLabel("Mes", { exact: true }).fill("2026-09");

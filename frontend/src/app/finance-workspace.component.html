@@ -15,7 +15,7 @@
       }
       @if (section !== 'history') {
         @if (reportOpen()) {<button class="button subtle" (click)="closeReport()" [disabled]="busy()">Volver a {{ section === 'provisions' ? 'provisiones' : 'facturas' }}</button>}
-        @else {<button class="button secondary" (click)="showReport()" [disabled]="loading() || busy() || formOpen() || cancelTarget()">Reporte mensual</button>}
+        @else {<button class="button secondary" (click)="showReport()" [disabled]="loading() || busy() || formOpen() || cancelTarget()">Ver reporte de este mes</button>}
       }
     </div>
   </div>

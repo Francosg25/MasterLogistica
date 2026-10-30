@@ -15,7 +15,7 @@ from app.master_sequences import backfill_master_sec_v1
 from app.models import Base, ReferenceCounter, Supplier, User
 from app.storage_types import ExactNumeric
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 LOCAL_TENANT = UUID("f0000000-0000-0000-0000-000000000001")
 LOCAL_USER = UUID("f0000000-0000-0000-0000-000000000002")
 LOCAL_SUPPLIER = UUID("f0000000-0000-0000-0000-000000000003")
@@ -25,6 +25,9 @@ LOCAL_MASTERS = (
     (UUID("f0000000-0000-0000-0000-000000000013"), "NAT", 5),
     (UUID("f0000000-0000-0000-0000-000000000014"), "ANDREA", 4),
     (UUID("f0000000-0000-0000-0000-000000000015"), "ALEXA", 2),
+    (UUID("f0000000-0000-0000-0000-000000000016"), "Compliance 6", 6),
+    (UUID("f0000000-0000-0000-0000-000000000017"), "Compliance 7", 7),
+    (UUID("f0000000-0000-0000-0000-000000000018"), "Compliance 8", 8),
 )
 MAX_MONEY = 10**18 - 1
 
@@ -240,6 +243,21 @@ def initialize_local(engine, session_factory):
                 backfill_master_sec_v1(connection)
                 connection.exec_driver_sql("UPDATE local_schema_version SET version = 6")
                 version = [6]
+            if version == [6]:
+                columns = {c["name"] for c in inspect(connection).get_columns("shipments")}
+                if "parent_shipment_id" not in columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE shipments ADD COLUMN parent_shipment_id CHAR(32) REFERENCES shipments(id) ON DELETE RESTRICT"
+                    )
+                if "movement_number" not in columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE shipments ADD COLUMN movement_number INTEGER CHECK ((parent_shipment_id IS NULL AND movement_number IS NULL) OR (parent_shipment_id IS NOT NULL AND movement_number IS NOT NULL AND movement_number BETWEEN 1 AND 999999999 AND parent_shipment_id <> id))"
+                    )
+                connection.exec_driver_sql(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_shipment_movement ON shipments(parent_shipment_id, movement_number)"
+                )
+                connection.exec_driver_sql("UPDATE local_schema_version SET version = 7")
+                version = [7]
             if version != [SCHEMA_VERSION]:
                 raise ValueError(
                     "La versión de la base local requiere una actualización explícita; conserva el archivo."
@@ -268,7 +286,10 @@ def initialize_local(engine, session_factory):
             user.display_name = "DENI"
         # These identities belong only to the isolated local development database.
         for owner_id, name, code in LOCAL_MASTERS[1:]:
-            if session.scalar(select(User.id).where(User.analyst_code == code)) is None:
+            if (
+                session.scalar(select(User.id).where(User.analyst_code == code)) is None
+                and session.get(User, owner_id) is None
+            ):
                 session.add(
                     User(
                         id=owner_id,

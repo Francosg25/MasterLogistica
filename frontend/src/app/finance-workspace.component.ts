@@ -55,6 +55,9 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) catalogs!: Catalogs;
   @Input() suppliers: Supplier[] = [];
   @Input() demo = false;
+  @Output() navigated = new EventEmitter<Section>();
+  @Input() captureTarget: {kind:"provision"|"invoice";reference:string;company:string}|null = null;
+  @Input() startView: "list" | "import" | "report" = "list";
   @Output() suppliersChanged = new EventEmitter<Supplier[]>();
   private api = inject(ApiService);
   private fb = new FormBuilder().nonNullable;
@@ -186,7 +189,17 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     this.error.set("");
     this.notice.set("");
     if (this.demo) this.filters.controls.month.setValue("2026-10");
-    void this.apply();
+    const requestedSection = this.section, requestedView = this.startView;
+    void this.apply().then(() => {
+      if (this.section !== requestedSection || this.startView !== requestedView) return;
+      if (requestedView === "import" && this.canWrite) this.importOpen.set(true);
+      if (requestedView === "report") void this.showReport();
+      if (this.captureTarget && requestedView === "list") {
+        this.openForm();
+        if (this.captureTarget.kind === "provision") this.provisionForm.controls.reference.setValue(this.captureTarget.reference);
+        else {this.lines.at(0).controls.reference.setValue(this.captureTarget.reference);this.invoiceForm.controls.company_code.setValue(this.captureTarget.company || this.catalogs.company_codes[0] || "");}
+      }
+    });
     if (!this.demo) void this.loadOwners();
   }
   ngOnDestroy() {
@@ -527,7 +540,7 @@ export class FinanceWorkspaceComponent implements OnChanges, OnDestroy {
     const v = this.filters.getRawValue();
     return new URLSearchParams(Object.fromEntries(Object.entries({ month: this.month, q: v.q, owner_id: this.section === "provisions" ? v.owner_id : "", operation_code: this.section === "provisions" ? v.operation_code : "" }).filter(([, value]) => !!value))).toString();
   }
-  closeReport() { this.reportOpen.set(false); void this.apply(); }
+  closeReport() { if(this.startView === "report") {this.navigated.emit("provisions");return;} this.reportOpen.set(false); void this.apply(); }
   calendarDate(value?: string) { return value ? value.slice(0, 10).split("-").reverse().join("/") : "—"; }
   reportCount(state: string) { return this.report()?.balances.filter(b => state === "live" ? ["OPEN", "PARTIALLY_MATCHED"].includes(b.status) : b.status === state).length ?? 0; }
 

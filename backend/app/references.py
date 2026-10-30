@@ -60,6 +60,7 @@ PATTERN = re.compile(
     r"(?P<sequence>\d{1,10})(?P<operation>AE|AI|SE|SI|LI|LE|PI|PE|VI|VE|A3|F4|F5|R1)"
     r"(?P<year>\d{2})-(?P<bu>[A-Z0-9]{1,32})"
     r"(?:-(?P<department>PRJ|MAT|QUA|MAI|HUM|FIX|RAW|CTM|SCR))?"
+    r"(?:\.(?P<movement>[1-9][0-9]{0,8}))?"
     r"(?:\.(?P<suffix>DMR|PFA|CS\d{1,32}))?",
     re.ASCII,
 )
@@ -90,6 +91,8 @@ class ParsedReference:
     business_unit: str
     department_code: str | None
     suffix: str | None
+    movement_number: int | None
+    family_base: str
     warnings: tuple[str, ...]
     is_current_format: bool
 
@@ -110,12 +113,17 @@ def parse_reference(raw: str) -> ParsedReference:
         warnings.append("SEQUENCE_WIDTH_NOT_FOUR")
     if len(match["bu"]) != 3:
         warnings.append("BUSINESS_UNIT_WIDTH_NOT_THREE")
-    # Earlier releases treated department-free references as literal keys. Preserve
-    # their sequence spelling, including leading zeroes, when recognizing metadata.
-    digits = f"{sequence:04d}" if match["department"] else match["sequence"]
+    # Earlier releases treated department-free references and numeric movements as
+    # literal keys. Recognizing their metadata must preserve their original spelling.
+    digits = (
+        f"{sequence:04d}" if match["department"] and not match["movement"] else match["sequence"]
+    )
     base = f"{match['process']}{match['analyst']}-{digits}{match['operation']}{match['year']}-{match['bu']}"
     if match["department"]:
         base += "-" + match["department"]
+    family_base = base
+    if match["movement"]:
+        base += "." + match["movement"]
     suffix = match["suffix"]
     return ParsedReference(
         raw_value=raw,
@@ -129,6 +137,8 @@ def parse_reference(raw: str) -> ParsedReference:
         business_unit=match["bu"],
         department_code=match["department"],
         suffix=suffix,
+        movement_number=int(match["movement"]) if match["movement"] else None,
+        family_base=family_base,
         warnings=tuple(warnings),
         is_current_format=not warnings,
     )

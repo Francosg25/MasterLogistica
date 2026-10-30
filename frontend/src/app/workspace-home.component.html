@@ -1,0 +1,159 @@
+<section class="home-page hub-home" aria-label="Inicio de logística">
+  <div class="home-intro">
+    <div>
+      <p class="home-eyebrow">{{ dateLabel }}</p>
+      <h1>Centro de referencias</h1>
+      <p>Consulta tus operaciones y continúa con la conciliación del mes.</p>
+    </div>
+    <button class="button primary" (click)="navigate.emit('consolidate')">
+      <app-icon name="upload" />Consolidar facturas
+    </button>
+  </div>
+  @if (demo) {
+    <p class="hint">Resumen ilustrativo con datos de demostración.</p>
+  }
+  @if (loading()) {
+    <p class="table-loading" role="status">Preparando tu espacio de trabajo…</p>
+  }
+  @if (error()) {
+    <div class="error" role="alert">
+      {{ error() }}
+      <button class="button subtle" (click)="load()">Reintentar</button>
+    </div>
+  }
+  @if (data(); as d) {
+    <div class="overview-metrics">
+      <button (click)="navigate.emit('masters')">
+        <span>Referencias activas<app-icon name="grid" /></span
+        ><strong>{{ d.active_references }}</strong
+        ><small>Consultar masters <app-icon name="arrow" /></small>
+      </button>
+      <button (click)="navigate.emit('provisions')">
+        <span>Provisiones vivas<app-icon name="wallet" /></span
+        ><strong>{{ d.live_provisions }}</strong
+        ><small
+          >{{ d.settled_provisions }} liquidadas al mes consultado<app-icon
+            name="arrow"
+        /></small>
+      </button>
+      <button (click)="navigate.emit('invoices')">
+        <span>Facturas del mes<app-icon name="document" /></span
+        ><strong>{{ d.invoices_in_month }}</strong
+        ><small
+          >{{ d.pending_invoices }} pendientes de aplicar<app-icon name="arrow"
+        /></small>
+      </button>
+    </div>
+    <div class="home-work-grid">
+      <section class="home-recent">
+        <div class="panel-title">
+          <div>
+            <h2>Referencias recientes</h2>
+            <p>Continúa donde te quedaste.</p>
+          </div>
+          <button class="button subtle" (click)="navigate.emit('masters')">
+            Ver referencias<app-icon name="arrow" />
+          </button>
+        </div>
+        <div class="finance-table-scroll">
+          <table class="finance-table">
+            <thead>
+              <tr>
+                <th>Referencia</th>
+                <th>Responsable / BU</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of d.recent; track row.id) {
+                <tr>
+                  <td>
+                    <button
+                      class="reference-link"
+                      (click)="
+                        referenceOpened.emit({
+                          id: row.id,
+                          reference: row.reference,
+                        })
+                      "
+                    >
+                      {{ row.reference }}
+                    </button>
+                  </td>
+                  <td>
+                    {{ row.owner_name }}<small>{{ row.business_unit }}</small>
+                  </td>
+                  <td>
+                    <span class="operational-status">{{
+                      status[row.status] || row.status
+                    }}</span>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="3">
+                    <div class="home-empty">
+                      <app-icon name="grid" /><strong
+                        >Tu primera referencia empieza aquí.</strong
+                      >
+                      <p>Abre un master y registra una operación.</p>
+                      <button
+                        class="button secondary"
+                        (click)="navigate.emit('masters')"
+                      >
+                        Ir a referencias
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <aside class="home-side-stack">
+        <section class="home-balance">
+          <div class="panel-title">
+            <h2>Saldo pendiente</h2>
+            <app-icon name="wallet" />
+          </div>
+          <p>Provisiones al cierre de {{ d.month.slice(0, 7) }}</p>
+          @for (t of d.totals; track t.currency) {
+            <div class="home-currency">
+              <span>{{ t.currency }}</span
+              ><strong>{{ money(t.closing_amount) }}</strong>
+            </div>
+          } @empty {
+            <div class="home-currency">
+              <span>Sin provisiones registradas</span>
+            </div>
+          }
+          <button
+            class="button secondary full"
+            (click)="navigate.emit('reports')"
+          >
+            Ver reporte mensual<app-icon name="arrow" />
+          </button>
+        </section>
+        <section class="home-flow">
+          <span class="flow-icon"><app-icon name="upload" /></span>
+          <h2>Del Excel al saldo actualizado.</h2>
+          <p>
+            Carga el consolidado. Revisamos las referencias, detectamos
+            duplicados y aplicamos las facturas listas.
+          </p>
+          <button class="button subtle" (click)="navigate.emit('consolidate')">
+            Cargar un archivo<app-icon name="arrow" />
+          </button>
+        </section>
+      </aside>
+    </div>
+  }
+  <div class="home-keyboard">
+    <app-icon name="keyboard" /><span
+      >Escribe y pega en el master como en Excel.</span
+    ><kbd>Ctrl S</kbd><span>para guardar</span
+    ><span class="shortcut-divider">·</span><kbd>Ctrl K</kbd
+    ><span>para buscar una referencia</span>
+  </div>
+</section>

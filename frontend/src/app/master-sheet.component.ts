@@ -295,7 +295,7 @@ export class MasterSheetComponent implements OnDestroy {
     }
     if (column.kind === "unit") {
       value = value.toUpperCase();
-      if (!this.businessUnits().includes(value)) throw new Error("BU: selecciona M01, M19, M23, M45 o M46.");
+      if (!this.businessUnits().includes(value)) throw new Error("BU: selecciona una opción del catálogo de nomenclatura.");
     }
     if (column.kind === "operation") value = masterOperationValue(value);
     if (column.kind === "choice" || column.kind === "operation") {

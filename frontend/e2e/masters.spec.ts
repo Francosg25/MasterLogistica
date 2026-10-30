@@ -58,9 +58,9 @@ test("changing a profile preserves pending edits when leaving is cancelled", asy
 test("home navigation and expanded master preserve the sheet", async ({ page }) => {
   await mock(page);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Inicio", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Centro de logística" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Centro de referencias" })).toBeVisible();
   await page.screenshot({ path: "test-results/home.png", fullPage: true });
-  await page.locator(".home-grid").getByRole("button", { name: /Ver masters/ }).click();
+  await page.getByRole("button", { name: "Ver referencias", exact: true }).click();
   const normal = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();
   await page.getByRole("button", { name: "Ampliar master" }).click();
   await expect(page.getByRole("navigation", { name: "Secciones" })).toBeHidden();
@@ -139,6 +139,7 @@ async function mock(
   }[] = [];
   const requests: {
     path: string;
+    query: URLSearchParams;
     method: string;
     body: Record<string, unknown> | null;
   }[] = [];
@@ -147,9 +148,10 @@ async function mock(
       url = new URL(req.url()),
       path = url.pathname.replace("/api/v1", "");
     const body = req.postDataJSON();
-    requests.push({ path, method: req.method(), body });
+    requests.push({ path, query: url.searchParams, method: req.method(), body });
     const json = (data: unknown, status = 200) =>
       route.fulfill({ status, json: data });
+    if (path === "/workspace/overview") return json({month:"2026-10-01",active_references:8,live_provisions:0,settled_provisions:0,invoices_in_month:0,pending_invoices:0,totals:[],recent:[]});
     if (path === "/auth/me")
       return json({
         id: "owner-1",
@@ -253,10 +255,10 @@ async function mock(
     return json({ detail: "Unexpected request" }, 404);
   });
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Masters", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Masters de logística" }),
-  ).toBeVisible();
+  const menu = page.getByRole("button", {name:"Abrir navegación",exact:true});
+  if((page.viewportSize()?.width ?? 1000) <= 760) await menu.click();
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Referencias", exact: true }).click();
+  await expect(page.getByLabel("Responsable del master", { exact: true })).toBeVisible();
   if (!options.noMaster) {
     await page
       .getByLabel("Responsable del master", { exact: true })
@@ -306,10 +308,11 @@ test("each responsible master contains its operations without mixing owners", as
 });
 test("operator can select only their own master", async ({ page }) => {
   const requests = await mock(page, { mixed: true, noMaster: true });
-  expect(requests.some(req => req.path === "/masters/shipments")).toBeFalsy();
+  await expect(page.locator("tbody tr")).toHaveCount(8);
+  expect(requests.filter(req => req.path === "/masters/shipments").every(req => req.query.get("owner_id") === "owner-1")).toBeTruthy();
   const selector = page.getByLabel("Responsable del master", { exact: true });
   await expect(selector.locator("option")).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "Nuevo embarque" })).toBeDisabled();
+  await expect(page.getByLabel("Responsable del master", { exact: true })).toHaveValue("owner-1");
   await selector.selectOption("owner-1");
   await expect(page.locator("tbody tr")).toHaveCount(8);
   await expect(page.locator("tbody")).not.toContainText("RM2-");
@@ -326,7 +329,7 @@ test("creates in the selected master with manual company and an allowed BU, then
   await expect(dialog.getByRole("alert")).toContainText("Completa");
   await dialog.getByLabel("Empresa *", { exact: true }).selectOption("MXG");
   await dialog.getByLabel("Tipo de operación *", { exact: true }).selectOption("SI");
-  await expect(dialog.getByLabel("Business unit *", { exact: true }).locator("option")).toHaveText(["Selecciona una BU", "M01", "M19", "M23", "M45", "M46"]);
+  await expect(dialog.getByLabel("Business unit *", { exact: true }).locator("option")).toHaveText(["Selecciona una BU", "M00", "M01", "M19", "M20", "M23", "M45", "M46", "M65"]);
   await dialog
     .getByLabel("Business unit *", { exact: true })
     .selectOption("M01");
@@ -898,7 +901,7 @@ test("every master column allows editing and a pasted reference identity survive
   await pasteCells(page, 0, "reference_raw", "REFERENCIA MANUAL 2026\tProgramado\tM46\tR1\tMXT");
   await expect(page.locator(".save-state")).toContainText("5 celdas sin guardar");
   await cell(page, 0, "business_unit").dblclick();
-  await expect(page.getByLabel("Editar BU", { exact: true }).locator("option")).toHaveText(["Sin asignar", "M01", "M19", "M23", "M45", "M46"]);
+  await expect(page.getByLabel("Editar BU", { exact: true }).locator("option")).toHaveText(["Sin asignar", "M00", "M01", "M19", "M20", "M23", "M45", "M46", "M65"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page.locator(".save-state")).toContainText("Sin cambios pendientes");

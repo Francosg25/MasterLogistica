@@ -1,4 +1,4 @@
-export type Section = "home" | "masters" | "provisions" | "invoices" | "history";
+export type Section = "home" | "masters" | "consolidate" | "provisions" | "invoices" | "reports" | "history";
 export const INVOICE_CONCEPTS = [
   { value: "FREIGHT", label: "FREIGHT" },
   { value: "BROKER", label: "BROKER" },

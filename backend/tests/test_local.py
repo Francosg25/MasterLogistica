@@ -607,13 +607,25 @@ def test_responsible_masters_manual_company_and_exact_provision_date(tmp_path):
     app = create_app(settings)
     with local_client(app) as client:
         owners = client.get("/api/v1/masters/owners").json()
-        assert [o["display_name"] for o in owners] == ["MAG", "ALEXA", "DENI", "ANDREA", "NAT"]
+        assert [o["display_name"] for o in owners] == [
+            "MAG",
+            "ALEXA",
+            "DENI",
+            "ANDREA",
+            "NAT",
+            "Compliance 6",
+            "Compliance 7",
+            "Compliance 8",
+        ]
         assert list(client.get("/api/v1/references/catalogs").json()["business_units"]) == [
+            "M00",
             "M01",
             "M19",
+            "M20",
             "M23",
             "M45",
             "M46",
+            "M65",
         ]
         body = dict(
             company_code="MXG",

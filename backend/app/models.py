@@ -143,6 +143,10 @@ class AccountingPeriod(Base):
 class Shipment(IdentityMixin, VersionedMixin, Base):
     __tablename__ = "shipments"
     owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    parent_shipment_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("shipments.id", ondelete="RESTRICT")
+    )
+    movement_number: Mapped[int | None] = mapped_column(Integer)
     company_code: Mapped[str] = mapped_column(String(32))
     legacy_sec: Mapped[str | None] = mapped_column(String(40))
     reference_raw: Mapped[str | None] = mapped_column(String(160))
@@ -215,6 +219,11 @@ class Shipment(IdentityMixin, VersionedMixin, Base):
         finite_check("ck_shipment_weight", "weight_kg", nonnegative=True),
         CheckConstraint("row_version > 0", name="ck_shipment_version"),
         UniqueConstraint("reference_normalized", name="uq_shipments_reference_normalized"),
+        UniqueConstraint("parent_shipment_id", "movement_number", name="uq_shipment_movement"),
+        CheckConstraint(
+            "(parent_shipment_id IS NULL AND movement_number IS NULL) OR (parent_shipment_id IS NOT NULL AND movement_number IS NOT NULL AND movement_number > 0 AND movement_number <= 999999999 AND parent_shipment_id <> id)",
+            name="ck_shipment_parent",
+        ),
         CheckConstraint(
             "process_code IS NULL OR process_code IN ('RM','AF','FG','DR','CR','FA')",
             name="ck_shipment_process",

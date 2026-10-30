@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { MasterData, MasterLayout, Shipment, ShipmentValues } from "./types";
+import { BUSINESS_UNITS, MasterData, MasterLayout, Shipment, ShipmentValues } from "./types";
 
 type Patch = ShipmentValues;
 interface PracticeStore {
@@ -66,7 +66,7 @@ export class MasterPracticeService {
         throw new Error("La práctica contiene un campo o valor no válido.");
       if (key === "status" && value === null) throw new Error("El estado vacío se guarda como texto vacío.");
       if (key === "company_code" && !value?.trim()) throw new Error("Captura la empresa.");
-      if (key === "business_unit" && value && !["M01", "M19", "M23", "M45", "M46"].includes(value))
+      if (key === "business_unit" && value && !Object.hasOwn(BUSINESS_UNITS, value))
         throw new Error("Selecciona una BU del catálogo.");
       if (["ship_date", "eta", "delivery_date"].includes(key)) this.validateDate(value as string | null);
     }

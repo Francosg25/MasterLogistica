@@ -1,17 +1,366 @@
-<dialog #dialog class="activity-dialog" aria-labelledby="activity-title" (cancel)="$event.preventDefault(); closed.emit()">
-  <header class="editor-head"><div><p class="eyebrow">MOVIMIENTOS POR REFERENCIA</p><h2 id="activity-title">{{ reference }}</h2><p>Provisiones, facturas y cambios registrados.</p></div><button class="button subtle" (click)="closed.emit()">Cerrar movimientos</button></header>
+<dialog
+  #dialog
+  class="activity-dialog reference-workspace"
+  aria-labelledby="activity-title"
+  (cancel)="$event.preventDefault(); !creating() && closed.emit()"
+>
+  <header class="reference-head">
+    <div>
+      <p class="eyebrow">FICHA DE REFERENCIA</p>
+      <h2 id="activity-title">{{ reference }}</h2>
+      <p>Una operación. Todos sus movimientos.</p>
+    </div>
+    <button
+      class="button subtle"
+      [disabled]="creating()"
+      (click)="closed.emit()"
+    >
+      Cerrar movimientos
+    </button>
+  </header>
+  <nav class="reference-tabs" aria-label="Vistas de la referencia">
+    <button
+      [attr.aria-pressed]="tab() === 'overview'"
+      (click)="tab.set('overview')"
+    >
+      Operación</button
+    ><button
+      [attr.aria-pressed]="tab() === 'finance'"
+      (click)="tab.set('finance')"
+    >
+      Provisiones y facturas</button
+    ><button
+      [attr.aria-pressed]="tab() === 'history'"
+      (click)="tab.set('history')"
+    >
+      Historial
+    </button>
+  </nav>
   <div class="activity-content">
-    @if (loading()) {<p role="status">Cargando movimientos…</p>}
-    @if (error()) {<p class="error" role="alert">{{ error() }}</p>}
-    @if (demo) {<p class="notice">Demostración · Solo movimientos ficticios disponibles para esta referencia.</p>}
+    @if (loading()) {
+      <p role="status">Cargando referencia…</p>
+    }
+    @if (error()) {
+      <p class="error" role="alert">{{ error() }}</p>
+    }
+    @if (notice()) {
+      <p class="success" role="status">{{ notice() }}</p>
+    }
+    @if (demo) {
+      <p class="notice">Demostración · Movimientos ficticios.</p>
+    }
     @if (data(); as d) {
-      <h3>Provisiones y saldo actual</h3>
-      <div class="finance-scroll"><table class="finance-table"><thead><tr><th>Origen</th><th>Proveedor / concepto</th><th>Provisión</th><th>Saldo</th><th>Estado</th></tr></thead><tbody>@for (p of d.provisions; track p.id) {<tr><td>{{ p.provision_date ? p.provision_date.split('-').reverse().join('/') : p.month.slice(0, 7) }}</td><td>{{ p.supplier }}<small>{{ conceptLabel(p.concept) }}</small></td><td>{{ money(p.total) }} {{ p.currency }}</td><td>{{ money(p.balance) }} {{ p.currency }}</td><td>{{ labels[p.status] }}</td></tr>} @empty {<tr><td colspan="5">Sin provisiones registradas.</td></tr>}</tbody></table></div>
-      <h3>Facturas de esta referencia</h3>
-      <div class="finance-scroll"><table class="finance-table"><thead><tr><th>Factura / mes</th><th>Proveedor / concepto</th><th>Importe</th><th>Aplicado</th><th>Estado</th></tr></thead><tbody>@for (i of d.invoices; track i.id) {<tr><td>{{ i.invoice_number }}<small>{{ i.month.slice(0, 7) }}</small></td><td>{{ i.supplier }}<small>{{ conceptLabel(i.concept) }}</small></td><td>{{ money(i.amount) }} {{ i.currency }}<small>{{ i.amount_basis === 'USD_AMOUNT' ? 'USD AMOUNT completo' : 'Captura neta' }}</small></td><td>{{ money(i.applied) }} {{ i.currency }}@for (a of i.applications || []; track a.id) { @if (a.fx?.mxn_per_usd) {<small>Descontado: {{ money(a.provision_amount) }} {{ a.provision_currency }} · TC {{ a.fx?.mxn_per_usd }} MXN/USD</small>} }</td><td>{{ labels[i.status] }}</td></tr>} @empty {<tr><td colspan="5">Sin facturas registradas.</td></tr>}</tbody></table></div>
-      <h3>Historial de movimientos y cambios</h3>
-      <div class="activity-timeline">@for (h of d.history.items; track h.id) {<article><strong>{{ events[h.event_type] || h.event_type }}</strong><p>{{ h.actor_name }} · {{ date(h.occurred_at) }}</p><details><summary>Ver detalle del cambio</summary>@for (c of h.changes; track c.field) {<p>{{ c.label || fields[c.field] || c.field }}: {{ value(c.before) }} → {{ value(c.after) }}</p>}</details></article>} @empty {<p>Sin cambios registrados.</p>}</div>
-      @if (d.history.items.length < d.history.total) {<button class="button secondary" (click)="more()" [disabled]="loading()">Cargar más movimientos</button>}
+      @if (tab() === "overview") {
+        @if (familyError()) {
+          <p class="notice">{{ familyError() }}</p>
+        }
+        @if (family(); as f) {
+          <div class="reference-facts">
+            <div>
+              <span>Proceso</span
+              ><strong>{{ f.classification.process || "—" }}</strong>
+            </div>
+            <div>
+              <span>Operación</span
+              ><strong>{{ f.classification.operation || "—" }}</strong>
+            </div>
+            <div>
+              <span>Año</span
+              ><strong>{{ f.classification.year || "—" }}</strong>
+            </div>
+            <div>
+              <span>BU</span
+              ><strong>{{ f.classification.business_unit || "—" }}</strong>
+            </div>
+            <div>
+              <span>Departamento</span
+              ><strong>{{
+                f.classification.department || "Sin asignar"
+              }}</strong>
+            </div>
+          </div>
+          <div class="reference-section-title">
+            <div>
+              <h3>Familia de referencias</h3>
+              <p>
+                La referencia madre conecta los movimientos. Cada uno conserva
+                sus propios gastos.
+              </p>
+            </div>
+            @if (
+              canCreate &&
+              f.can_add_movements !== false &&
+              !demo &&
+              f.root.status !== "CANCELLED"
+            ) {
+              <button
+                class="button secondary"
+                (click)="openMovement()"
+                [disabled]="creating() || createOpen()"
+              >
+                <app-icon name="plus" />Añadir movimiento
+              </button>
+            }
+          </div>
+          <div class="reference-family">
+            @for (member of f.members; track member.id) {
+              <button
+                class="family-member"
+                [class.child-member]="member.movement_number"
+                [class.selected]="member.id === shipmentId"
+                [disabled]="creating()"
+                (click)="selectMember(member)"
+              >
+                <span class="member-mark"
+                  ><app-icon
+                    [name]="member.movement_number ? 'arrow' : 'grid'" /></span
+                ><span
+                  ><small>{{
+                    member.movement_number
+                      ? "Movimiento " + member.movement_number
+                      : "Referencia madre"
+                  }}</small
+                  ><strong>{{ member.reference }}</strong
+                  ><span>{{ member.owner_name }}</span></span
+                ><span class="operational-status">{{
+                  operationalStatus[member.status] || member.status
+                }}</span>
+              </button>
+            }
+          </div>
+          @if (createOpen()) {
+            <form class="movement-entry" (ngSubmit)="createMovement()">
+              <h3>Nuevo movimiento de transporte</h3>
+              <p>
+                El consecutivo se genera al guardar. Se conserva la
+                clasificación de la referencia madre.
+              </p>
+              <div class="movement-fields">
+                <label
+                  >Responsable del movimiento<select
+                    aria-label="Responsable del movimiento" name="movementOwner"
+                    [(ngModel)]="movementOwner"
+                    [disabled]="creating()"
+                    required
+                  >
+                    @for (owner of owners(); track owner.id) {
+                      <option [value]="owner.id">
+                        {{ owner.display_name }}
+                      </option>
+                    }
+                  </select></label
+                ><label
+                  >Transportista o agente<input
+                    name="carrier"
+                    [(ngModel)]="carrier"
+                    maxlength="250"
+                    [disabled]="creating()"
+                    placeholder="Nombre del proveedor" /></label
+                ><label class="movement-description"
+                  >Descripción del movimiento<input
+                    name="description"
+                    [(ngModel)]="description"
+                    maxlength="10000"
+                    [disabled]="creating()"
+                    placeholder="Ej. Arrastre desde el puerto"
+                /></label>
+              </div>
+              <div class="finance-buttons">
+                <button
+                  class="button primary"
+                  type="submit"
+                  [disabled]="creating() || !movementOwner"
+                >
+                  {{ creating() ? "Creando…" : "Crear movimiento" }}</button
+                ><button
+                  class="button subtle"
+                  type="button"
+                  (click)="createOpen.set(false)"
+                  [disabled]="creating()"
+                >
+                  Volver
+                </button>
+              </div>
+            </form>
+          }
+        } @else if (demo) {
+          <div class="reference-demo-info">
+            <app-icon name="grid" />
+            <h3>Operación de demostración</h3>
+            <p>
+              En la base conectada verás la clasificación y la familia completa
+              de esta referencia.
+            </p>
+          </div>
+        }
+        <div class="reference-shortcuts">
+          <button (click)="tab.set('finance')">
+            <app-icon name="wallet" /><span
+              ><strong>{{ d.provisions.length }} provisiones</strong
+              ><small>Consultar importes y saldos</small></span
+            ><app-icon name="arrow" /></button
+          ><button (click)="tab.set('finance')">
+            <app-icon name="document" /><span
+              ><strong>{{ d.invoices.length }} movimientos de factura</strong
+              ><small>Consultar las aplicaciones</small></span
+            ><app-icon name="arrow" />
+          </button>
+        </div>
+      } @else if (tab() === "finance") {
+        <div class="reference-section-title">
+          <div>
+            <h3>Provisiones de este movimiento</h3>
+            <p>
+              Saldo actual. Los importes se conservan en la moneda de cada
+              provisión.
+            </p>
+          </div>
+          @if (canFinance && !demo) {
+            <button
+              class="button secondary"
+              (click)="requestCapture('provision')"
+            >
+              Nueva provisión
+            </button>
+          }
+        </div>
+        <div class="finance-scroll">
+          <table class="finance-table">
+            <thead>
+              <tr>
+                <th>Origen</th>
+                <th>Proveedor / concepto</th>
+                <th>Provisión</th>
+                <th>Saldo</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of d.provisions; track p.id) {
+                <tr>
+                  <td>
+                    {{
+                      p.provision_date
+                        ? p.provision_date.split("-").reverse().join("/")
+                        : p.month.slice(0, 7)
+                    }}
+                  </td>
+                  <td>
+                    {{ p.supplier }}<small>{{ conceptLabel(p.concept) }}</small>
+                  </td>
+                  <td>{{ money(p.total) }} {{ p.currency }}</td>
+                  <td>{{ money(p.balance) }} {{ p.currency }}</td>
+                  <td>
+                    <span
+                      class="finance-status"
+                      [class.settled]="p.status === 'CLOSED'"
+                      >{{ labels[p.status] }}</span
+                    >
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="5">Sin provisiones registradas.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="reference-section-title">
+          <div>
+            <h3>Facturas de este movimiento</h3>
+            <p>Importes registrados y aplicados a sus provisiones.</p>
+          </div>
+          @if (canFinance && !demo) {
+            <button
+              class="button secondary"
+              (click)="requestCapture('invoice')"
+            >
+              Agregar factura
+            </button>
+          }
+        </div>
+        <div class="finance-scroll">
+          <table class="finance-table">
+            <thead>
+              <tr>
+                <th>Factura / mes</th>
+                <th>Proveedor / concepto</th>
+                <th>Importe</th>
+                <th>Aplicado</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (i of d.invoices; track i.id) {
+                <tr>
+                  <td>
+                    {{ i.invoice_number
+                    }}<small>{{ i.month.slice(0, 7) }}</small>
+                  </td>
+                  <td>
+                    {{ i.supplier }}<small>{{ conceptLabel(i.concept) }}</small>
+                  </td>
+                  <td>
+                    {{ money(i.amount) }} {{ i.currency
+                    }}<small>{{
+                      i.amount_basis === "USD_AMOUNT"
+                        ? "USD AMOUNT completo"
+                        : "Captura neta"
+                    }}</small>
+                  </td>
+                  <td>
+                    {{ money(i.applied) }} {{ i.currency }}
+                    @for (a of i.applications || []; track a.id) {
+                      @if (a.fx?.mxn_per_usd) {
+                        <small
+                          >Descontado: {{ money(a.provision_amount) }}
+                          {{ a.provision_currency }} · TC
+                          {{ a.fx?.mxn_per_usd }} MXN/USD</small
+                        >
+                      }
+                    }
+                  </td>
+                  <td>{{ labels[i.status] }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="5">Sin facturas registradas.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <div class="activity-timeline">
+          @for (h of d.history.items; track h.id) {
+            <article>
+              <strong>{{ events[h.event_type] || h.event_type }}</strong>
+              <p>{{ h.actor_name }} · {{ date(h.occurred_at) }}</p>
+              <details>
+                <summary>Ver detalle del cambio</summary>
+                @for (c of h.changes; track c.field) {
+                  <p>
+                    {{ c.label || fields[c.field] || c.field }}:
+                    {{ value(c.before) }} → {{ value(c.after) }}
+                  </p>
+                }
+              </details>
+            </article>
+          } @empty {
+            <p>Sin cambios registrados.</p>
+          }
+        </div>
+        @if (d.history.items.length < d.history.total) {
+          <button
+            class="button secondary"
+            (click)="more()"
+            [disabled]="loading()"
+          >
+            Cargar más movimientos
+          </button>
+        }
+      }
     }
   </div>
 </dialog>

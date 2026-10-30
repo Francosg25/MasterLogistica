@@ -51,28 +51,17 @@
         }
       </nav>
     </ng-template>
-    <header class="topbar">
-      <button class="wordmark brand-button" (click)="changeSection('home')" aria-label="Inicio de MasterLogistica" [disabled]="saving() || sheet?.saving() || finance?.busy()">
-        <span class="brand-mark">M</span><strong>MasterLogistica</strong>
-      </button>
+    <aside class="workspace-sidebar" [class.mobile-open]="mobileNav()">
+      <button class="wordmark brand-button" (click)="changeSection('home')" aria-label="Inicio de MasterLogistica"><span class="brand-mark">M</span><span>Master<span class="brand-light">Logistica</span><small>ESPACIO DE OPERACIONES</small></span></button>
+      <span class="sidebar-label">ESPACIO DE TRABAJO</span>
       <ng-container [ngTemplateOutlet]="sectionNavigation" />
-      <div class="account">
-        @if (auth.local && !demo() && section() !== 'home') {
-          <span class="local-banner" title="Los cambios se guardan en esta computadora.">Guardado local</span>
-        }
-        <span class="user-avatar" aria-hidden="true">{{ userInitials() }}</span>
-        <span class="account-name"
-          >{{ accountName() }}<small>{{ roleName() }}</small></span
-        ><button
-          class="button subtle account-exit"
-          [attr.aria-label]="demo() ? 'Salir de demo' : auth.local ? 'Reiniciar sesión local' : 'Salir'"
-          [title]="demo() ? 'Salir de demo' : auth.local ? 'Reiniciar sesión local' : 'Salir'"
-          (click)="logout()"
-          [disabled]="sheet?.saving()"
-        >
-          <app-icon name="sign-out" /><span class="account-action-label">{{ demo() ? "Salir de demo" : auth.local ? "Reiniciar sesión local" : "Salir" }}</span>
-        </button>
-      </div>
+      <div class="sidebar-footer"><span class="connection-dot"></span>{{ auth.local ? 'Base local conectada' : demo() ? 'Demostración' : 'Sesión corporativa' }}<small>Logística &amp; Compliance</small></div>
+    </aside>
+    @if (mobileNav()) {<button class="sidebar-scrim" aria-label="Cerrar navegación" (click)="mobileNav.set(false)"></button>}
+    <header class="topbar">
+      <div class="workspace-location"><button class="icon-button mobile-menu" aria-label="Abrir navegación" (click)="mobileNav.set(!mobileNav())"><app-icon name="grid" /></button><span class="location-product">Operaciones</span><span class="location-divider">/</span><strong>{{ activeLabel() }}</strong></div>
+      <button class="command-trigger" (click)="commandOpen.set(true)"><app-icon name="search" /><span>Buscar referencia</span><kbd>Ctrl K</kbd></button>
+      <div class="account"><span class="user-avatar" aria-hidden="true">{{ userInitials() }}</span><span class="account-name">{{ accountName() }}<small>{{ roleName() }}</small></span><button class="icon-button account-exit" [attr.aria-label]="demo() ? 'Salir de demo' : auth.local ? 'Reiniciar sesión local' : 'Salir'" (click)="logout()" [disabled]="sheet?.saving() || finance?.busy()"><app-icon name="sign-out" /></button></div>
     </header>
     <main class="main-content" id="main" tabindex="-1">
       @if (auth.local && !demo() && section() === 'home') {
@@ -88,21 +77,10 @@
         </div>
       }
       @if (section() === "home") {
-        <section class="home-page" aria-label="Inicio de logística">
-          <p class="home-eyebrow">OPERACIÓN LOGÍSTICA</p>
-          <h1>Centro de logística</h1>
-          <p>Selecciona el área en la que vas a trabajar.</p>
-          <div class="home-grid">
-            <button class="module-primary" (click)="changeSection('masters')"><span class="module-icon"><app-icon name="grid" /></span><h2>Masters</h2><p>Trabaja en el master de tu responsable y consulta cada referencia.</p><strong>Ver masters <app-icon name="arrow" /></strong></button>
-            <button (click)="changeSection('provisions')"><span class="module-icon"><app-icon name="wallet" /></span><h2>Provisiones</h2><p>Revisa saldos, importes aplicados y provisiones de meses anteriores.</p><strong>Ver provisiones <app-icon name="arrow" /></strong></button>
-            <button (click)="changeSection('invoices')"><span class="module-icon"><app-icon name="document" /></span><h2>Facturas</h2><p>Carga tu Excel y consulta los importes aplicados a cada referencia.</p><strong>Ver facturas <app-icon name="arrow" /></strong></button>
-            <button (click)="changeSection('history')"><span class="module-icon"><app-icon name="history" /></span><h2>Historial</h2><p>Consulta quién modificó cada dato y revisa sus valores anteriores.</p><strong>Consultar cambios <app-icon name="arrow" /></strong></button>
-          </div>
-          <aside class="home-tip"><app-icon name="keyboard" /><div><strong>Trabaja como en Excel</strong><p>Escribe en las celdas, pega un rango y guarda con <kbd>Ctrl</kbd> + <kbd>S</kbd>.</p></div></aside>
-        </section>
+        <workspace-home [demo]="demo()" (navigate)="changeSection($event)" (referenceOpened)="openReference($event)" />
       } @else if (section() === "masters") {
         <div class="workspace-heading master-toolbar">
-          <h1 [class.sr-only]="masterReady() && !focusedSheet()">{{ focusedSheet() && masterReady() ? 'Master de ' + ownerName(masterOwner()) : 'Masters de logística' }}</h1>
+          <h1 [class.sr-only]="masterReady() && !focusedSheet()">{{ focusedSheet() && masterReady() ? 'Master de ' + ownerName(masterOwner()) : 'Referencias' }}</h1>
           <section class="master-selector" aria-label="Selección de master">
             <form [formGroup]="masterSelection">
               <label
@@ -162,7 +140,7 @@
             <span class="empty-sheet-icon" aria-hidden="true"><app-icon name="grid" /></span>
             <h2>Selecciona un master para comenzar</h2>
             <p>
-              Selecciona a DENI, MAG, NAT, ANDREA o ALEXA según tus permisos.
+              Elige el master de Logística o Compliance en el que vas a trabajar.
             </p>
           </div>
         } @else {
@@ -334,7 +312,10 @@
       } @else {
         <finance-workspace
           (suppliersChanged)="suppliers.set($event)"
-          [section]="section()"
+          (navigated)="changeSection($event)"
+          [captureTarget]="captureTarget()"
+          [startView]="section() === 'reports' ? 'report' : section() === 'consolidate' ? 'import' : 'list'"
+          [section]="section() === 'reports' ? 'provisions' : section() === 'consolidate' ? 'invoices' : section()"
           [user]="user()!"
           [catalogs]="catalog()!"
           [suppliers]="suppliers()"
@@ -365,5 +346,7 @@
   />
 }
 @if (activity(); as target) {
-  <reference-activity [shipmentId]="target.id" [reference]="target.reference_raw || ''" [demo]="demo()" (closed)="activity.set(null)" />
+  <reference-activity [shipmentId]="target.id" [reference]="target.reference_raw || ''" [demo]="demo()" [canCreate]="canWrite()" [canFinance]="!demo() && ['FINANCE', 'SUPER_ADMIN'].includes(user()?.role || '')" (capture)="captureFinance($event)" (created)="movementCreated()" (closed)="activity.set(null)" />
 }
+
+@if (commandOpen()) {<command-search [demo]="demo()" (selected)="openReference($event)" (closed)="commandOpen.set(false)" />}

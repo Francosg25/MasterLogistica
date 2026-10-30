@@ -22,6 +22,7 @@ from app.db import build_engine, build_session_factory
 from app.finance import router as finance_router
 from app.invoice_import import router as import_router
 from app.observability import RequestLoggingMiddleware, logger
+from app.reference_families import router as families_router
 
 
 def create_app(
@@ -68,6 +69,7 @@ def create_app(
         EntraTokenValidator(settings, key_resolver) if settings.auth_mode == "entra" else None
     )
     app.include_router(router)
+    app.include_router(families_router)
     app.include_router(finance_router)
     app.include_router(import_router)
     app.add_middleware(

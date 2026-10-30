@@ -60,8 +60,12 @@ def test_contracts_follow_each_source_and_demo_matches_backend():
         "MAG": 32,
         "NAT": 34,
         "ALEXA": 41,
+        "COMPLIANCE": 10,
     }
-    for layout in LAYOUTS.values():
+    for code, layout in LAYOUTS.items():
+        if code == "COMPLIANCE":
+            assert layout["fields"][0]["key"] == "master.sec"
+            continue
         keys = [f["key"] for f in layout["fields"]]
         assert keys[:3] == ["master.sec", "master.owner", "reference_raw"]
         assert len(set(keys)) == len(keys)

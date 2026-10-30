@@ -1,4 +1,4 @@
-import { Catalogs, Owner, Shipment, User } from "./types";
+import { BUSINESS_UNITS, Catalogs, Owner, Shipment, User } from "./types";
 export const demoUser: User = {
   id: "demo",
   display_name: "Usuario de pruebas",
@@ -26,7 +26,7 @@ export const demoCatalogs: Catalogs = {
     "R1",
   ],
   department_codes: ["MAT", "PRJ", "FIX", "MAI"],
-  business_units: { M01: "M01", M19: "M19", M23: "M23", M45: "M45", M46: "M46" },
+  business_units: BUSINESS_UNITS,
   company_codes: ["DEMO"],
   business_units_configured: true,
 };

@@ -53,8 +53,10 @@ def test_optional_department_metadata_and_existing_padding_rule(suffix):
 def test_create_uses_optional_department_and_correct_owner_codes(tmp_path, department):
     with local_client(create_app(local_settings(tmp_path / "masters.db"))) as client:
         owners = client.get("/api/v1/masters/owners").json()
-        assert {r["display_name"]: r["analyst_code"] for r in owners} == EXPECTED_CODES
-        for owner in owners:
+        assert {
+            r["display_name"]: r["analyst_code"] for r in owners if r["analyst_code"] <= 5
+        } == EXPECTED_CODES
+        for owner in [r for r in owners if r["analyst_code"] <= 5]:
             payload = {} if department == "omitted" else {"department_code": department}
             row = create(client, owner_id=owner["id"], **payload)
             expected = f"RM{EXPECTED_CODES[owner['display_name']]}-0001LI26-M01"
@@ -221,7 +223,11 @@ def test_version_four_alignment_preserves_ids_records_audit_and_counter_history(
         assert snapshot(path) == before
         assert client.get("/api/v1/shipments/" + old_row["id"]).json() == old_row
         owners = client.get("/api/v1/masters/owners").json()
-        assert {o["display_name"]: o["analyst_code"] for o in owners} == EXPECTED_CODES
+        assert {
+            o["display_name"]: o["analyst_code"]
+            for o in owners
+            if o["display_name"] in EXPECTED_CODES
+        } == EXPECTED_CODES
         for owner in owners:
             assert owner["layout_code"] == owner["display_name"]
         generated = create(client)
@@ -253,7 +259,11 @@ def test_interrupted_alignment_rolls_back_codes_and_schema_version(tmp_path):
     assert snapshot(path) == before
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT version FROM local_schema_version").fetchone() == (4,)
-        assert dict(connection.execute("SELECT display_name, analyst_code FROM users")) == {
+        assert dict(
+            connection.execute(
+                "SELECT display_name, analyst_code FROM users WHERE display_name IN ('DENI','MAG','NAT','ANDREA','ALEXA')"
+            )
+        ) == {
             "DENI": 1,
             "MAG": 2,
             "NAT": 3,
@@ -296,7 +306,11 @@ def test_earliest_local_account_keeps_its_id_records_and_counter(tmp_path):
             connection.exec_driver_sql("UPDATE local_schema_version SET version=1")
     with local_client(create_app(settings)) as client:
         owners = client.get("/api/v1/masters/owners").json()
-        assert {row["display_name"]: row["analyst_code"] for row in owners} == EXPECTED_CODES
+        assert {
+            row["display_name"]: row["analyst_code"]
+            for row in owners
+            if row["display_name"] in EXPECTED_CODES
+        } == EXPECTED_CODES
         assert next(row["id"] for row in owners if row["display_name"] == "DENI") == str(LOCAL_USER)
         assert client.get("/api/v1/shipments/" + original["id"]).json() == original
         assert create(client)["reference_raw"] == "RM3-0124LI26-M01"

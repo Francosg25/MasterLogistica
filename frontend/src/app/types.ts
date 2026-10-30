@@ -60,6 +60,8 @@ export interface Identifier {
   normalized_value: string;
 }
 export interface Shipment {
+  parent_shipment_id?: string | null;
+  movement_number?: number | null;
   master_data?: Record<string, string | null>;
   reference_sequence?: number | null;
   direction?: string;
@@ -169,3 +171,5 @@ export function supplierValues(value: string | null, prefix: "carrier_broker" | 
     ? { [prefix + "_id"]: matches[0].id, [prefix + "_name"]: null }
     : { [prefix + "_id"]: null, [prefix + "_name"]: text || null };
 }
+
+export const BUSINESS_UNITS: Record<string,string> = { M00:"Varias BU", M01:"BM", M19:"PC", M20:"BC", M23:"ETM", M45:"IPG", M46:"AS", M65:"IPG" };

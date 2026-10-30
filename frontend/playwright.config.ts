@@ -16,6 +16,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
+    { name: "workspace", testMatch: "workspace.spec.ts" },
     { name: "finance", testMatch: "finance.spec.ts" },
     { name: "masters", testMatch: "masters.spec.ts" },
     { name: "production-access", testMatch: "access.spec.ts" },

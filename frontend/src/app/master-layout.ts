@@ -7,7 +7,7 @@ export function masterOptions(field: MasterField, businessUnits: string[] = []):
 }
 
 export function ownerLayout(catalog: Catalogs | null, owner: Owner | undefined): MasterLayout | null {
-  const codes: Record<number, string> = { 1: "MAG", 2: "ALEXA", 3: "DENI", 4: "ANDREA", 5: "NAT" };
+  const codes: Record<number, string> = { 1: "MAG", 2: "ALEXA", 3: "DENI", 4: "ANDREA", 5: "NAT", 6: "COMPLIANCE", 7: "COMPLIANCE", 8: "COMPLIANCE" };
   const code = owner?.layout_code || codes[owner?.analyst_code ?? 0];
   return catalog?.master_layouts?.[code] ?? null;
 }

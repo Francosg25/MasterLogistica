@@ -40,7 +40,7 @@ def test_case_spaces_and_unicode_width():
         "RM1-1616XX26-M23-MAT",
         "RM1-1616LI26-M23-XYZ",
         "RM1-1616LI26-M23-MAT.PFA.DMR",
-        "RM1-1616LI26-M23-MAT.1",
+        "RM1-1616LI26-M23-MAT.0",
         "",
     ],
 )

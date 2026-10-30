@@ -2230,6 +2230,113 @@
           "required": false
         }
       ]
+    },
+    "COMPLIANCE": {
+      "code": "COMPLIANCE",
+      "label": "Compliance",
+      "fields": [
+        {
+          "key": "master.sec",
+          "label": "SEC",
+          "kind": "sequence",
+          "width": 75,
+          "max": 40
+        },
+        {
+          "key": "reference_raw",
+          "label": "REFERENCIA",
+          "kind": "text",
+          "width": 285,
+          "max": 160
+        },
+        {
+          "key": "process_code",
+          "label": "Proceso",
+          "kind": "choice",
+          "width": 170,
+          "options": [
+            {
+              "value": "RM",
+              "label": "Materia prima"
+            },
+            {
+              "value": "AF",
+              "label": "Activo fijo"
+            },
+            {
+              "value": "FG",
+              "label": "Producto terminado"
+            },
+            {
+              "value": "CR",
+              "label": "Cambio de régimen"
+            },
+            {
+              "value": "FA",
+              "label": "Fracción arancelaria"
+            }
+          ],
+          "max": 2
+        },
+        {
+          "key": "operation_code",
+          "label": "Operación",
+          "kind": "operation",
+          "width": 180,
+          "max": 100
+        },
+        {
+          "key": "business_unit",
+          "label": "BU",
+          "kind": "unit",
+          "width": 95
+        },
+        {
+          "key": "department_code",
+          "label": "Departamento",
+          "kind": "text",
+          "width": 135,
+          "max": 3
+        },
+        {
+          "key": "company_code",
+          "label": "MXG - MXT",
+          "kind": "choice",
+          "width": 130,
+          "options": [
+            {
+              "value": "MXG",
+              "label": "MXG"
+            },
+            {
+              "value": "MXT",
+              "label": "MXT"
+            }
+          ],
+          "max": 32,
+          "required": true
+        },
+        {
+          "key": "ship_date",
+          "label": "Fecha",
+          "kind": "date",
+          "width": 155
+        },
+        {
+          "key": "status",
+          "label": "Estado",
+          "kind": "status",
+          "width": 150,
+          "max": 100
+        },
+        {
+          "key": "comments",
+          "label": "Comentarios",
+          "kind": "text",
+          "width": 320,
+          "max": 10000
+        }
+      ]
     }
   }
 }
