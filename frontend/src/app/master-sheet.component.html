@@ -203,7 +203,7 @@
                   [attr.aria-label]="'Abrir detalle de ' + (value(row, column) || 'embarque sin referencia')"
                   [title]="'Abrir detalle y documentos de ' + row.reference_raw"
                 >
-                  <span aria-hidden="true">↗</span>
+                  <app-icon name="arrow" />
                 </button>
               } @else if (column.kind === "status") {
                 <span class="status" [attr.data-status]="value(row, column)"

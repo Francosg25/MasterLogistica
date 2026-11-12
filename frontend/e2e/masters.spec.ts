@@ -58,7 +58,7 @@ test("changing a profile preserves pending edits when leaving is cancelled", asy
 test("home navigation and expanded master preserve the sheet", async ({ page }) => {
   await mock(page);
   await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Inicio", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Centro de referencias" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Masters", exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/home.png", fullPage: true });
   await page.getByRole("button", { name: "Ver referencias", exact: true }).click();
   const normal = await page.getByRole("region", { name: "Hoja del master" }).boundingBox();

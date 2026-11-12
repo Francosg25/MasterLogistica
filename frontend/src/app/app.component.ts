@@ -1,5 +1,6 @@
 import {
   Component,
+  ElementRef,
   HostListener,
   OnInit,
   ViewChild,
@@ -8,8 +9,7 @@ import {
   signal,
 } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule } from "@angular/forms";
-import { NgTemplateOutlet } from "@angular/common";
-import { IconComponent, IconName } from "./icon.component";
+import { IconComponent } from "./icon.component";
 import { ownerLayout } from "./master-layout";
 import { ApiError, ApiService } from "./api.service";
 import { FinanceWorkspaceComponent } from "./finance-workspace.component";
@@ -39,7 +39,6 @@ import {
   standalone: true,
   imports: [
     ReactiveFormsModule,
-    NgTemplateOutlet,
     WorkspaceHomeComponent,
     CommandSearchComponent,
     IconComponent,
@@ -55,11 +54,28 @@ export class AppComponent implements OnInit {
   @ViewChild(FinanceWorkspaceComponent) finance?: FinanceWorkspaceComponent;
   section = signal<Section>("home");
   mobileNav = signal(false);
+  @ViewChild("navigationToggle") navigationToggle?: ElementRef<HTMLButtonElement>;
   commandOpen = signal(false);
-  activeLabel = computed(() => this.sections.find(item => item.id === this.section())?.label ?? "Inicio");
   @HostListener("window:keydown", ["$event"])
   keyboard(event: KeyboardEvent) {
+    if (event.key === "Escape" && this.mobileNav()) {
+      event.preventDefault();
+      this.closeNavigation();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && this.phase() === "workspace" && !this.modal() && !this.activity()) { event.preventDefault(); this.commandOpen.set(!this.commandOpen()); }
+  }
+  closeNavigation() {
+    this.mobileNav.set(false);
+    this.navigationToggle?.nativeElement.focus();
+  }
+  async openMasterFromHome(ownerId: string): Promise<void> {
+    if (this.section() !== "home" || this.saving() || !this.logisticsOwners().some(owner => owner.id === ownerId)) return;
+    this.masterSelection.controls.owner_id.setValue(ownerId);
+    this.captureTarget.set(null);
+    this.mobileNav.set(false);
+    this.section.set("masters");
+    await this.chooseMaster();
   }
   openReference(target: { id: string; reference: string }) { this.activity.set({ id: target.id, reference_raw: target.reference } as Shipment); this.commandOpen.set(false); }
   captureTarget = signal<{kind:"provision"|"invoice";reference:string;company:string}|null>(null);
@@ -71,14 +87,14 @@ export class AppComponent implements OnInit {
   }
   movementCreated() { if (this.section() === "masters") void this.refresh(); }
 
-  readonly sections: { id: Section; label: string; icon: IconName }[] = [
-    { id: "home", label: "Inicio", icon: "home" },
-    { id: "masters", label: "Referencias", icon: "grid" },
-    { id: "consolidate", label: "Consolidar", icon: "upload" },
-    { id: "provisions", label: "Provisiones", icon: "wallet" },
-    { id: "invoices", label: "Facturas", icon: "document" },
-    { id: "reports", label: "Reporte mensual", icon: "document" },
-    { id: "history", label: "Historial", icon: "history" },
+  readonly sections: { id: Section; label: string }[] = [
+    { id: "home", label: "Inicio" },
+    { id: "masters", label: "Referencias" },
+    { id: "consolidate", label: "Consolidar" },
+    { id: "provisions", label: "Provisiones" },
+    { id: "invoices", label: "Facturas" },
+    { id: "reports", label: "Reporte mensual" },
+    { id: "history", label: "Historial" },
   ];
   changeSection(section: Section) {
     if (section === this.section() || this.saving() || this.sheet?.saving())

@@ -11,7 +11,8 @@ import {
 import { ApiService } from "./api.service";
 import { IconComponent } from "./icon.component";
 import { CurrencyTotal, Section } from "./finance.types";
-import { STATUS } from "./types";
+import { Catalogs, Owner, STATUS } from "./types";
+import { ownerLayout } from "./master-layout";
 
 interface Overview {
   month: string;
@@ -38,6 +39,10 @@ interface Overview {
 })
 export class WorkspaceHomeComponent implements OnInit, OnDestroy {
   @Input() demo = false;
+  @Input() owners: Owner[] = [];
+  @Input() catalogs: Catalogs | null = null;
+  @Input() selectedOwner = "";
+  @Output() masterOpened = new EventEmitter<string>();
   @Output() navigate = new EventEmitter<Section>();
   @Output() referenceOpened = new EventEmitter<{
     id: string;
@@ -48,19 +53,32 @@ export class WorkspaceHomeComponent implements OnInit, OnDestroy {
   data = signal<Overview | null>(null);
   error = signal("");
   loading = signal(false);
+  view = signal<"masters" | "recent">("masters");
+  search = signal("");
   status = STATUS;
   today = new Date();
   month = `${this.today.getFullYear()}-${String(this.today.getMonth() + 1).padStart(2, "0")}-01`;
-  dateLabel = new Intl.DateTimeFormat("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  }).format(this.today);
   ngOnInit() {
     void this.load();
   }
   ngOnDestroy() {
     this.controller.abort();
+  }
+  visibleOwners(): Owner[] {
+    const query = this.search().trim().toLocaleLowerCase("es-MX");
+    return this.owners.filter(owner => owner.display_name.toLocaleLowerCase("es-MX").includes(query));
+  }
+  layout(owner: Owner) { return ownerLayout(this.catalogs, owner); }
+  columnPreview(owner: Owner): string {
+    const structure = this.layout(owner);
+    if (!structure) return "Columnas propias de este master";
+    const others = Object.values(this.catalogs?.master_layouts ?? {}).filter(layout => layout.code !== structure.code);
+    const distinctive = structure.fields.filter(field => others.filter(layout => layout.fields.some(other => other.key === field.key)).length <= 1);
+    return (distinctive.length ? distinctive : structure.fields.slice(7)).slice(0, 4).map(field => field.label).join(" · ");
+  }
+  recent() {
+    const query = this.search().trim().toLocaleLowerCase("es-MX");
+    return (this.data()?.recent ?? []).filter(row => `${row.reference} ${row.owner_name} ${row.business_unit}`.toLocaleLowerCase("es-MX").includes(query));
   }
   async load() {
     this.loading.set(true);
@@ -110,6 +128,13 @@ export class WorkspaceHomeComponent implements OnInit, OnDestroy {
     } finally {
       this.loading.set(false);
     }
+  }
+  monthLabel(value: string): string {
+    return new Intl.DateTimeFormat("es-MX", {
+      month: "long",
+      year: "numeric",
+      timeZone: "America/Mexico_City",
+    }).format(new Date(value + "T12:00:00Z"));
   }
   money(value: string) {
     return Number(value).toLocaleString("es-MX", {

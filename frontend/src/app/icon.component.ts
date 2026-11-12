@@ -1,6 +1,6 @@
 import { Component, input } from "@angular/core";
 
-export type IconName = "home" | "grid" | "wallet" | "document" | "history" | "arrow" | "plus" | "filter" | "expand" | "save" | "undo" | "download" | "upload" | "sign-out" | "keyboard" | "search";
+export type IconName = "home" | "grid" | "wallet" | "document" | "history" | "arrow" | "plus" | "filter" | "expand" | "save" | "undo" | "download" | "upload" | "sign-out" | "keyboard" | "search" | "menu";
 
 // Small, local SVGs keep controls sharp at every scale without loading a font.
 @Component({
@@ -28,5 +28,6 @@ export class IconComponent {
     "sign-out": "M10 4H4v16h6M10 12h11m-5-5 5 5-5 5",
     keyboard: "M3 6h18v13H3zM7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 14h.01M10 15h7",
     search: "M10.5 3a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15m5.5 13 5 5",
+    menu: "M4 8h16M4 16h16",
   };
 }

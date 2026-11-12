@@ -21,7 +21,7 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 
 ## Centro de referencias
 
-La navegación lateral conecta Referencias, Consolidar, Provisiones, Facturas y Reporte mensual. **Ctrl + K** abre la búsqueda de referencias. La ficha reúne la operación, su familia de movimientos y las finanzas. Desde ella puedes crear un movimiento numerado o iniciar una provisión/factura con la referencia capturada.
+La navegación superior conecta Referencias, Consolidar, Provisiones, Facturas y Reporte mensual. Inicio es un índice de masters por responsable: permite buscar una hoja y abrir sus registros con un clic. **Ctrl + K** abre la búsqueda de referencias. La ficha reúne la operación, su familia de movimientos y las finanzas. Desde ella puedes crear un movimiento numerado o iniciar una provisión/factura con la referencia capturada.
 
 Los cinco masters conservan sus columnas. Los analistas 6–8 disponen de una vista común de Compliance. El esquema local actual es **7**; la migración corporativa es **0011_reference_families**. Consulta [arquitectura y alcance](docs/centro-referencias.md).
 
@@ -289,7 +289,7 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. El master se carga automáticamente al seleccionar al responsable. La demostración sigue siendo de solo lectura.
 
-La presentación comparte una paleta de grises con acento azul, navegación con iconos SVG locales, controles uniformes y estados con texto y color. Inicio, masters, provisiones, facturas, historial y formularios usan la misma jerarquía visual. Los colores, superficies y bordes se centralizan en `frontend/src/styles.css`; los iconos están en `icon.component.ts`. Se respetan las preferencias de movimiento reducido y contraste alto. El acceso por teclado incluye **Ir al contenido**.
+La presentación para México utiliza una mesa de trabajo blanca y navegación horizontal. Inicio muestra un índice de archivos con las columnas propias de cada master; los saldos y pendientes ocupan un pie de consulta. Las tablas aprovechan el ancho completo. El gris alabastro distingue controles y superficies secundarias, y el azul identifica acciones y enlaces. La identidad visual se centraliza en `frontend/src/design-system.css`, que se carga después de los estilos de estructura; los iconos SVG locales están en `icon.component.ts`. Se respetan las preferencias de movimiento reducido, contraste alto y transparencia reducida. El acceso por teclado incluye **Ir al contenido**. Consulta el [sistema visual y sus capturas](docs/diseno-corporativo-mx.md).
 
 El master mantiene las filas como área principal incluso en ventanas de 1280 × 600. La barra superior conserva selección de responsable, filtros plegables y edición de celdas. Las fuentes son las del sistema y los iconos se incluyen en la aplicación.
 

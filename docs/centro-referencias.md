@@ -4,7 +4,7 @@ El espacio de trabajo organiza la operación por referencia y responsable. El do
 
 ## Recorrido de trabajo
 
-- **Inicio:** información real del alcance autorizado: referencias activas, provisiones vivas, facturas del mes, saldos separados por moneda y referencias recientes. La demostración identifica sus datos como ficticios.
+- **Inicio:** índice de masters autorizados con búsqueda por responsable y apertura directa de la hoja. Cada entrada muestra el número de columnas y una muestra de sus campos cuando el catálogo contiene su estructura. La vista Referencias recientes permite consultar la actividad; los saldos por moneda y los pendientes están en el pie del archivo. La demostración identifica sus datos como ficticios.
 - **Referencias:** selección de master de Logística o Compliance y edición directa de celdas. La selección anterior se recuerda por usuario, siempre que siga autorizada. Los registros mantienen la mayor parte del espacio.
 - **Consolidar:** acceso directo al archivo de facturación, detección de meses y referencias, revisión de excepciones y una acción para confirmar las listas. Se mantienen los controles de duplicidad y la evidencia original.
 - **Provisiones:** alta con aprobación automática y saldos vivos, parcialmente aplicados o liquidados. Los pendientes continúan en meses siguientes.
