@@ -25,6 +25,8 @@ LOCAL_MASTERS = (
     (UUID("f0000000-0000-0000-0000-000000000013"), "NAT", 5),
     (UUID("f0000000-0000-0000-0000-000000000014"), "ANDREA", 4),
     (UUID("f0000000-0000-0000-0000-000000000015"), "ALEXA", 2),
+)
+RETIRED_LOCAL_MASTERS = (
     (UUID("f0000000-0000-0000-0000-000000000016"), "Compliance 6", 6),
     (UUID("f0000000-0000-0000-0000-000000000017"), "Compliance 7", 7),
     (UUID("f0000000-0000-0000-0000-000000000018"), "Compliance 8", 8),
@@ -303,6 +305,17 @@ def initialize_local(engine, session_factory):
                 )
                 session.flush()
                 session.add(ReferenceCounter(owner_id=owner_id, last_value=0))
+        for owner_id, name, code in RETIRED_LOCAL_MASTERS:
+            retired = session.get(User, owner_id)
+            if (
+                retired is not None
+                and retired.entra_tenant_id == LOCAL_TENANT
+                and retired.display_name == name
+                and retired.analyst_code == code
+                and retired.is_active
+            ):
+                # Keep IDs and historical ownership/audit links; retire only the old local presets.
+                retired.is_active = False
         # Catalog example only; never seed operational shipments, provisions or invoices.
         if session.scalar(select(Supplier.id).where(Supplier.id == LOCAL_SUPPLIER)) is None:
             session.add(

@@ -613,9 +613,6 @@ def test_responsible_masters_manual_company_and_exact_provision_date(tmp_path):
             "DENI",
             "ANDREA",
             "NAT",
-            "Compliance 6",
-            "Compliance 7",
-            "Compliance 8",
         ]
         assert list(client.get("/api/v1/references/catalogs").json()["business_units"]) == [
             "M00",
@@ -837,7 +834,7 @@ def test_local_version_two_upgrade_preserves_financial_records(local_version_two
     with local_client(create_app(settings)) as client:
         stored = client.get(path).json()
         assert (stored["operation_code"], stored["status"], stored["carrier_broker_name"]) == (
-            "LAND IMPO",
+            "LI",
             "En despacho",
             "Transportista manual",
         )

@@ -27,7 +27,7 @@ export const demoCatalogs: Catalogs = {
   ],
   department_codes: ["MAT", "PRJ", "FIX", "MAI"],
   business_units: BUSINESS_UNITS,
-  company_codes: ["DEMO"],
+  company_codes: ["MXG", "MXT"],
   business_units_configured: true,
 };
 export const demoShipments: Shipment[] = [

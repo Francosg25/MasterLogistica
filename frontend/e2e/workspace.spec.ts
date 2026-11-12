@@ -6,14 +6,15 @@ import { resolve } from "node:path";
 const layouts = JSON.parse(readFileSync(resolve(__dirname, "../public/master-layouts.json"), "utf8")).layouts;
 const row={...masterDemoShipments[0],reference_raw:"RM3-1616SI26-M23-MAT",parent_shipment_id:null,movement_number:null};
 const owner=demoOwners.find(o=>o.analyst_code===3)!;
-async function setup(page:Page) {
+async function setup(page:Page, historicalCatalog = false) {
  await page.route("**/api/v1/**",async route=>{
   const path=new URL(route.request().url()).pathname.replace("/api/v1","");
   const json=(data:unknown,status=200)=>route.fulfill({json:data,status});
   if(path==="/auth/me") return json({id:owner.id,role:"SUPER_ADMIN",display_name:"Usuario de pruebas",email:"demo@example.com",analyst_code:3});
-  if(path==="/references/catalogs") return json({...demoCatalogs, master_layouts: layouts});
+  if(path==="/references/catalogs") return json({...demoCatalogs, master_layouts: layouts, ...(historicalCatalog ? {company_codes:["LOCAL","MXG","O"], operation_codes:[...demoCatalogs.operation_codes,"AIR IMPO","FDSG","SEA IMPO"]} : {})});
   if(path==="/suppliers") return json({items:[],total:0});
-  if(path==="/masters/owners"||path==="/finance/owners") return json(demoOwners);
+  if(path==="/masters/owners") return json(historicalCatalog ? [...demoOwners,...[6,7,8].map(code=>({id:"retired-"+code,display_name:"Compliance "+code,analyst_code:code,layout_code:"COMPLIANCE"}))] : demoOwners);
+  if(path==="/finance/owners") return json(demoOwners);
   if(path==="/workspace/overview") return json({month:"2026-10-01",active_references:24,live_provisions:3,settled_provisions:1,invoices_in_month:2,pending_invoices:0,totals:demoReport.totals,recent:[{id:row.id,reference:row.reference_raw,owner_name:"DENI",business_unit:"M23",status:"IN_TRANSIT"}]});
   if(path==="/masters/shipments") return json({items:[row],total:1,limit:50,offset:0});
   if(path==="/masters/summary") return json({total:1,by_status:{IN_TRANSIT:1}});
@@ -105,4 +106,22 @@ test("mobile navigation opens and returns focus to a usable page without overflo
  await page.keyboard.press("Escape");
  await expect(page.getByRole("navigation",{name:"Secciones"})).toBeHidden();
  await expect(page.getByRole("button",{name:"Abrir navegación",exact:true})).toBeFocused();
+});
+
+
+test("historic companies, operation aliases and retired masters stay out of capture lists",async({page})=>{
+ await setup(page,true);
+ await expect(page.getByRole("list",{name:"Masters disponibles"}).getByRole("button")).toHaveCount(5);
+ await expect(page.getByRole("list",{name:"Masters disponibles"})).not.toContainText("Compliance");
+ await navigate(page,"Provisiones");
+ const operation=page.getByRole("combobox",{name:"Operación",exact:true});
+ await expect(operation.locator("option")).toHaveCount(15);
+ const values=await operation.locator("option").evaluateAll(options=>options.map(option=>(option as HTMLOptionElement).value));
+ for(const legacy of ["AIR IMPO","SEA IMPO","FDSG"]) expect(values).not.toContain(legacy);
+ await navigate(page,"Facturas");
+ await page.getByRole("button",{name:"Agregar factura",exact:true}).click();
+ const company=page.getByRole("combobox",{name:"Empresa de factura",exact:true});
+ await expect(company.locator("option")).toHaveText(["MXG","MXT"]);
+ await company.selectOption("MXT");
+ await expect(company).toHaveValue("MXT");
 });

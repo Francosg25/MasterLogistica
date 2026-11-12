@@ -41,7 +41,7 @@ test("simple consolidation uses source months and keeps failed or changed previe
   await page.getByRole("button", { name: "Actualizar revisión" }).click();
   await expect(save).toBeEnabled();
   await page.getByText("Ajustar proveedor o empresa", { exact: true }).click();
-  await page.getByLabel("Empresa para DEMO", { exact: true }).first().selectOption("DEMO");
+  await page.getByLabel("Empresa para DEMO", { exact: true }).first().selectOption("MXG");
   await expect(save).toBeEnabled();
   await page.getByRole("button", { name: "Por revisar 1", exact: true }).click();
   await expect(page.getByText("Importe cero: revisar reparto")).toBeVisible();
@@ -51,7 +51,7 @@ test("simple consolidation uses source months and keeps failed or changed previe
   expect(submitted.fx.mxn_per_usd).toBe("20");
   expect(submitted.use_source_period).toBe(true);
   expect(submitted.create_suppliers).toBe(true);
-  expect(submitted.company_map).toEqual({ DEMO: "DEMO" });
+  expect(submitted.company_map).toEqual({ DEMO: "MXG" });
   await expect(page.getByRole("button", { name: "Consolidar 0 facturas" })).toBeDisabled();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
@@ -124,7 +124,7 @@ async function setup(page: Page, role = "FINANCE") {
         {
           id: "shipment-1",
           reference: demoReport.balances[0].reference,
-          company_code: "DEMO",
+          company_code: "MXG",
         },
       ]);
     if (path === "/finance/balances")
@@ -418,8 +418,8 @@ test("invoice references are visible and each line saves its selected concept", 
   const writes = await setup(page);
   const longReference = "RM1-REFERENCIA-COMPLETA-" + "IMPORTACION-TERRESTRE-".repeat(4) + "M01-MAT";
   const references = [
-    { id: "ref-long", reference: longReference, company_code: "DEMO", owner_name: "DENI", business_unit: "M01" },
-    { id: "ref-second", reference: "RM2-SEGUNDA-REFERENCIA-M19-MAT", company_code: "DEMO", owner_name: "MAG", business_unit: "M19" },
+    { id: "ref-long", reference: longReference, company_code: "MXG", owner_name: "DENI", business_unit: "M01" },
+    { id: "ref-second", reference: "RM2-SEGUNDA-REFERENCIA-M19-MAT", company_code: "MXG", owner_name: "MAG", business_unit: "M19" },
   ];
   const queries: string[] = [];
   await page.route("**/api/v1/finance/references?**", route => {
@@ -463,7 +463,7 @@ test("invoice references are visible and each line saves its selected concept", 
     [longReference, "OTHER", "125.1234"], [references[1].reference, "BROKER", "200"],
   ]);
   expect(queries.length).toBeGreaterThanOrEqual(2);
-  expect(queries.every(company => company === "DEMO")).toBeTruthy();
+  expect(queries.every(company => company === "MXG")).toBeTruthy();
 });
 
 test("reference searches keep the latest result and closing a line cancels its suggestions", async ({ page }) => {
@@ -474,7 +474,7 @@ test("reference searches keep the latest result and closing a line cancels its s
   await page.route("**/api/v1/finance/references?**", async route => {
     const q = new URL(route.request().url()).searchParams.get("q");
     if (q === "LENTA") { slowStarted = true; await slow; }
-    await route.fulfill({ json: [{ id: q || "initial", reference: q === "LENTA" ? "REF-ANTERIOR" : "REF-ACTUAL", company_code: "DEMO" }] }).catch(() => {});
+    await route.fulfill({ json: [{ id: q || "initial", reference: q === "LENTA" ? "REF-ANTERIOR" : "REF-ACTUAL", company_code: "MXG" }] }).catch(() => {});
   });
   await section(page, "Facturas");
   await page.getByRole("button", { name: "Agregar factura", exact: true }).click();

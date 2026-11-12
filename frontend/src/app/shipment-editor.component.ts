@@ -12,7 +12,7 @@ import { FormBuilder, FormControl, FormRecord, ReactiveFormsModule, Validators }
 import { masterOptions, masterValue } from "./master-layout";
 import {
   Catalogs,
-  EXCEL_OPERATION_LABELS,
+  COMPANY_CODES,
   masterOperationValue,
   masterStatusValue,
   supplierValues,
@@ -53,7 +53,6 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   reload = output<void>();
   addIdentifier = output<{ kind: string; raw_value: string }>();
   status = STATUS;
-  excelOperations = EXCEL_OPERATION_LABELS;
   operations = OPERATIONS;
   processes = PROCESSES;
   departments = DEPARTMENTS;
@@ -163,12 +162,12 @@ export class ShipmentEditorComponent implements AfterViewInit, OnInit {
   }
   fieldOptions(field: MasterField): { value: string; label: string }[] {
     const options = masterOptions(field, this.unitCodes());
+    if (field.kind === "operation" || field.key === "company_code") return options;
     const value = this.fieldControl(field).value;
     return value && !options.some(option => option.value === value) ? [{ value, label: `${value} (actual)` }, ...options] : options;
   }
   get companyOptions(): string[] {
-    const value = this.form.controls.company_code.value;
-    return value && !["MXG", "MXT"].includes(value) ? [value, "MXG", "MXT"] : ["MXG", "MXT"];
+    return [...COMPANY_CODES];
   }
   get operationOptions(): { value: string; label: string }[] {
     return this.fieldOptions({ key: "operation_code", label: "Tipo de operación", kind: "operation", width: 210 });

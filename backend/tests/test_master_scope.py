@@ -107,8 +107,18 @@ def test_master_rejects_empty_or_oversized_operation_filters(scoped_client, oper
     assert db.queries == []
 
 
-@pytest.mark.parametrize("operation", ["LAND IMPO", "SEA EXPO", "SI,AI", "Operación manual"])
-def test_master_filters_manual_operations_literally(scoped_client, operation):
+@pytest.mark.parametrize(
+    "operation,expected",
+    [
+        ("LAND IMPO", "LI"),
+        ("SEA EXPO", "SE"),
+        ("SI,AI", "SI,AI"),
+        ("Operación manual", "Operación manual"),
+    ],
+)
+def test_master_filters_normalize_known_labels_and_preserve_unknown_text(
+    scoped_client, operation, expected
+):
     client, actor, db = scoped_client
     assert (
         client.get(
@@ -119,7 +129,7 @@ def test_master_filters_manual_operations_literally(scoped_client, operation):
     )
     assert db.queries
     for query in db.queries:
-        assert operation in query.compile().params.values()
+        assert expected in query.compile().params.values()
 
 
 @pytest.mark.parametrize("role", ["FINANCE", "MANAGER"])

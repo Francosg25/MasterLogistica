@@ -227,7 +227,6 @@
   @for (code of businessUnits(); track code) { <option [value]="code"></option> }
 </datalist>
 <datalist id="master-operation-options">
-  @for (label of excelOperations; track label) { <option [value]="label"></option> }
   @for (code of operationCodes; track code) { <option [value]="code">{{ operations[code] }}</option> }
 </datalist>
 <datalist id="master-supplier-options">

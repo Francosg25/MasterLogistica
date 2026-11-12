@@ -11,7 +11,7 @@ import {
   signal,
 } from "@angular/core";
 import { ApiError, ApiService } from "./api.service";
-import { Shipment, STATUS, Supplier, OPERATIONS, EXCEL_OPERATION_LABELS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
+import { Shipment, STATUS, Supplier, OPERATIONS, masterOperationValue, masterStatusValue, supplierValues } from "./types";
 import { MasterPracticeService } from "./master-practice.service";
 import { IconComponent } from "./icon.component";
 import { masterOptions, masterValue, shipmentValues } from "./master-layout";
@@ -79,7 +79,6 @@ export class MasterSheetComponent implements OnDestroy {
   ngOnDestroy(): void { cancelAnimationFrame(this.focusFrame); }
   readonly status = STATUS;
   get statusCodes(): string[] { return [...new Set([...Object.keys(STATUS), ...this.rows().map(row => row.status).filter(Boolean)])]; }
-  readonly excelOperations = EXCEL_OPERATION_LABELS;
   readonly operations = OPERATIONS;
   readonly operationCodes = Object.keys(OPERATIONS);
   private supplierNames = computed(() => new Map(this.suppliers().map(s => [s.id, s.legal_name])));
@@ -175,7 +174,7 @@ export class MasterSheetComponent implements OnDestroy {
   display(row: Shipment, column: Column): string {
     const value = this.value(row, column);
     if (column.kind === "status") return STATUS[value] ?? value;
-    if (column.key === "operation_code") return OPERATIONS[value] ?? value;
+    if (column.key === "operation_code") return OPERATIONS[masterOperationValue(value)] ?? value;
     if (column.kind === "supplier")
       return this.supplierNames().get(value) ?? value;
     if (column.kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(value))
@@ -282,6 +281,7 @@ export class MasterSheetComponent implements OnDestroy {
     return masterOptions(column, this.businessUnits());
   }
   currentOption(column: Column): string | null {
+    if (column.kind === "operation" || column.key === "company_code") return null;
     return this.editValue && !this.columnOptions(column).some(option => option.value === this.editValue) ? this.editValue : null;
   }
   private normalize(raw: string, column: Column): string | null {

@@ -358,7 +358,6 @@
 </dialog>
 
 <datalist id="shipment-operation-options">
-  @for (label of excelOperations; track label) { <option [value]="label"></option> }
   @for (code of catalogs().operation_codes; track code) { <option [value]="code">{{ operations[code] || code }}</option> }
 </datalist>
 <datalist id="shipment-status-options">

@@ -64,7 +64,7 @@ test("local responsible masters keep mixed operations separate and save exact pr
   const navigation = page.getByRole("navigation", { name: "Secciones" });
   await navigation.getByRole("button", { name: "Referencias", exact: true }).click();
   const owner = page.getByLabel("Responsable del master", { exact: true });
-  await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "MAG", "ALEXA", "DENI", "ANDREA", "NAT", "Compliance 6", "Compliance 7", "Compliance 8"]);
+  await expect(owner.locator("option")).toHaveText(["Selecciona un responsable", "MAG", "ALEXA", "DENI", "ANDREA", "NAT"]);
   await owner.selectOption({ label: "MAG" });
   let reference = "";
   for (const operation of ["AI", "SI"]) {

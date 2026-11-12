@@ -8,6 +8,7 @@ import os
 import secrets
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -454,6 +455,124 @@ class Native:
                     )
                 self.stop.wait(0.5)
 
+    def stop_session(self):
+        result = control_request(self.state, "stop")
+        if result:
+            deadline = time.monotonic() + 15
+            while control_request(self.state, "status"):
+                if time.monotonic() >= deadline:
+                    raise LocalError(
+                        "La sesion no termino dentro de la espera. Revisa sus logs."
+                    )
+                time.sleep(0.25)
+        return result
+
+    def reset_database_path(self, args):
+        values = {}
+        env_file = self.root / ".env.native"
+        if env_file.exists():
+            python = (
+                Path(args.python)
+                if args.python
+                else self.root
+                / ".venv"
+                / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            )
+            if not python.is_file():
+                raise LocalError(
+                    "No se pudo leer .env.native. Usa --python con el Python de tu instalacion."
+                )
+            _, raw = self.core.run(
+                [
+                    str(python),
+                    "-c",
+                    (
+                        "import json,sys; from dotenv import dotenv_values; "
+                        "print(json.dumps(dotenv_values(sys.argv[1], interpolate=False)))"
+                    ),
+                    str(env_file),
+                ]
+            )
+            values = {
+                key.upper(): value
+                for key, value in json.loads(raw).items()
+                if value not in (None, "")
+            }
+        if (
+            values.get("APP_ENV", "development") != "development"
+            or values.get("AUTH_MODE", "development") != "development"
+            or values.get("MIGRATION_DATABASE_URL")
+        ):
+            raise LocalError(
+                "La limpieza solo admite la base SQLite de desarrollo local."
+            )
+        database = values.get("DATABASE_URL", "")
+        if not database:
+            return self.root / ".data/masterlogistica.db"
+        prefix = "sqlite+pysqlite:///"
+        if not database.startswith(prefix):
+            raise LocalError(
+                "La limpieza solo admite la base SQLite de desarrollo local."
+            )
+        path = Path(database[len(prefix) :])
+        if not path.is_absolute() or "?" in str(path) or "#" in str(path):
+            raise LocalError(
+                "DATABASE_URL debe indicar un archivo SQLite con ruta absoluta."
+            )
+        return path
+
+    def reset(self, args):
+        path = self.reset_database_path(args)
+        self.stop_session()
+        with checkout_lock(self.core.data / "native-start.lock"):
+            if port_busy(8000):
+                raise LocalError(
+                    "El puerto 8000 sigue ocupado. Cierra la API en su terminal antes de borrar los datos."
+                )
+            if path.is_symlink():
+                raise LocalError(
+                    "La base configurada es un enlace; indica el archivo SQLite directamente."
+                )
+            if path.exists():
+                try:
+                    connection = sqlite3.connect(
+                        path.as_uri() + "?mode=rw", uri=True, timeout=1
+                    )
+                    try:
+                        connection.execute("BEGIN EXCLUSIVE")
+                        tables = {
+                            row[0]
+                            for row in connection.execute(
+                                "SELECT name FROM sqlite_master WHERE type='table'"
+                            )
+                        }
+                        required = {
+                            "local_schema_version",
+                            "users",
+                            "shipments",
+                            "invoices",
+                            "provisions",
+                        }
+                        if not required.issubset(tables):
+                            raise LocalError(
+                                "El archivo no es una base de MasterLogistica; se conservo."
+                            )
+                        connection.rollback()
+                    finally:
+                        connection.close()
+                except sqlite3.Error:
+                    raise LocalError(
+                        "No se pudo abrir la base en exclusiva. Cierra la API y vuelve a intentarlo."
+                    ) from None
+                path.unlink()
+            for suffix in ("-wal", "-shm", "-journal"):
+                Path(str(path) + suffix).unlink(missing_ok=True)
+        self.core.say(
+            "Datos locales borrados: registros, referencias, provisiones, facturas, "
+            "conciliaciones, documentos e historial. Los consecutivos empezaran de nuevo."
+        )
+        self.core.say("Ejecuta INICIAR_LOCAL.cmd para abrir los cinco masters vacios.")
+
     def cleanup(self):
         self.stop.set()
         for _, process in reversed(self.children):
@@ -487,7 +606,7 @@ class Native:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("start", "stop", "status", "logs"))
+    parser.add_argument("action", choices=("start", "stop", "status", "logs", "reset"))
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--demo", action="store_true")
     install = parser.add_mutually_exclusive_group()
@@ -503,19 +622,14 @@ def main(argv=None):
     try:
         if args.action == "start":
             native.start(args)
+        elif args.action == "reset":
+            native.reset(args)
         elif args.action in {"status", "stop"}:
-            result = control_request(native.state, args.action)
-            if args.action == "stop" and result:
-                deadline = time.monotonic() + 15
-                while (
-                    control_request(native.state, "status")
-                    and time.monotonic() < deadline
-                ):
-                    time.sleep(0.25)
-                if control_request(native.state, "status"):
-                    raise LocalError(
-                        "La sesion no termino dentro de la espera. Revisa sus logs."
-                    )
+            result = (
+                native.stop_session()
+                if args.action == "stop"
+                else control_request(native.state, "status")
+            )
             native.core.say(
                 json.dumps(result)
                 if result

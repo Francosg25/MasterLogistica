@@ -11,7 +11,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
-from app.catalogs import BUSINESS_UNIT_CODES, BUSINESS_UNITS
+from app.catalogs import BUSINESS_UNIT_CODES, BUSINESS_UNITS, COMPANY_CODES
 
 
 def local_database_url():
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     entra_required_scope: str = "access_as_user"
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:4200"])
     allowed_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
-    company_codes: list[str] = Field(default_factory=lambda: ["JE_MX"])
+    company_codes: list[str] = Field(default_factory=lambda: list(COMPANY_CODES))
     business_units: dict[str, str] = Field(default_factory=lambda: dict(BUSINESS_UNITS))
     enforce_https: bool = False
     trusted_proxy_ips: list[str] = Field(default_factory=list)
@@ -144,8 +144,6 @@ class Settings(BaseSettings):
                 raise ValueError("Local development origins must use HTTP on loopback")
             if "allowed_origins" not in self.model_fields_set:
                 self.allowed_origins = ["http://127.0.0.1:4200", "http://localhost:4200"]
-            if "company_codes" not in self.model_fields_set:
-                self.company_codes = ["LOCAL"]
         elif url.drivername != "postgresql+psycopg":
             raise ValueError("Corporate identity requires PostgreSQL; SQLite is development only")
         if self.app_env == "production":

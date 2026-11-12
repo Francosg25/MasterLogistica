@@ -51,6 +51,23 @@ def reference_operation(value: str) -> str:
     return EXCEL_OPERATIONS.get(cleaned, cleaned)
 
 
+def canonical_operation(value):
+    """Normalize known master labels while keeping unknown historical text readable."""
+    if not isinstance(value, str):
+        return value
+    code = reference_operation(value)
+    return code if code in OPERATIONS else value
+
+
+def operation_matches(column, value):
+    code = reference_operation(value)
+    aliases = [label for label, operation in EXCEL_OPERATIONS.items() if operation == code]
+    if not aliases:
+        return column == (code if code in OPERATIONS else value)
+    compact = func.upper(func.replace(func.replace(func.trim(column), " ", ""), "\t", ""))
+    return or_(column == code, compact.in_([code, *aliases]))
+
+
 def operation_classification(value):
     return OPERATIONS.get(reference_operation(value or ""), (None, "FREIGHT", "N"))
 

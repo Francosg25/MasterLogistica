@@ -1,11 +1,11 @@
 # Centro de referencias
 
-El espacio de trabajo organiza la operación por referencia y responsable. El documento de nomenclatura, versión 01 del 8 de octubre de 2026, define sus procesos, códigos, BU y movimientos derivados. Los cinco masters de Logística conservan sus columnas de origen. Compliance utiliza una vista común de operación; no se inventan columnas de un Excel no suministrado.
+El espacio de trabajo organiza la operación por referencia y responsable. El documento de nomenclatura, versión 01 del 8 de octubre de 2026, define sus procesos, códigos, BU y movimientos derivados. Los cinco masters de Logística conservan sus columnas de origen. La selección de masters contiene únicamente los cinco responsables.
 
 ## Recorrido de trabajo
 
 - **Inicio:** índice de masters autorizados con búsqueda por responsable y apertura directa de la hoja. Cada entrada muestra el número de columnas y una muestra de sus campos cuando el catálogo contiene su estructura. La vista Referencias recientes permite consultar la actividad; los saldos por moneda y los pendientes están en el pie del archivo. La demostración identifica sus datos como ficticios.
-- **Referencias:** selección de master de Logística o Compliance y edición directa de celdas. La selección anterior se recuerda por usuario, siempre que siga autorizada. Los registros mantienen la mayor parte del espacio.
+- **Referencias:** selección de uno de los cinco masters y edición directa de celdas. La selección anterior se recuerda por usuario, siempre que siga autorizada. Los registros mantienen la mayor parte del espacio.
 - **Consolidar:** acceso directo al archivo de facturación, detección de meses y referencias, revisión de excepciones y una acción para confirmar las listas. Se mantienen los controles de duplicidad y la evidencia original.
 - **Provisiones:** alta con aprobación automática y saldos vivos, parcialmente aplicados o liquidados. Los pendientes continúan en meses siguientes.
 - **Facturas:** importes registrados, aplicados y pendientes; cada referencia se ve directamente en la tabla.
@@ -28,14 +28,18 @@ El número base identifica al dueño original según la nomenclatura. Administra
 
 BU: M00 (varias BU), M01 (BM), M19 (PC), M20 (BC), M23 (ETM), M45 (IPG), M46 (AS), M65 (IPG).
 
-Procesos: RM, AF, FG, CR, FA. Operaciones: AE, AI, SE, SI, LI, LE, PI, PE, VI, VE, A3, F4, F5, R1. Los analistas 1–5 conservan sus masters; 6–8 utilizan la vista común de Compliance. El código 9 continúa sin preset. Los registros históricos y el departamento sin asignar siguen admitidos.
+Procesos: RM, AF, FG, CR, FA. Operaciones: AE, AI, SE, SI, LI, LE, PI, PE, VI, VE, A3, F4, F5, R1. Los analistas 1–5 conservan sus masters. Los presets Compliance 6, 7 y 8 se retiran de las listas; sus registros históricos mantienen sus identificadores y vínculos. Los registros históricos y el departamento sin asignar siguen admitidos.
 
 ## Datos y actualización
 
-SQLite local: esquema 7, con ampliación aditiva del esquema 6. PostgreSQL: migración `0011_reference_families` posterior a `0010_automatic_sec`. Se agregan vínculos y restricciones; no se borran ni se renumeran referencias ni movimientos financieros. Las cuentas adicionales de Compliance se crean exclusivamente en la base de desarrollo local; no se crean cuentas corporativas ni se conceden permisos de Entra.
+SQLite local: esquema 7, con ampliación aditiva del esquema 6. PostgreSQL: migración `0011_reference_families` posterior a `0010_automatic_sec`. Se agregan vínculos y restricciones; no se borran ni se renumeran referencias ni movimientos financieros. La base local ya no crea los presets Compliance 6–8 y desactiva sus identidades de ejemplo anteriores sin eliminar operaciones ni auditoría.
 
 ## Alcance de la automatización
 
 Se automatizan el consecutivo, la numeración de movimientos, la búsqueda de referencias y alias, la identificación de meses, la detección de duplicados, la aplicación a provisiones compatibles, el arrastre y los cálculos del reporte. Las excepciones que no tienen información suficiente permanecen visibles para revisión; el sistema no inventa referencias, repartos ni tipos de cambio.
 
 La lectura directa de facturas PDF/XML y la carga masiva de los cinco masters históricos requieren sus flujos específicos. Esta versión conserva la importación del consolidado XLSX y la edición/captura de masters. No anuncia ejecución desatendida de procesos que aún no están implementados.
+
+## Catálogos de selección
+
+Empresa muestra únicamente MXG y MXT. Las empresas históricas LOCAL, O u otros textos no se asignan automáticamente a otra entidad. Las operaciones muestran únicamente los 14 códigos oficiales. Los filtros reconocen las equivalencias de etiquetas Excel, por ejemplo AIR IMPO como AI y SEA IMPO como SI, aunque el dato anterior todavía esté guardado con su etiqueta original.

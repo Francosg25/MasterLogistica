@@ -197,7 +197,7 @@ def test_version_six_upgrade_is_additive_and_keeps_existing_ids(tmp_path):
             "M65",
         }
         owners = client.get("/api/v1/masters/owners").json()
-        assert [o["analyst_code"] for o in owners] == list(range(1, 9))
+        assert [o["analyst_code"] for o in owners] == list(range(1, 6))
         assert all(o["layout_code"] == "COMPLIANCE" for o in owners if o["analyst_code"] > 5)
 
 

@@ -9,6 +9,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.analysts import MASTER_ANALYST_CODES
 from app.auth import (
     admin_user,
     can_edit_masters,
@@ -17,6 +18,7 @@ from app.auth import (
     master_writer,
     operational_user,
 )
+from app.catalogs import COMPANY_CODES
 from app.db import get_session
 from app.master_layouts import LAYOUTS, layout_code, merge_master_data
 from app.models import (
@@ -39,6 +41,7 @@ from app.references import (
     normalize_identifier,
     normalize_reference,
     operation_classification,
+    operation_matches,
     parse_reference,
     reserve_manual_sequence,
 )
@@ -205,18 +208,14 @@ def reference_catalogs(request: Request, user: Actor, session: DB):
     return {
         "version": VERSION,
         "process_codes": sorted(PROCESSES),
-        "operation_codes": sorted(
-            set(OPERATIONS) | {r.operation_code for r in catalog_rows if r.operation_code}
-        ),
+        "operation_codes": sorted(OPERATIONS),
         "shipment_statuses": sorted({r.status for r in catalog_rows if r.status}),
         "master_layouts": LAYOUTS,
         "department_codes": sorted(DEPARTMENTS),
         "business_units": request.app.state.settings.business_units,
         "business_units_configured": bool(request.app.state.settings.business_units),
         "sequence_digits": 4,
-        "company_codes": sorted(
-            set(request.app.state.settings.company_codes) | {r.company_code for r in catalog_rows}
-        ),
+        "company_codes": list(COMPANY_CODES),
         "master_access": {
             "can_edit": can_edit,
             "can_create": can_edit
@@ -357,7 +356,6 @@ def filtered_shipments(
         raise HTTPException(422, "Start date must not be after end date")
     statement = owned(select(Shipment), user)
     for column, value in (
-        (Shipment.operation_code, operation_code),
         (Shipment.status, status),
         (Shipment.business_unit, business_unit),
         (Shipment.company_code, company_code),
@@ -365,6 +363,8 @@ def filtered_shipments(
     ):
         if value is not None:
             statement = statement.where(column == value)
+    if operation_code is not None:
+        statement = statement.where(operation_matches(Shipment.operation_code, operation_code))
     if q and q.strip():
         value = q.strip()
         identifiers = select(ShipmentIdentifier.shipment_id).where(
@@ -391,7 +391,9 @@ def filtered_shipments(
 
 @router.get("/masters/owners", tags=["Masters"])
 def master_owners(session: DB, user: Actor):
-    statement = select(User).order_by(User.analyst_code, User.display_name, User.id)
+    statement = select(User).where(
+        User.analyst_code.in_(MASTER_ANALYST_CODES.values()), User.is_active.is_(True)
+    ).order_by(User.analyst_code, User.display_name, User.id)
     if not consolidated(user):
         statement = statement.where(User.id == user.id)
     else:
@@ -446,7 +448,8 @@ def master_statement(
     if owner_id:
         statement = statement.where(Shipment.owner_id == owner_id)
     return (
-        statement.where(Shipment.operation_code == operation_code) if operation_code else statement
+        statement.where(operation_matches(Shipment.operation_code, operation_code))
+        if operation_code else statement
     )
 
 

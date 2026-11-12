@@ -13,7 +13,7 @@ def assert_manual_master_capture(e):
         status="On Water-Loaded",
         carrier_broker_name="Transportista manual de prueba",
     )
-    assert row["operation_code"] == "SEA IMPO"
+    assert row["operation_code"] == "SI"
     assert row["status"] == "On Water-Loaded"
     assert "SI26" in row["reference_raw"]
     assert row["transport_mode"] == "SEA" and row["direction"] == "I"
@@ -36,7 +36,7 @@ def assert_manual_master_capture(e):
     assert updated["carrier_broker_id"] is updated["shipping_line_id"] is None
     assert e["client"].get(path, headers=e["headers"]("one")).json() == updated
     catalog = e["client"].get("/api/v1/references/catalogs", headers=e["headers"]("one")).json()
-    assert changes["operation_code"] in catalog["operation_codes"]
+    assert changes["operation_code"] not in catalog["operation_codes"]
     assert changes["status"] in catalog["shipment_statuses"]
     rows = (
         e["client"]

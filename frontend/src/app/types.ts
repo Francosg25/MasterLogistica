@@ -132,6 +132,10 @@ export const OPERATIONS: Record<string, string> = Object.assign(Object.create(nu
   F5: "Cambio de régimen · Maquinaria",
   R1: "Rectificación de pedimento",
 });
+export const COMPANY_CODES = ["MXG", "MXT"] as const;
+export function canonicalCatalogs(catalogs: Catalogs): Catalogs {
+  return { ...catalogs, company_codes: [...COMPANY_CODES], operation_codes: Object.keys(OPERATIONS) };
+}
 export const PROCESSES: Record<string, string> = {
   RM: "Materia prima",
   AF: "Activo fijo",
@@ -152,7 +156,6 @@ export const DEPARTMENTS: Record<string, string> = {
 };
 
 // Preserve historical labels on read; new capture uses the operation catalog.
-export const EXCEL_OPERATION_LABELS = ["LAND IMPO", "LAND EXPO", "AIR IMPO", "AIR EXPO", "SEA IMPO", "SEA EXPO"];
 export function masterOperationValue(value: string): string {
   const text = value.trim();
   const excelCodes: Record<string, string> = { LANDIMPO: "LI", LANDEXPO: "LE", AIRIMPO: "AI", AIREXPO: "AE", SEAIMPO: "SI", SEAEXPO: "SE" };

@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.analysts import MASTER_ANALYST_CODES
 from app.api import DB, Actor, Limit, Offset, open_period, supplier_valid, version_matches
 from app.auth import current_user
 from app.finance_schemas import CancelInvoice, InvoiceCreate, ReconcileCommand, VersionCommand
@@ -42,7 +43,12 @@ from app.models import (
 from app.models import (
     ReconciliationAllocation as Allocation,
 )
-from app.references import normalize_identifier, normalize_reference
+from app.references import (
+    canonical_operation,
+    normalize_identifier,
+    normalize_reference,
+    operation_matches,
+)
 from app.schemas import ProvisionCreate, ProvisionRead
 from app.settlement_fx import FX_RULE, allocation_fx, invoice_fx, settlement_amounts
 
@@ -411,7 +417,7 @@ def match_invoice(session, row, period, user, request):
 @router.get("/owners")
 def owners(session: DB, user: Actor):
     statement = select(User).where(
-        or_(User.analyst_code.is_not(None), User.id.in_(select(Shipment.owner_id)))
+        User.analyst_code.in_(MASTER_ANALYST_CODES.values()), User.is_active.is_(True)
     )
     if user.role == "OPERATOR":
         statement = statement.where(User.id == user.id)
@@ -882,7 +888,7 @@ def balance_rows(session, user, month, q="", owner_id=None, operation_code=None)
     if owner_id:
         statement = statement.where(Shipment.owner_id == owner_id)
     if operation_code:
-        statement = statement.where(Shipment.operation_code == operation_code)
+        statement = statement.where(operation_matches(Shipment.operation_code, operation_code))
     result = []
     for p, s, supplier, owner, prior, movement in session.execute(
         statement.order_by(Provision.month_accrued, Shipment.reference_raw, Provision.id)
@@ -903,7 +909,7 @@ def balance_rows(session, user, month, q="", owner_id=None, operation_code=None)
                 reference=s.reference_raw,
                 owner_name=owner,
                 owner_id=s.owner_id,
-                operation_code=s.operation_code,
+                operation_code=canonical_operation(s.operation_code),
                 company_code=s.company_code,
                 supplier_name=supplier,
                 supplier_id=p.supplier_id,

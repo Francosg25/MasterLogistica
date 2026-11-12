@@ -23,6 +23,7 @@ import { MasterSheetComponent } from "./master-sheet.component";
 import { MasterPracticeService } from "./master-practice.service";
 import {
   Catalogs,
+  canonicalCatalogs,
   Identifier,
   OPERATIONS,
   Owner,
@@ -179,7 +180,7 @@ export class AppComponent implements OnInit {
       (owner) =>
         owner.analyst_code != null &&
         owner.analyst_code >= 1 &&
-        owner.analyst_code <= 8,
+        owner.analyst_code <= 5,
     ),
   );
   otherOwners = computed(() =>
@@ -322,7 +323,7 @@ export class AppComponent implements OnInit {
       total = page.total;
       offset += 100;
     }
-    this.catalog.set(catalog);
+    this.catalog.set(canonicalCatalogs(catalog));
     this.owners.set(owners);
     this.suppliers.set(suppliers);
     this.resetMaster();
@@ -342,7 +343,7 @@ export class AppComponent implements OnInit {
     this.demo.set(true);
     this.practice.set(false);
     this.user.set(data.demoUser);
-    this.catalog.set({ ...data.demoCatalogs, master_layouts: layouts });
+    this.catalog.set(canonicalCatalogs({ ...data.demoCatalogs, master_layouts: layouts }));
     this.practiceStore.configure(layouts ?? {});
     this.owners.set(data.demoOwners);
     this.suppliers.set([]);
@@ -532,10 +533,6 @@ export class AppComponent implements OnInit {
     this.modal.set(false);
     this.detailRequest++;
   }
-  private rememberOperation(operation: string | null): void {
-    if (operation && this.catalog() && !this.catalog()!.operation_codes.includes(operation))
-      this.catalog.update(catalog => ({ ...catalog!, operation_codes: [...catalog!.operation_codes, operation] }));
-  }
   updateSheetRow(row: Shipment): void {
     if (this.demo() && this.practice()) this.demoRows = this.practiceStore.rows;
     const previous = this.rows().find((item) => item.id === row.id);
@@ -544,10 +541,6 @@ export class AppComponent implements OnInit {
       row.owner_id !== this.masterOwner()
     )
       return;
-    this.rememberOperation(row.operation_code);
-    if (this.catalog() && !this.catalog()!.company_codes.includes(row.company_code)) {
-      this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
-    }
     this.rows.update((items) =>
       items.map((item) => (item.id === row.id ? row : item)),
     );
@@ -610,11 +603,7 @@ export class AppComponent implements OnInit {
         data,
       );
       this.selected.set(row);
-      this.rememberOperation(row.operation_code);
       this.editor?.acceptSaved(row);
-      if (!this.catalog()!.company_codes.includes(row.company_code)) {
-        this.catalog.update(catalog => ({ ...catalog!, company_codes: [...catalog!.company_codes, row.company_code] }));
-      }
       this.notice.set(
         previous
           ? "Cambios guardados."

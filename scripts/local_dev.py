@@ -568,7 +568,7 @@ class Launcher:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("start", "stop", "status", "logs"))
+    parser.add_argument("action", choices=("start", "stop", "status", "logs", "reset"))
     parser.add_argument("--mode", choices=("native", "docker"), default="native")
     parser.add_argument("--demo", action="store_true")
     install = parser.add_mutually_exclusive_group()
@@ -589,6 +589,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not 10 <= args.timeout <= 600:
         parser.error("--timeout debe estar entre 10 y 600 segundos")
+    if args.action == "reset" and (args.mode != "native" or args.demo):
+        parser.error("reset borra solamente la base SQLite local del modo nativo")
     if args.mode == "native":
         if args.rebuild:
             parser.error(

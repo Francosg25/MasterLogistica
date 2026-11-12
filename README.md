@@ -23,7 +23,7 @@ La propuesta basada en las tecnologías permitidas indicadas por el usuario es *
 
 La navegación superior conecta Referencias, Consolidar, Provisiones, Facturas y Reporte mensual. Inicio es un índice de masters por responsable: permite buscar una hoja y abrir sus registros con un clic. **Ctrl + K** abre la búsqueda de referencias. La ficha reúne la operación, su familia de movimientos y las finanzas. Desde ella puedes crear un movimiento numerado o iniciar una provisión/factura con la referencia capturada.
 
-Los cinco masters conservan sus columnas. Los analistas 6–8 disponen de una vista común de Compliance. El esquema local actual es **7**; la migración corporativa es **0011_reference_families**. Consulta [arquitectura y alcance](docs/centro-referencias.md).
+Los cinco masters conservan sus columnas. La selección contiene únicamente MAG, ALEXA, DENI, ANDREA y NAT. El esquema local actual es **7**; la migración corporativa es **0011_reference_families**. Consulta [arquitectura y alcance](docs/centro-referencias.md).
 
 ## Inicio local con un comando
 
@@ -47,13 +47,26 @@ Antes de iniciarlo, detén con **Ctrl+C en sus propias terminales** cualquier `n
 
 Sin configuración adicional, el lanzador prepara `.venv`, inicia **la API real y Angular** y crea automáticamente **`.data/masterlogistica.db`** en la raíz del proyecto. Entras en el master local de **DENI**, con acceso de administración para seleccionar los cinco responsables, con permisos para crear y editar embarques, documentos, provisiones y facturas. Los cambios se guardan en ese archivo y continúan después de cerrar el navegador, detener la aplicación o reiniciar el equipo. La misma API aplica validaciones, control de versiones y auditoría.
 
-Se preparan las identidades locales DENI, MAG, NAT, ANDREA y ALEXA, las ocho BU de la nomenclatura y las identidades de prueba Compliance 6–8, además de un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
+Se preparan las identidades locales DENI, MAG, NAT, ANDREA y ALEXA, las ocho BU de la nomenclatura además de un proveedor de ejemplo; las tablas operativas empiezan vacías. No se necesita PostgreSQL, SQL Server ni Microsoft Entra para desarrollar en esta computadora. El catálogo de proveedores dispone de altas y cambios mediante la API local (`/docs`). Los datos locales no se publican ni se transfieren automáticamente al servidor.
 
 `.env.native` es opcional. Si quieres cambiar catálogos o la ubicación del archivo, copia `.env.native.example` a `.env.native` y edita sus valores. Si ya tenías una `.env.native` con PostgreSQL/Entra, se conserva y sigue utilizando esa conexión: para elegir SQLite, renómbrala como respaldo y usa la nueva plantilla. No se migra ni borra la base anterior.
 
 Para respaldar tus datos, detén la aplicación y copia `.data/masterlogistica.db` a una ubicación segura. Es una base personal: no abras el mismo archivo simultáneamente desde varias computadoras ni lo uses como base compartida por regiones. SQLite, configuración y logs están excluidos de Git y del paquete productivo.
 
 El modo local solo admite solicitudes desde loopback y rechaza proxies y orígenes externos. `APP_ENV=production` exige PostgreSQL y Microsoft Entra: la identidad local no se puede activar en producción.
+
+### Borrar todos los datos locales
+
+Para empezar de cero, ejecuta desde la raíz del proyecto:
+
+```bat
+BORRAR_DATOS_LOCAL.cmd
+INICIAR_LOCAL.cmd
+```
+
+**El borrado es definitivo y se ejecuta sin pedir otra confirmación.** El comando detiene la sesión iniciada por el lanzador, elimina la base SQLite configurada en `.env.native` (o `.data/masterlogistica.db` por defecto) y sus archivos auxiliares. Se borran todos los registros, referencias y alias, provisiones, facturas, aplicaciones, documentos registrados, proveedores e historial. Los consecutivos empiezan de nuevo. Al iniciar se crean los cinco masters vacíos y el proveedor de ejemplo, con los catálogos vigentes.
+
+Conserva el código, las dependencias, la configuración y los Excel originales. Si iniciaste la API manualmente, ciérrala primero con Ctrl+C. Este comando solo limpia SQLite local; no borra PostgreSQL. En Linux/macOS se usa `python scripts/local_dev.py reset`. Si usas otro Python autorizado, admite el mismo argumento `--python` del inicio local.
 
 ### Arranque manual, similar a DataStage
 
@@ -102,7 +115,7 @@ ENTRA_TENANT_ID=ID-DEL-TENANT
 ENTRA_API_CLIENT_ID=ID-DE-LA-API
 ENTRA_FRONTEND_CLIENT_ID=ID-DE-LA-SPA
 ENTRA_ALLOWED_CLIENT_IDS=["ID-DE-LA-SPA"]
-COMPANY_CODES=["JE_MX"]
+COMPANY_CODES=["MXG","MXT"]
 BUSINESS_UNITS={"M01":"M01","M19":"M19","M23":"M23","M45":"M45","M46":"M46"}
 ```
 
@@ -222,7 +235,7 @@ El perfil corporativo (`AUTH_MODE=entra`) necesita dos registros de Entra: API y
 
 Registra **http://127.0.0.1:4200/** como URI de redirección de tipo **Single-page application**. Si usas `localhost`, registra también **http://localhost:4200/**. La URL debe coincidir con la que abras. La SPA no usa secretos de cliente.
 
-`Empresa` se captura manualmente como en el master (hasta 32 caracteres). `COMPANY_CODES` aporta sugerencias iniciales; las empresas registradas aparecen también en el catálogo para facturación e importación. Las BU permitidas son M00, M01, M19, M20, M23, M45, M46 y M65. Se pueden personalizar sus descripciones desde un JSON, por ejemplo `{"M01":"Descripción interna"}`:
+`Empresa` ofrece sólo **MXG** y **MXT** en masters y facturas. Los datos históricos y una configuración anterior no amplían esta lista. Las operaciones ofrecen los 14 códigos de la nomenclatura: las variantes AIR IMPO, AIR EXPO, SEA IMPO, SEA EXPO, LAND IMPO y LAND EXPO se reconocen como AI, AE, SI, SE, LI y LE. Los textos desconocidos se conservan en sus registros para corregirlos, pero no se convierten en nuevas opciones. Las BU permitidas son M00, M01, M19, M20, M23, M45, M46 y M65. Se pueden personalizar sus descripciones desde un JSON, por ejemplo `{"M01":"Descripción interna"}`:
 
 ```powershell
 py -3.13 scripts/configure_business_units.py ruta\catalogo.business-units.json

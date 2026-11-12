@@ -5,9 +5,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, model_validator
 
+from app.references import canonical_operation
+
 Role = Literal["OPERATOR", "FINANCE", "MANAGER", "SUPER_ADMIN"]
 Process = Literal["RM", "AF", "FG", "CR", "FA"]
-Operation = Annotated[str, Field(min_length=1, max_length=100)]
+Operation = Annotated[str, Field(min_length=1, max_length=100), BeforeValidator(canonical_operation)]
 Department = Literal["PRJ", "MAT", "QUA", "MAI", "HUM", "FIX", "RAW", "CTM", "SCR"]
 OptionalDepartment = Annotated[
     Department | None,
@@ -195,6 +197,7 @@ class ShipmentRead(VersionedRead):
 
             fields = {name: getattr(value, name) for name in cls.model_fields}
             fields["master_data"] = stored_master_data(value)
+            fields["operation_code"] = canonical_operation(fields["operation_code"])
             return fields
         return value
 
