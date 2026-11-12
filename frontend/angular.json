@@ -22,9 +22,7 @@
               }
             ],
             "styles": [
-              "src/styles.css",
-              "src/workspace.css",
-              "src/design-system.css"
+              "src/styles.css"
             ]
           },
           "configurations": {

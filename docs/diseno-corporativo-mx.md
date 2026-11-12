@@ -36,7 +36,9 @@ El pie del índice presenta los saldos por moneda, el mes consultado y los pendi
 
 ## Código y compatibilidad
 
-`frontend/src/design-system.css` define la identidad visual. La estructura de navegación está en `app.component.html`; `workspace-home.component` presenta el índice y solicita la apertura del master. El catálogo y la lista de responsables se comparten desde la aplicación, sin añadir peticiones por cada hoja. No cambia dependencias ni locks de Node/Python, migraciones, permisos ni reglas de aplicación financiera. El diseño es adaptable a escritorio y móvil; la hoja mantiene desplazamiento dentro de la tabla.
+`frontend/src/styles.css` es la entrada estable de estilos y se mantiene como única entrada en Angular. Importa `base.css`, `workspace.css` y `design-system.css`, en ese orden. El último archivo define la identidad visual. La estructura de navegación está en `app.component.html`; `workspace-home.component` presenta el índice y solicita la apertura del master. El catálogo y la lista de responsables se comparten desde la aplicación, sin añadir peticiones por cada hoja. No cambia dependencias ni locks de Node/Python, migraciones, permisos ni reglas de aplicación financiera. El diseño es adaptable a escritorio y móvil; la hoja mantiene desplazamiento dentro de la tabla.
+
+La entrada única permite que un servidor local ya abierto reciba el diseño mediante su archivo CSS conocido. Se reprodujo el caso de Angular CLI 21.2.27 conservando las opciones iniciales al cambiar `angular.json`: las plantillas nuevas aparecían con los estilos básicos anteriores. Incorporar las capas por importaciones en la entrada existente recuperó el diseño en el mismo servidor. La prueba de regresión utiliza el arranque normal y el servicio de acceso real configurado para desarrollo, con respuestas API sintéticas.
 
 La comprobación visual utiliza datos sintéticos de las pruebas del proyecto. Las capturas no contienen operaciones reales.
 
@@ -55,7 +57,7 @@ La comprobación visual utiliza datos sintéticos de las pruebas del proyecto. L
 
 ## Verificación de esta entrega
 
-El conjunto de navegador contiene 66 casos: 40 de masters, 19 de finanzas, 3 de navegación del espacio de trabajo y 4 de acceso/demostración. Comprueba la búsqueda del master y su apertura directa con teclado, el menú móvil con Escape, captura, edición, pegado, guardado, consultas financieras y aislamiento de los datos de práctica. Las pruebas de densidad conservan más de la mitad de la ventana para las filas del master a 1920 × 1080, 1366 × 768 y 1280 × 600, con la primera fila antes de los 240 px. En facturas, la primera fila permanece antes de los 260 px a 1366 × 768.
+El conjunto de navegador contiene 67 casos: 40 de masters, 19 de finanzas, 3 de navegación del espacio de trabajo, 4 de acceso/demostración y 1 de actualización de estilos en una sesión local abierta. Comprueba la búsqueda del master y su apertura directa con teclado, el menú móvil con Escape, captura, edición, pegado, guardado, consultas financieras y aislamiento de los datos de práctica. Las pruebas de densidad conservan más de la mitad de la ventana para las filas del master a 1920 × 1080, 1366 × 768 y 1280 × 600, con la primera fila antes de los 240 px. En facturas, la primera fila permanece antes de los 260 px a 1366 × 768.
 
 Los casos de interfaz utilizan respuestas simuladas y datos de demostración. Esta comprobación visual no sustituye las pruebas de integración de base de datos o de acceso corporativo.
 

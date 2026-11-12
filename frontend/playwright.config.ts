@@ -20,6 +20,7 @@ export default defineConfig({
     { name: "finance", testMatch: "finance.spec.ts" },
     { name: "masters", testMatch: "masters.spec.ts" },
     { name: "production-access", testMatch: "access.spec.ts" },
+    { name: "local-styles", testMatch: "styles-entry.spec.ts" },
   ],
   webServer: [
     {
