@@ -44,6 +44,7 @@ from app.models import (
     ReconciliationAllocation as Allocation,
 )
 from app.references import (
+    VERSION,
     canonical_operation,
     normalize_identifier,
     normalize_reference,
@@ -659,8 +660,8 @@ def register_invoice(data, session, user, request, *, source_data=None, persist=
                 invoice_line_id=line.id,
                 kind="REFERENCE",
                 raw_value=item.reference,
-                normalized_value=normalize_identifier(item.reference),
-                normalization_version="IDENTIFIER_V1",
+                normalized_value=normalize_reference(item.reference),
+                normalization_version=VERSION,
             )
         )
         audit_event(
