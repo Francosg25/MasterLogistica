@@ -1,9 +1,8 @@
 <section class="master-archive" aria-label="Archivo de masters">
   <header class="archive-heading">
     <div>
-      <p class="archive-eyebrow">Logística <span aria-hidden="true">/</span> México</p>
       <h1>Masters</h1>
-      <p class="archive-description">Selecciona una hoja y continúa con tu operación.</p>
+      <p class="archive-description">Abre un master para capturar o editar tus referencias.</p>
     </div>
     <button class="button primary" (click)="navigate.emit('consolidate')">Consolidar facturas<app-icon name="arrow" /></button>
   </header>
@@ -17,13 +16,13 @@
   </div>
 
   @if (view() === 'masters') {
-    <div class="archive-list-head" aria-hidden="true"><span>Master</span><span>Estructura de la hoja</span><span>Abrir</span></div>
+    <div class="archive-list-head" aria-hidden="true"><span>Responsable</span><span>Columnas del master</span><span>Abrir</span></div>
     <ul class="master-files" aria-label="Masters disponibles">
       @for (owner of visibleOwners(); track owner.id; let index = $index) {
         <li>
           <button class="master-file" [class.current]="selectedOwner === owner.id" [attr.aria-label]="'Abrir master de ' + owner.display_name" (click)="masterOpened.emit(owner.id)">
             <span class="file-identity"><span class="file-number" aria-hidden="true">{{ (index + 1).toString().padStart(2, '0') }}</span><strong>{{ owner.display_name }}</strong>@if (selectedOwner === owner.id) {<small>Último abierto</small>}</span>
-            <span class="file-structure">@if (layout(owner); as structure) {<strong>{{ structure.fields.length }} columnas</strong>} @else {<strong>Hoja de operaciones</strong>}<small>{{ columnPreview(owner) }}</small></span>
+            <span class="file-structure" [title]="columnPreview(owner)">@if (layout(owner); as structure) {<strong>{{ structure.fields.length }} columnas</strong>} @else {<strong>Hoja de operaciones</strong>}</span>
             <app-icon name="arrow" />
           </button>
         </li>
@@ -31,7 +30,7 @@
         <li class="archive-empty">{{ search() ? 'No hay masters con ese nombre.' : 'No hay masters asignados a tu cuenta.' }}</li>
       }
     </ul>
-    <div class="archive-caption"><span>Cada master conserva sus columnas y su captura.</span><button (click)="navigate.emit('masters')">Ver referencias<app-icon name="arrow" /></button></div>
+    <div class="archive-caption"><button (click)="navigate.emit('masters')">Ver referencias<app-icon name="arrow" /></button></div>
   } @else {
     <section class="archive-activity" aria-label="Referencias recientes">
       <div class="finance-table-scroll">
@@ -53,7 +52,7 @@
   @if (error()) {<div class="error archive-feedback" role="alert">{{ error() }} <button class="button subtle" (click)="load()">Reintentar</button></div>}
   @if (data(); as d) {
     <section class="archive-ledger" aria-label="Saldo pendiente de provisiones">
-      <div><span>Saldo por conciliar</span><small>{{ monthLabel(d.month) }}</small></div>
+      <div><span>Saldo pendiente de provisiones</span><small>{{ monthLabel(d.month) }}</small></div>
       <dl>@for (total of d.totals; track total.currency) {<div><dt>{{ total.currency }}</dt><dd>{{ money(total.closing_amount) }}</dd></div>} @empty {<span class="archive-no-balance">Sin provisiones registradas</span>}</dl>
       <button (click)="navigate.emit('reports')">Ver reporte mensual<app-icon name="arrow" /></button>
     </section>

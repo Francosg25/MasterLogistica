@@ -125,8 +125,8 @@ export const FINANCE_STATUS: Record<string, string> = {
   CLOSED: "Liquidada",
   CANCELLED: "Cancelada",
   RECEIVED: "Recibida",
-  UNDER_REVIEW: "Por conciliar",
-  APPROVED: "Conciliada",
+  UNDER_REVIEW: "Pendiente de aplicar",
+  APPROVED: "Aplicada",
   REJECTED: "Rechazada",
 };
 export const EVENTS: Record<string, string> = {

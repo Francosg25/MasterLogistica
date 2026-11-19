@@ -36,6 +36,8 @@ export class InvoiceImportComponent {
   busy = signal(false);
   error = signal("");
   notice = signal("");
+  completed = signal(0);
+  showAdjustments = signal(false);
   filename = "";
   private content = "";
   companyMap: Record<string, string> = {};
@@ -43,7 +45,7 @@ export class InvoiceImportComponent {
   filter = signal("FOUND");
   search = signal("");
   offset = signal(0);
-  labels: Record<string, string> = { FOUND: "Coincidencias", REVIEW: "Por revisar", DUPLICATE: "Ya registradas", UNMATCHED: "Sin referencia", READY: "Lista para consolidar", OUTSIDE: "Otro mes" };
+  labels: Record<string, string> = { FOUND: "Coincidencias", REVIEW: "Por revisar", DUPLICATE: "Ya registradas", UNMATCHED: "Sin referencia", READY: "Lista", OUTSIDE: "Otro mes" };
   groupFound(group: ImportGroup): boolean { return group.status === "READY" || group.rows.some(row => this.referenceFound(row)); }
   found = computed(() => this.preview()?.groups.filter(group => this.groupFound(group)) ?? []);
   ready = computed(() => this.preview()?.groups.filter(group => group.status === "READY").sort((a, b) => (a.source_periods?.[0] ?? "").localeCompare(b.source_periods?.[0] ?? "") || a.key.localeCompare(b.key)) ?? []);
@@ -86,6 +88,7 @@ export class InvoiceImportComponent {
     if (!file || this.busy()) return;
     input.value = "";
     this.error.set(""); this.preview.set(null); this.notice.set("");
+    this.completed.set(0); this.showAdjustments.set(false);
     this.content = ""; this.filename = ""; this.pending = false;
     this.search.set("");
     this.fxRate = ""; this.fxDate = "";
@@ -127,7 +130,7 @@ export class InvoiceImportComponent {
     if (this.busy() || this.stale()) return;
     const keys = this.ready().map(g => g.key);
     if (!keys.length) return;
-    this.setBusy(true); this.error.set(""); this.notice.set(""); let count = 0;
+    this.setBusy(true); this.error.set(""); this.notice.set(""); this.completed.set(0); let count = 0;
     let failure = "";
     const latestMonth = this.ready().flatMap(g => g.source_periods ?? []).sort().at(-1)?.slice(0, 7) ?? this.month;
     try {
@@ -137,9 +140,11 @@ export class InvoiceImportComponent {
         this.notice.set(`Consolidando ${count} de ${keys.length} facturas…`);
       }
       this.pending = false;
+      this.completed.set(count);
       this.notice.set(`${count} ${count === 1 ? "factura consolidada" : "facturas consolidadas"}. Consulta el saldo de cada referencia en el reporte mensual.`);
     } catch (e) {
       failure = `${count} facturas confirmadas en este intento. ${this.message(e)} Revisa la vista previa antes de reintentar; las ya registradas se detectan como duplicadas.`;
+      this.notice.set("");
     } finally {
       this.setBusy(false);
       if (count) this.imported.emit(latestMonth);

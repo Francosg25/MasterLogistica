@@ -3,7 +3,7 @@
   <div class="workspace-heading finance-heading">
     <div>
       <h1>{{ reportOpen() ? "Reporte mensual" : title }}</h1>
-      <p class="hint">{{ reportOpen() ? 'Facturas aplicadas y saldo de las provisiones al cierre del mes.' : section === 'history' ? 'Quién cambió cada dato y cuándo.' : section === 'provisions' ? 'Las provisiones se aprueban automáticamente al guardarlas.' : 'Carga el Excel y revisa cuánto se aplicó a cada provisión.' }}</p>
+      <p class="hint">{{ reportOpen() ? 'Consulta qué se facturó y cuánto queda pendiente en el mes.' : section === 'history' ? 'Quién cambió cada dato y cuándo.' : section === 'provisions' ? 'Revisa qué referencias siguen con saldo y cuáles están liquidadas.' : 'Facturas registradas y su aplicación a las provisiones.' }}</p>
     </div>
     <div class="finance-buttons">
       @if (canWrite && section === 'provisions' && !reportOpen()) {
@@ -34,7 +34,7 @@
   @if (notice()) {
     <div class="success" role="status">{{ notice() }}</div>
   }
-  <form class="finance-filters" [class.history-filters]="section === 'history'" [formGroup]="filters" (ngSubmit)="apply()">
+  <form class="finance-filters" [hidden]="importOpen()" [class.history-filters]="section === 'history'" [formGroup]="filters" (ngSubmit)="apply()">
     @if (section !== "history") {
       <label
         >Mes<input
@@ -106,28 +106,18 @@
     </button>
   </form>
   @if (section === "provisions" && totals().length) {
-    <div class="finance-summary">
+    <div class="finance-summary balance-strip">
+      <span class="balance-caption">Saldo pendiente</span>
       @for (total of totals(); track total.currency) {
-        <div>
-          <span class="currency-label">{{ total.currency }}</span
-          ><span
-            >Saldo inicial
-            <strong>{{ money(total.opening_amount) }}</strong></span
-          ><span
-            >Altas <strong>{{ money(total.new_amount) }}</strong></span
-          ><span
-            >Provisión aplicada
-            <strong>{{ money(total.released_amount) }}</strong></span
-          ><span class="live-balance"
-            >Saldo vivo <strong>{{ money(total.closing_amount) }}</strong></span
-          >
-        </div>
+        <div class="balance-value"><span class="currency-label">{{ total.currency }}</span><strong>{{ money(total.closing_amount) }}</strong></div>
       }
+      <details class="balance-explanation"><summary>Ver desglose</summary><div class="balance-breakdown">
+        @for (total of totals(); track total.currency) {
+          <dl><dt>{{ total.currency }}</dt><dd>Inicial <strong>{{ money(total.opening_amount) }}</strong></dd><dd>Altas <strong>{{ money(total.new_amount) }}</strong></dd>@if (+total.adjustment_amount) {<dd>Ajustes <strong>{{ money(total.adjustment_amount) }}</strong></dd>}<dd>Aplicado <strong>{{ money(total.released_amount) }}</strong></dd></dl>
+        }
+        <p>Incluye saldos de meses anteriores. Viva: con saldo. Liquidada: saldo cero por facturas aplicadas.</p>
+      </div></details>
     </div>
-    <p class="hint">
-      Saldos al mes consultado. Incluye arrastres de meses anteriores; los
-      borradores no afectan los totales. Liquidada = saldo cero por facturación.
-    </p>
   }
   @if (formOpen() && canWrite) {
     <section class="finance-entry" aria-label="Captura financiera">
@@ -394,6 +384,7 @@
       </form>
     </section>
   }
+  @if (!importOpen()) {
   @if (loading()) {
     <p class="table-loading" role="status">Cargando información…</p>
   } @else if (section === "invoices" && !canReadInvoices) {
@@ -445,7 +436,7 @@
                 </td>
                 <td>
                   <span
-                    class="finance-status"
+                    class="finance-status" [attr.data-status]="row.status"
                     [class.settled]="row.status === 'CLOSED'"
                     >{{ labels[row.status] }}</span
                   >
@@ -486,7 +477,7 @@
                 <td class="number">{{ money(row.pending_amount) }}</td>
                 <td>
                   <span
-                    class="finance-status"
+                    class="finance-status" [attr.data-status]="row.status"
                     [class.settled]="row.status === 'APPROVED'"
                     >{{ row.status === "APPROVED" ? "Aplicada" : row.status === "UNDER_REVIEW" ? "Pendiente" : labels[row.status] }}</span
                   >
@@ -635,6 +626,7 @@
       </button>
     </div>
   }
+  }
   @if (reportOpen() && report(); as data) {
     <section class="finance-report" aria-label="Reporte de conciliación">
       <div class="report-overview">
@@ -646,13 +638,13 @@
       @if (reportTab() === 'balances') {
         <p class="hint">Viva: tiene saldo pendiente. Viva · parcial: ya recibió facturas. Liquidada: saldo en cero. Los saldos pendientes pasan al siguiente mes.</p>
         <div class="finance-table-scroll"><table class="finance-table report-balances"><thead><tr><th>Referencia</th><th>Proveedor / concepto</th><th>Fecha de provisión</th><th>Moneda</th><th class="number">Provisionado</th><th class="number">Aplicado este mes</th><th class="number">Saldo pendiente</th><th>Estado al cierre</th></tr></thead><tbody>
-        @for (b of data.balances; track b.id) {<tr><td class="reference-cell"><button class="reference-link" (click)="activity.set({id: b.shipment_id || b.id, reference: b.reference})">{{ b.reference }}</button><small>{{ b.owner_name }}</small></td><td>{{ b.supplier_name }}<small>{{ conceptLabel(b.charge_code) }}</small></td><td>{{ b.provision_date ? calendarDate(b.provision_date) : b.month_accrued.slice(0, 7) }}</td><td>{{ b.currency }}</td><td class="number">{{ money(b.total_amount) }}</td><td class="number">{{ money(b.released_amount) }}</td><td class="number"><strong>{{ money(b.closing_amount) }}</strong></td><td><span class="finance-status" [class.settled]="b.status === 'CLOSED'">{{ labels[b.status] }}</span></td></tr>}
+        @for (b of data.balances; track b.id) {<tr><td class="reference-cell"><button class="reference-link" (click)="activity.set({id: b.shipment_id || b.id, reference: b.reference})">{{ b.reference }}</button><small>{{ b.owner_name }}</small></td><td>{{ b.supplier_name }}<small>{{ conceptLabel(b.charge_code) }}</small></td><td>{{ b.provision_date ? calendarDate(b.provision_date) : b.month_accrued.slice(0, 7) }}</td><td>{{ b.currency }}</td><td class="number">{{ money(b.total_amount) }}</td><td class="number">{{ money(b.released_amount) }}</td><td class="number"><strong>{{ money(b.closing_amount) }}</strong></td><td><span class="finance-status" [attr.data-status]="b.status" [class.settled]="b.status === 'CLOSED'">{{ labels[b.status] }}</span></td></tr>}
         @empty {<tr><td colspan="8">No hay provisiones para este mes y referencia.</td></tr>}
         </tbody></table></div>
       } @else {
         <p class="hint">Aplicaciones del mes consultado. La fecha de aplicación indica cuándo se registró el movimiento. El saldo corresponde al cierre del mes, en la moneda de la provisión.</p>
         <div class="finance-table-scroll"><table class="finance-table report-movements"><thead><tr><th>Referencia / concepto</th><th>Factura</th><th>Fecha factura</th><th>Fecha aplicación</th><th class="number">Importe de factura aplicado</th><th class="number">Descontado de provisión</th><th class="number">Saldo al cierre</th><th>Estado al cierre</th></tr></thead><tbody>
-        @for (m of data.movements; track $index) {<tr><td class="reference-cell">{{ m.reference }}<small>{{ conceptLabel(m.charge_code || '') }}</small></td><td>{{ m.invoice_number }}<small>{{ m.supplier_name }}</small>@if (m.entry_type === 'REVERSAL') {<small>Reversión</small>}</td><td>{{ calendarDate(m.issue_date) }}</td><td>{{ m.occurred_at ? dateTime(m.occurred_at) : '—' }}</td><td class="number">{{ money(m.amount) }} {{ m.currency }}</td><td class="number">{{ money(m.provision_amount ?? m.amount) }} {{ m.provision_currency || m.currency }}@if (m.fx?.mxn_per_usd) {<small>TC {{ m.fx?.mxn_per_usd }} MXN/USD</small>}</td><td class="number">{{ m.closing_amount === undefined ? '—' : money(m.closing_amount) }} {{ m.provision_currency }}</td><td><span class="finance-status" [class.settled]="m.provision_status === 'CLOSED'">{{ labels[m.provision_status || ''] || '—' }}</span></td></tr>}
+        @for (m of data.movements; track $index) {<tr><td class="reference-cell">{{ m.reference }}<small>{{ conceptLabel(m.charge_code || '') }}</small></td><td>{{ m.invoice_number }}<small>{{ m.supplier_name }}</small>@if (m.entry_type === 'REVERSAL') {<small>Reversión</small>}</td><td>{{ calendarDate(m.issue_date) }}</td><td>{{ m.occurred_at ? dateTime(m.occurred_at) : '—' }}</td><td class="number">{{ money(m.amount) }} {{ m.currency }}</td><td class="number">{{ money(m.provision_amount ?? m.amount) }} {{ m.provision_currency || m.currency }}@if (m.fx?.mxn_per_usd) {<small>TC {{ m.fx?.mxn_per_usd }} MXN/USD</small>}</td><td class="number">{{ m.closing_amount === undefined ? '—' : money(m.closing_amount) }} {{ m.provision_currency }}</td><td><span class="finance-status" [attr.data-status]="m.provision_status" [class.settled]="m.provision_status === 'CLOSED'">{{ labels[m.provision_status || ''] || '—' }}</span></td></tr>}
         @empty {<tr><td colspan="8">No se aplicaron facturas en este mes.</td></tr>}
         </tbody></table></div>
       }

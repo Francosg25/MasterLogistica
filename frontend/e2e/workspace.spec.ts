@@ -108,6 +108,41 @@ test("mobile navigation opens and returns focus to a usable page without overflo
  await expect(page.getByRole("button",{name:"Abrir navegación",exact:true})).toBeFocused();
 });
 
+test("financial states remain readable and balances explain themselves on demand", async ({ page }) => {
+ await page.setViewportSize({ width: 1366, height: 768 });
+ await setup(page);
+ await navigate(page, "Provisiones");
+ await expect(page.locator('.finance-heading .hint')).toBeVisible();
+ const statuses = page.locator('.finance-table .finance-status');
+ const colors = await statuses.evaluateAll(elements => elements.map(element => getComputedStyle(element).backgroundColor));
+ expect(new Set(colors).size).toBeGreaterThanOrEqual(3);
+ for (const element of [statuses.nth(0), statuses.nth(1), statuses.nth(2), page.locator('.finance-heading .hint'), page.locator('.finance-heading .primary')]) {
+  const contrast = await element.evaluate(element => {
+   const rgba = (value: string) => value.match(/[\d.]+/g)!.map(Number);
+   const layers: number[][] = [];
+   for (let current: Element | null = element; current; current = current.parentElement) layers.push(rgba(getComputedStyle(current).backgroundColor));
+   let background = [255, 255, 255];
+   for (const layer of layers.reverse()) { const alpha = layer[3] ?? 1; background = background.map((value, index) => layer[index] * alpha + value * (1 - alpha)); }
+   const luminance = (rgb: number[]) => rgb.slice(0, 3).map(value => { value /= 255; return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4; }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+   const foreground = luminance(rgba(getComputedStyle(element).color)), surface = luminance(background);
+   return (Math.max(foreground, surface) + .05) / (Math.min(foreground, surface) + .05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+ }
+ const detail = page.locator('.balance-breakdown');
+ await expect(detail).toBeHidden();
+ await page.getByText('Ver desglose', { exact: true }).click();
+ await expect(detail).toBeVisible();
+ await expect(detail).toContainText('Inicial');
+ await expect(detail).toContainText('Aplicado');
+ expect(await detail.locator('p').evaluate(element => {
+  const box = element.getBoundingClientRect();
+  return !!document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest('.balance-breakdown');
+ })).toBeTruthy();
+ await page.getByText('Ver desglose', { exact: true }).click();
+ expect((await page.locator('.finance-table tbody tr').first().boundingBox())!.y).toBeLessThan(350);
+});
+
 
 test("historic companies, operation aliases and retired masters stay out of capture lists",async({page})=>{
  await setup(page,true);

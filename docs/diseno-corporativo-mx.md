@@ -9,27 +9,32 @@ El producto se organiza como una mesa de trabajo documental: un índice de maste
 | Superficie principal | `#FFFFFF` |
 | Superficies secundarias | `#F5F5F7` |
 | Texto principal | `#1D1D1F` |
-| Texto secundario | `#6E6E73` |
-| Metadatos y etiquetas sutiles | `#86868B` |
+| Texto secundario | `#4B5563` |
+| Metadatos y etiquetas sutiles | `#5D6675` |
 | Acción primaria y enlaces | `#0071E3` |
 | Hover primario | `#0077ED` |
-| Borde de contenedor | `1px solid rgba(0,0,0,.06)` |
+| Borde de contenedor | `1px solid #DFE4EB` |
 | Sombra ambiental | `0 4px 24px rgba(0,0,0,.04)` |
-| Navegación y cabeceras superpuestas | Blanco al 72 %, desenfoque 20 px, saturación 180 % |
+| Navegación y cabeceras superpuestas | Blanco al 96 %, desenfoque 20 px, saturación 180 % |
+| Viva / en tránsito | Azul sobre azul claro |
+| Liquidada / aplicada / lista | Verde sobre verde claro |
+| Parcial / pendiente / por revisar | Ámbar sobre crema |
+| Cancelada / rechazada / incidencia | Rojo sobre rosa claro |
 | Radio de contenedores | 16–20 px |
 | Acciones y filtros | Radio 9999 px |
 
 La tipografía utiliza la pila de sistema `-apple-system`, `BlinkMacSystemFont`, `SF Pro Display`, `Inter`, `Segoe UI`, `sans-serif`, sin descargar fuentes ni distribuir archivos propietarios. Los títulos usan peso 600, interlineado 1.1 y tracking -0.025em. Los textos de lectura mantienen interlineado 1.5 y ancho máximo de 65ch.
 
-El color de marca se reserva para acciones y enlaces, con el mismo azul como señal de foco y selección de celdas. Los estados ordinarios se distinguen mediante texto y superficies neutras; los errores y confirmaciones conservan su función semántica. El foco de teclado permanece visible. Se respetan las preferencias de movimiento reducido, contraste alto y, donde el navegador lo admite, transparencia reducida.
+El azul identifica acciones, foco, selección y operaciones en curso. Los estados financieros combinan texto y color: las diferencias siguen siendo comprensibles sin distinguir colores. Las etiquetas, tablas y controles usan un tamaño mínimo de 12 px en el área de trabajo. El foco de teclado permanece visible. Se respetan las preferencias de movimiento reducido, contraste alto y transparencia reducida.
 
 ## Pantallas
 
-- **Inicio:** lista de masters por responsable con búsqueda, apertura directa y una segunda vista para referencias recientes. Las columnas se cuentan y se describen a partir del catálogo real. La estructura particular de la hoja acompaña a su nombre. El último master abierto se identifica durante la sesión.
+- **Inicio:** lista de masters por responsable con búsqueda, apertura directa y una segunda vista para referencias recientes. La cantidad de columnas proviene del catálogo real; sus nombres quedan disponibles en el título del elemento, sin repetir listas de campos en pantalla. El último master abierto se identifica durante la sesión.
 - **Navegación:** pestañas de texto en una barra horizontal translúcida. El menú móvil se despliega bajo la barra; Escape y el cierre exterior devuelven el foco al control de navegación. La búsqueda global conserva Ctrl + K.
 - **Masters:** aprovecha el ancho disponible para la hoja y mantiene controles compactos. Conserva edición de celdas, teclado, pegado y columnas de cada responsable de la versión publicada.
 - **Provisiones y facturas:** consultas de ancho completo con filtros en gris suave, cifras alineadas y tablas continuas. Los formularios conservan superficies elevadas y mayor separación entre campos.
-- **Consolidación:** archivo, revisión y confirmación dentro de una superficie de trabajo continua. Mantiene la carga XLSX real y las validaciones existentes.
+- **Consolidación:** tres pasos visibles: cargar Excel, revisar coincidencias y registrar/aplicar. Archivo y cambio de moneda se agrupan antes de la tabla. Los ajustes de proveedor y empresa aparecen al solicitarlos; los casos con problemas conservan su resolución directa. Durante la carga se muestra únicamente este trabajo. La etapa final aparece después de confirmar todos los lotes; un fallo parcial muestra cuántas facturas se registraron y permite revisar los pendientes.
+- **Provisiones:** saldo pendiente por moneda en una franja compacta. Origen, altas y aplicaciones están disponibles en «Ver desglose». Las facturas usan «Aplicada» y «Pendiente de aplicar», con el mismo significado en la lista y en la ficha.
 - **Ficha, búsqueda y formularios:** superficies elevadas, radios continuos, cabeceras translúcidas y mayor separación entre grupos de campos.
 
 El pie del índice presenta los saldos por moneda, el mes consultado y los pendientes del alcance autorizado. Los datos provienen del resumen existente; abrir un master utiliza el flujo real de consulta y recuerda la selección del usuario.
@@ -40,9 +45,9 @@ El pie del índice presenta los saldos por moneda, el mes consultado y los pendi
 
 La entrada única permite que un servidor local ya abierto reciba el diseño mediante su archivo CSS conocido. Se reprodujo el caso de Angular CLI 21.2.27 conservando las opciones iniciales al cambiar `angular.json`: las plantillas nuevas aparecían con los estilos básicos anteriores. Incorporar las capas por importaciones en la entrada existente recuperó el diseño en el mismo servidor. La prueba de regresión utiliza el arranque normal y el servicio de acceso real configurado para desarrollo, con respuestas API sintéticas.
 
-La comprobación visual utiliza datos sintéticos de las pruebas del proyecto. Las capturas no contienen operaciones reales.
+La comprobación visual utiliza datos sintéticos de las pruebas del proyecto. Las capturas generadas durante cada ejecución quedan en frontend/test-results; las imágenes enlazadas abajo corresponden a la entrega anterior. No contienen operaciones reales.
 
-## Capturas verificadas
+## Capturas de la entrega anterior
 
 | Pantalla | Captura |
 | --- | --- |
@@ -57,7 +62,9 @@ La comprobación visual utiliza datos sintéticos de las pruebas del proyecto. L
 
 ## Verificación de esta entrega
 
-El conjunto de navegador contiene 71 casos: 43 de masters, 19 de finanzas, 4 de navegación del espacio de trabajo, 4 de acceso/demostración y 1 de actualización de estilos en una sesión local abierta. Comprueba la búsqueda del master y su apertura directa con teclado, los catálogos MXG/MXT y de operaciones oficiales, la selección de solo cinco masters, el menú móvil con Escape, captura, edición, pegado, guardado, consultas financieras y aislamiento de los datos de práctica. Las columnas de datos se desplazan juntas y las flechas recorren cada columna de los cinco masters en ambos sentidos al 100 % y 130 %, manteniendo la celda y su letra visibles. La referencia/D ya no queda fija. Las pruebas de densidad conservan más de la mitad de la ventana para las filas del master a 1920 × 1080, 1366 × 768 y 1280 × 600, con la primera fila antes de los 240 px. En facturas, la primera fila permanece antes de los 260 px a 1366 × 768.
+El conjunto de navegador contiene 72 casos: 43 de masters, 19 de finanzas, 5 de navegación del espacio de trabajo, 4 de acceso/demostración y 1 de actualización de estilos en una sesión local abierta. Comprueba la búsqueda del master y su apertura directa con teclado, los catálogos MXG/MXT y de operaciones oficiales, la selección de solo cinco masters, el menú móvil con Escape, captura, edición, pegado, guardado, consultas financieras y aislamiento de los datos de práctica. Las columnas de datos se desplazan juntas y las flechas recorren cada columna de los cinco masters en ambos sentidos al 100 % y 130 %, manteniendo la celda y su letra visibles. La referencia/D ya no queda fija. Las pruebas de densidad conservan más de la mitad de la ventana para las filas del master a 1920 × 1080, 1366 × 768 y 1280 × 600, con la primera fila antes de los 240 px. En facturas, la primera fila permanece antes de los 260 px a 1366 × 768.
+
+Una comprobación adicional exige contraste de texto de al menos 4.5:1 en estados, instrucciones y acción principal; también verifica el desglose plegable y el espacio disponible para registros.
 
 Los casos de interfaz utilizan respuestas simuladas y datos de demostración. Esta comprobación visual no sustituye las pruebas de integración de base de datos o de acceso corporativo.
 

@@ -25,10 +25,14 @@ test("simple consolidation uses source months and keeps failed or changed previe
   });
   await section(page, "Facturas");
   await page.getByRole("button", { name: "Cargar Excel" }).click();
+  await expect(page.locator('.import-steps [aria-current="step"]')).toContainText("Cargar Excel");
+  await expect(page.locator('.finance-filters')).toBeHidden();
   await expect(page.getByLabel("Mes del consolidado")).toHaveCount(0);
   await page.getByLabel("Archivo consolidado (.xlsx)").setInputFiles({ name: "consolidado.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("synthetic upload; parser tested on backend") });
   const save = page.getByRole("button", { name: "Consolidar 1 factura", exact: true });
   await expect(save).toBeEnabled();
+  await expect(page.locator('.import-steps [aria-current="step"]')).toContainText("Revisar coincidencias");
+  await expect(page.getByText("Ajustar proveedor o empresa", { exact: true })).toHaveCount(0);
   await page.getByText("Tipo de cambio para provisiones en pesos", { exact: true }).click();
   await page.getByLabel("Tipo de cambio del lote (MXN por USD)", { exact: true }).fill("20");
   await page.getByLabel("Fecha del tipo de cambio del lote", { exact: true }).fill("2026-09-27");
@@ -40,6 +44,8 @@ test("simple consolidation uses source months and keeps failed or changed previe
   previewFailure = false;
   await page.getByRole("button", { name: "Actualizar revisión" }).click();
   await expect(save).toBeEnabled();
+  await page.getByText("Ajustes de importación", { exact: true }).click();
+  await page.getByLabel("Mostrar ajustes de proveedor y empresa", { exact: true }).check();
   await page.getByText("Ajustar proveedor o empresa", { exact: true }).click();
   await page.getByLabel("Empresa para DEMO", { exact: true }).first().selectOption("MXG");
   await expect(save).toBeEnabled();
@@ -47,6 +53,7 @@ test("simple consolidation uses source months and keeps failed or changed previe
   await expect(page.getByText("Importe cero: revisar reparto")).toBeVisible();
   await save.click();
   await expect(page.locator(".import-panel .success")).toContainText("1 factura consolidada");
+  await expect(page.locator('.import-steps [aria-current="step"]')).toContainText("Registrar y aplicar");
   expect(submitted.selected).toEqual(["ready"]);
   expect(submitted.fx.mxn_per_usd).toBe("20");
   expect(submitted.use_source_period).toBe(true);
@@ -563,7 +570,10 @@ test("known Excel references are ready in their source month without a month sel
   await expect(page.locator(".import-review-bar")).toContainText("1 factura lista");
   await expect(page.locator(".import-table")).toContainText("septiembre de 2026");
   await expect(page.locator(".import-table tbody")).toContainText("SYNTHETIC-FOUND-REFERENCE");
-  await expect(page.locator(".import-match")).toHaveText("Encontrada · Master de Analista de prueba · DEMO");
+  await expect(page.locator(".import-match")).toHaveText("FREIGHT · Analista de prueba");
+  await expect(page.locator(".import-match")).toHaveAttribute("title", "Encontrada · Master de Analista de prueba · DEMO");
+  await page.setViewportSize({ width: 1366, height: 768 });
+  expect((await page.locator('.import-table tbody tr').first().boundingBox())!.y).toBeLessThan(400);
   await expect(page.getByRole("button", { name: "Consolidar 1 factura", exact: true })).toBeEnabled();
   await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill(" synthetic- found-reference ");
   await expect(page.locator(".import-table tbody tr")).toHaveCount(1);

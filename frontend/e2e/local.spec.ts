@@ -431,7 +431,7 @@ test("Excel upload finds a registered column G reference even when October is se
   await page.getByLabel("Archivo consolidado (.xlsx)", { exact: true }).setInputFiles({ name: "invoice-detection.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: content });
   await expect(page.getByRole("button", { name: "Coincidencias 1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".import-table tbody")).toContainText(reference);
-  await expect(page.locator(".import-match")).toContainText("Encontrada · Master de DENI · MXG");
+  await expect(page.locator(".import-match")).toHaveAttribute("title", "Encontrada · Master de DENI · MXG");
   await expect(page.locator(".import-panel")).toContainText("septiembre de 2026");
 
   await page.getByLabel("Buscar referencia o factura en el Excel", { exact: true }).fill(" test-excel- reference-detection ");

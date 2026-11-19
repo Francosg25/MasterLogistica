@@ -8,7 +8,6 @@
     <div>
       <p class="eyebrow">FICHA DE REFERENCIA</p>
       <h2 id="activity-title">{{ reference }}</h2>
-      <p>Una operación. Todos sus movimientos.</p>
     </div>
     <button
       class="button subtle"
@@ -81,11 +80,7 @@
           </div>
           <div class="reference-section-title">
             <div>
-              <h3>Familia de referencias</h3>
-              <p>
-                La referencia madre conecta los movimientos. Cada uno conserva
-                sus propios gastos.
-              </p>
+              <h3>Movimientos de la referencia</h3>
             </div>
             @if (
               canCreate &&
@@ -209,11 +204,7 @@
       } @else if (tab() === "finance") {
         <div class="reference-section-title">
           <div>
-            <h3>Provisiones de este movimiento</h3>
-            <p>
-              Saldo actual. Los importes se conservan en la moneda de cada
-              provisión.
-            </p>
+            <h3>Provisiones</h3>
           </div>
           @if (canFinance && !demo) {
             <button
@@ -252,7 +243,7 @@
                   <td>{{ money(p.balance) }} {{ p.currency }}</td>
                   <td>
                     <span
-                      class="finance-status"
+                      class="finance-status" [attr.data-status]="p.status"
                       [class.settled]="p.status === 'CLOSED'"
                       >{{ labels[p.status] }}</span
                     >
@@ -268,8 +259,7 @@
         </div>
         <div class="reference-section-title">
           <div>
-            <h3>Facturas de este movimiento</h3>
-            <p>Importes registrados y aplicados a sus provisiones.</p>
+            <h3>Facturas</h3>
           </div>
           @if (canFinance && !demo) {
             <button
@@ -321,7 +311,7 @@
                       }
                     }
                   </td>
-                  <td>{{ labels[i.status] }}</td>
+                  <td><span class="finance-status" [attr.data-status]="i.status">{{ i.status === 'UNDER_REVIEW' ? 'Pendiente de aplicar' : labels[i.status] }}</span></td>
                 </tr>
               } @empty {
                 <tr>
