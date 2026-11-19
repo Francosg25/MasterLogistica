@@ -802,7 +802,7 @@ test("cell actions support touch editing, Escape and save without leaving the ed
   await expect(cell(page, 0, "sender")).toHaveText("Proveedor final");
 });
 
-test("rapid arrow navigation scrolls within the grid and clears frozen headers", async ({ page }) => {
+test("rapid arrow navigation scrolls within the grid and keeps the active cell visible", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await mock(page, { count: 60, collapsed: true });
   const sheet = page.locator(".sheet-scroll");
@@ -817,7 +817,7 @@ test("rapid arrow navigation scrolls within the grid and clears frozen headers",
   const visible = await cell(page, 45, "comments").evaluate(element => {
     const viewport = element.closest(".sheet-scroll")!;
     const box = viewport.getBoundingClientRect(), cell = element.getBoundingClientRect();
-    return cell.left >= viewport.querySelector("tbody .frozen")!.getBoundingClientRect().right &&
+    return cell.left >= viewport.querySelector("tbody .row-number")!.getBoundingClientRect().right &&
       cell.right <= box.left + viewport.clientWidth + 1 && cell.top >= box.top + 60 &&
       cell.bottom <= box.top + viewport.clientHeight + 1;
   });
@@ -827,8 +827,8 @@ test("rapid arrow navigation scrolls within the grid and clears frozen headers",
   await page.keyboard.press("ArrowRight");
   await expect(cell(page, 45, "status")).toBeFocused();
   const left = await cell(page, 45, "status").boundingBox();
-  const frozen = await cell(page, 45, "reference_raw").boundingBox();
-  expect(left!.x).toBeGreaterThanOrEqual(frozen!.x + frozen!.width - 1);
+  const gutter = await page.locator("tbody .row-number").nth(45).boundingBox();
+  expect(left!.x).toBeGreaterThanOrEqual(gutter!.x + gutter!.width - 1);
   await page.keyboard.press("Control+Home");
   await expect(cell(page, 0, "reference_raw")).toBeFocused();
   await page.screenshot({ path: "test-results/master-large.png", fullPage: true });
@@ -848,6 +848,67 @@ test("zoom and expanded layout retain pending edits and keep keyboard navigation
   await page.keyboard.press("PageUp");
   await expect(cell(page, 0, "origin")).toBeFocused();
   await page.screenshot({ path: "test-results/master-zoom.png", fullPage: true });
+});
+
+for (const zoom of [100, 130]) {
+  test(`all five masters move one cell per arrow with visible matching headers at ${zoom}%`, async ({ page }) => {
+    test.setTimeout(90000);
+    await page.setViewportSize({ width: 1280, height: 768 });
+    await mock(page, { role: "SUPER_ADMIN", mixed: true, profiles: true, collapsed: true });
+    const owner = page.getByLabel("Responsable del master", { exact: true });
+    const codes = ["DENI", "MAG", "NAT", "ANDREA", "ALEXA"];
+    for (let master = 0; master < codes.length; master++) {
+      await owner.selectOption(`owner-${master + 1}`);
+      await page.getByLabel("Tamaño del master").selectOption(String(zoom));
+      const fields = masterLayouts[codes[master]].fields;
+      await cell(page, 0, fields[0].key).click();
+      const assertSelection = async (column: number) => {
+        const target = cell(page, 0, fields[column].key);
+        await expect(target).toBeFocused();
+        await expect(page.locator(".cell-address")).toHaveText(fields[column].source_column + "1");
+        await expect.poll(() => target.evaluate(element => {
+          const viewport = element.closest(".sheet-scroll")!;
+          const gutter = viewport.querySelector("tbody .row-number")!.getBoundingClientRect();
+          const box = viewport.getBoundingClientRect();
+          const cell = element.getBoundingClientRect();
+          const header = viewport.querySelector(".column-letters .active-column")!.getBoundingClientRect();
+          return cell.left >= gutter.right - 1 && cell.right <= box.left + viewport.clientWidth + 1 &&
+            Math.abs(header.left - cell.left) < 1 && Math.abs(header.width - cell.width) < 1;
+        })).toBeTruthy();
+      };
+      for (let column = 0; column < fields.length; column++) {
+        await assertSelection(column);
+        if (column + 1 < fields.length) await page.keyboard.press("ArrowRight");
+      }
+      for (let column = fields.length - 2; column >= 0; column--) {
+        await page.keyboard.press("ArrowLeft");
+        await assertSelection(column);
+      }
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    }
+  });
+}
+
+test("reference column D scrolls together with the other data columns", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 768 });
+  await mock(page, { profiles: true, collapsed: true });
+  const reference = cell(page, 0, "reference_raw");
+  await reference.click();
+  await expect(page.locator(".cell-address")).toHaveText("D1");
+  const before = await reference.boundingBox();
+  const sheet = page.locator(".sheet-scroll");
+  await sheet.evaluate(element => { element.scrollLeft = 1100; });
+  await expect.poll(() => reference.evaluate(element => element.getBoundingClientRect().left)).toBeLessThan(0);
+  const after = await reference.boundingBox();
+  expect(before!.x - after!.x).toBeCloseTo(await sheet.evaluate(element => element.scrollLeft), 0);
+  expect(await reference.evaluate(element => getComputedStyle(element).position)).toBe("relative");
+  await page.keyboard.press("ArrowRight");
+  await expect(cell(page, 0, "master.week")).toBeFocused();
+  await expect(page.locator(".cell-address")).toHaveText("E1");
+  await expect(page.locator(".column-letters .active-column")).toHaveText("E");
+  await page.keyboard.press("ArrowLeft");
+  await expect(reference).toBeFocused();
+  await expect(page.locator(".cell-address")).toHaveText("D1");
 });
 
 test("master explains server permissions instead of enabling editing from the displayed role", async ({ page }) => {

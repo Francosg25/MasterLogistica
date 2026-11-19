@@ -578,6 +578,9 @@ def main(argv=None):
         "--python", help="Interprete Python autorizado para el backend nativo."
     )
     parser.add_argument(
+        "--database", help="Archivo SQLite independiente para esta sesion local."
+    )
+    parser.add_argument(
         "--rebuild", action="store_true", help="Reconstruir las imagenes locales."
     )
     parser.add_argument(
@@ -591,6 +594,12 @@ def main(argv=None):
         parser.error("--timeout debe estar entre 10 y 600 segundos")
     if args.action == "reset" and (args.mode != "native" or args.demo):
         parser.error("reset borra solamente la base SQLite local del modo nativo")
+    if args.database is not None and (
+        args.action != "start" or args.mode != "native" or args.demo
+    ):
+        parser.error(
+            "--database solo se usa al iniciar la API local editable sin Docker"
+        )
     if args.mode == "native":
         if args.rebuild:
             parser.error(
@@ -608,6 +617,8 @@ def main(argv=None):
                 command.append("--" + name.replace("_", "-"))
         if args.python:
             command.extend(["--python", args.python])
+        if args.database is not None:
+            command.extend(["--database", args.database])
         try:
             return subprocess.call(command)
         except KeyboardInterrupt:

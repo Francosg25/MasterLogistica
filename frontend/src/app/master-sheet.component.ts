@@ -212,8 +212,8 @@ export class MasterSheetComponent implements OnDestroy {
   }
   private focus(immediate = false): void {
     // Coalesce key repeats into one layout pass. Scroll only the sheet, accounting
-    // for sticky headers/reference; scrollIntoView also moves the document and
-    // can leave the selected cell underneath a frozen column.
+    // for the sticky headers and row numbers. Data columns all scroll together;
+    // focusing a cell must never scroll the document or hide it behind the gutter.
     cancelAnimationFrame(this.focusFrame);
     const reveal = () => {
       const { row, col } = this.active();
@@ -225,19 +225,14 @@ export class MasterSheetComponent implements OnDestroy {
       const box = viewport.getBoundingClientRect();
       const target = cell.getBoundingClientRect();
       const headers = host.querySelector("thead")!.getBoundingClientRect().height;
-      const frozen = host.querySelector<HTMLElement>("tbody .frozen")!;
-      const pinned = getComputedStyle(frozen).position === "sticky";
-      const referenceCol = this.columns().findIndex(column => column.key === "reference_raw");
-      const left = pinned && col > referenceCol ? frozen.getBoundingClientRect().right + 2 : box.left + 46;
+      const rowNumbers = host.querySelector<HTMLElement>("tbody .row-number");
+      const left = Math.max(box.left, rowNumbers?.getBoundingClientRect().right ?? box.left) + 2;
       const right = box.left + viewport.clientWidth - 2;
       const top = box.top + headers + 2;
       const bottom = box.top + viewport.clientHeight - 2;
-      if (pinned && col < referenceCol) viewport.scrollLeft = 0;
-      else if (!(pinned && col === referenceCol)) {
-        if (target.width > right - left) viewport.scrollLeft += target.left - left;
-        else if (target.left < left) viewport.scrollLeft -= left - target.left;
-        else if (target.right > right) viewport.scrollLeft += target.right - right;
-      }
+      if (target.width > right - left) viewport.scrollLeft += target.left - left;
+      else if (target.left < left) viewport.scrollLeft -= left - target.left;
+      else if (target.right > right) viewport.scrollLeft += target.right - right;
       if (target.height > bottom - top) viewport.scrollTop += target.top - top;
       else if (target.top < top) viewport.scrollTop -= top - target.top;
       else if (target.bottom > bottom) viewport.scrollTop += target.bottom - bottom;

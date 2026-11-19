@@ -474,17 +474,6 @@ kbd { display: inline-block; background: white; border: 1px solid #d6dfeb; borde
   font-weight: 400;
   padding: 4px;
 }
-.spreadsheet .frozen {
-  position: sticky;
-  left: 44px;
-  z-index: 2;
-  background: white;
-  box-shadow: 1px 0 0 #d7dfeb;
-}
-.spreadsheet thead .frozen {
-  z-index: 5;
-  background: #f3f5f9;
-}
 .spreadsheet thead .row-number {
   z-index: 6;
 }
@@ -500,9 +489,6 @@ kbd { display: inline-block; background: white; border: 1px solid #d6dfeb; borde
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   z-index: 1;
-}
-.spreadsheet td.frozen.active-cell {
-  z-index: 2;
 }
 .spreadsheet .active-column {
   background: #e2ebff !important;
@@ -995,16 +981,6 @@ textarea {
     max-height: 55vh;
     min-height: 240px;
   }
-  .spreadsheet td.frozen,
-  .spreadsheet thead .frozen {
-    position: relative;
-    left: auto;
-    z-index: 0;
-  }
-  .spreadsheet thead .frozen {
-    position: sticky;
-    z-index: 3;
-  }
   .table-footer {
     padding: 0 8px 8px;
     gap: 8px;
@@ -1474,9 +1450,7 @@ textarea {
 .search-label > app-icon { position: absolute; top: 50%; left: 11px; transform: translateY(-50%); color: var(--muted); pointer-events: none; width: 16px; height: 16px; }
 .search-label input { padding-left: 34px; }
 .spreadsheet tbody tr:hover td:not(.selected-cell):not(.active-cell) { background: #f8faff; }
-.spreadsheet .frozen { box-shadow: 1px 0 0 #d7dfeb, 4px 0 8px #182b4504; }
 .spreadsheet thead th { font-size: .92em; color: #46556f; background: #f4f6fa; }
-.spreadsheet thead .frozen { background: #f4f6fa; }
 .spreadsheet td .reference-link { border-color: #dfe6f1; background: #fff; border-radius: 5px; }
 .spreadsheet td .reference-link:hover { background: var(--accent-soft); border-color: #bfd1f8; }
 .status { padding: 2px 7px; border-radius: 5px; background: #f1f4f8; color: #51617a; }

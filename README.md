@@ -55,6 +55,8 @@ Para respaldar tus datos, detén la aplicación y copia `.data/masterlogistica.d
 
 El modo local solo admite solicitudes desde loopback y rechaza proxies y orígenes externos. `APP_ENV=production` exige PostgreSQL y Microsoft Entra: la identidad local no se puede activar en producción.
 
+Para un piloto editable en una base separada, usa `INICIAR_LOCAL.cmd --database "C:\ruta\piloto.db"`. Esta sesión utiliza únicamente ese archivo SQLite y no carga la conexión de `.env.native` ni las conexiones heredadas de la terminal. La configuración y la base habitual se conservan. Detén la sesión con `DETENER_LOCAL.cmd` antes de cambiar de base; el lanzador no reutiliza una sesión conectada a otro archivo. Los paquetes de demostración pueden usar esta opción desde su propio `INICIAR_PILOTO.cmd`, con referencias, proveedores, provisiones y facturas ficticios. `PilotoMasterLogistica/` queda fuera de Git.
+
 ### Borrar todos los datos locales
 
 Para empezar de cero, ejecuta desde la raíz del proyecto:
@@ -300,7 +302,7 @@ El arranque de contenedores y el SSO real deben verificarse antes del piloto. Lo
 
 ## Vista de demostración
 
-La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos, referencia fija en escritorio y columnas separadas para cada dato. El master se carga automáticamente al seleccionar al responsable. La demostración sigue siendo de solo lectura.
+La interfaz usa una hoja de cálculo como área principal: fondo blanco, tipografía del sistema, encabezados fijos y columnas separadas para cada dato que se desplazan juntas horizontalmente. El master se carga automáticamente al seleccionar al responsable. La demostración integrada sigue siendo de solo lectura; un piloto con base SQLite independiente permite la edición y conciliación de datos ficticios.
 
 La presentación para México utiliza una mesa de trabajo blanca y navegación horizontal. Inicio muestra un índice de archivos con las columnas propias de cada master; los saldos y pendientes ocupan un pie de consulta. Las tablas aprovechan el ancho completo. El gris alabastro distingue controles y superficies secundarias, y el azul identifica acciones y enlaces. `frontend/src/styles.css` es la entrada única: importa `base.css`, `workspace.css` y finalmente `design-system.css`. Así, una sesión local que ya estaba abierta recibe el tema completo al actualizar los estilos. Los iconos SVG locales están en `icon.component.ts`. Se respetan las preferencias de movimiento reducido, contraste alto y transparencia reducida. El acceso por teclado incluye **Ir al contenido**. Consulta el [sistema visual y sus capturas](docs/diseno-corporativo-mx.md).
 
@@ -308,7 +310,7 @@ El master mantiene las filas como área principal incluso en ventanas de 1280 ×
 
 ## Columnas y captura por responsable
 
-Cada master usa las columnas de su propia hoja «Master template», independientemente del tipo de operación del embarque. Al seleccionar al responsable se cargan su tabla y su formulario de **Nuevo embarque** y detalle. Los encabezados y las letras conservan el orden del Excel; la referencia sigue fija al desplazarse horizontalmente en escritorio.
+Cada master usa las columnas de su propia hoja «Master template», independientemente del tipo de operación del embarque. Al seleccionar al responsable se cargan su tabla y su formulario de **Nuevo embarque** y detalle. Los encabezados y las letras conservan el orden del Excel; la referencia se desplaza junto con las otras columnas.
 
 | Master | Campos de captura | Campos particulares, entre otros |
 | --- | ---: | --- |
@@ -340,12 +342,12 @@ El esquema local 6 y `0010_automatic_sec` completan SEC vacíos en registros ant
 
 - La vista normal reúne navegación, selección del responsable y acciones en una cabecera compacta. Los registros ocupan la mayor parte de la ventana; los filtros empiezan plegados y se abren con **Mostrar filtros**. **Tamaño** cambia texto, altura de filas y ancho de columnas a 100/115/130 % y conserva esa preferencia. **Ampliar master** aprovecha todavía más la ventana sin descartar cambios.
 - Haz clic en una celda editable y empieza a escribir para reemplazar su contenido, incluidos fechas, estados y proveedores. Las fechas se pueden escribir como `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Tipo de operación, empresa, moneda e I/O se eligen de listas. Estado, transportista y naviera admiten texto manual; sus listas son sugerencias. Doble clic, Enter, F2 o **Editar celda** abre el valor actual. Tab y Enter confirman la edición y avanzan; Escape cancela la edición actual. Las flechas cambian de celda.
-- Mantener una flecha mueve la selección y desplaza únicamente el interior de la hoja. Encabezados y referencia fija no ocultan la celda activa. Inicio/Fin van al extremo de la fila; Ctrl+Inicio/Ctrl+Fin a los extremos de la página cargada; RePág/AvPág desplazan la selección una pantalla dentro de esa página.
+- Mantener una flecha mueve la selección y desplaza únicamente el interior de la hoja. La celda activa permanece visible junto a su encabezado. Inicio/Fin van al extremo de la fila; Ctrl+Inicio/Ctrl+Fin a los extremos de la página cargada; RePág/AvPág desplazan la selección una pantalla dentro de esa página.
 - Las columnas del master permiten editar y pegar valores, incluidas **Referencia**, **BU**, **Tipo de operación** y **Empresa**; SEC es automático. Enter abre el editor de la celda; Ctrl+Enter o el botón ↗ de la referencia abre el detalle del embarque, donde también se puede modificar su identificación.
 - Shift con flechas o clic selecciona un rango. Ctrl+C copia el rango; Ctrl+V pega desde Excel. Las fechas aceptan `dd/mm/aaaa`, `d-m-aaaa` o `aaaa-mm-dd`. Los valores de estado y proveedores se pueden pegar aunque no existan en una lista. Tipo de operación, empresa, moneda e I/O validan las opciones del catálogo; LAND IMPO, por ejemplo, se reconoce como LI. Las BU corresponden al catálogo de nomenclatura de ocho códigos. Los errores de fecha o de tamaño de rango conservan el pegado sin aplicarlo parcialmente.
 - **Guardar cambios** o Ctrl+S envía los cambios pendientes. **Deshacer** o Ctrl+Z revierte ediciones aún no guardadas; **Descartar** elimina los cambios pendientes tras confirmar. Salir, cambiar de master, filtrar o cambiar de página solicita confirmar si hay ediciones pendientes.
 - Cada fila se guarda con control de versión. Si una fila falla, se conservan sus cambios y los de las filas aún no enviadas. Los conflictos y los guardados sin confirmación requieren **Recargar fila** antes de volver a editar esa fila. El conjunto de filas no es una transacción única.
-- Cada columna se modifica de manera independiente. La BU ofrece los ocho códigos de la nomenclatura; la empresa ofrece MXG/MXT y la referencia admite captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación.
+- Cada columna se modifica de manera independiente. La BU ofrece los ocho códigos de la nomenclatura; la empresa ofrece MXG/MXT y la referencia admite captura manual. Corregir la referencia conserva el mismo embarque, sus documentos, provisiones, facturas e historial. Las referencias anteriores siguen localizándolo; la clasificación de transporte se actualiza al cambiar la operación. Todas las columnas de datos se desplazan juntas: Referencia/D no queda congelada. Las flechas avanzan una sola celda y mantienen visibles la selección y su encabezado, conservando las letras de origen de cada master.
 - **Nuevo embarque** genera la referencia mediante el servidor. Abrir una referencia permite consultar o editar su detalle, incidencias y documentos.
 - **Exportar página CSV** descarga las filas de la página visible, incluidos los cambios pendientes; no exporta el master completo ni un archivo XLSX. Se neutralizan valores que Excel podría interpretar como fórmulas. No se implementa cálculo de fórmulas ni importación de libros como masters; la carga del consolidado de facturación se realiza en su sección dedicada.
 

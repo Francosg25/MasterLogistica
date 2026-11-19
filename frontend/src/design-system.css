@@ -285,8 +285,6 @@ dialog::backdrop, .activity-dialog::backdrop, .command-dialog::backdrop { backgr
 .workspace.master-workspace .spreadsheet thead th { color: var(--muted); background: #f5f5f7; font-size: 11px; font-weight: 500; }
 .workspace.master-workspace .spreadsheet .column-letters th { color: var(--subtle); background: #fafafa; font-size: 10px; }
 .workspace.master-workspace .spreadsheet .row-number { color: var(--subtle); background: #fafafa; }
-.workspace.master-workspace .spreadsheet .frozen { background: #fff; box-shadow: 1px 0 rgba(0, 0, 0, .09); }
-.workspace.master-workspace .spreadsheet thead .frozen { background: #f5f5f7; }
 .workspace.master-workspace .spreadsheet td.selected-cell { background: rgba(0, 113, 227, .055); }
 .workspace.master-workspace .spreadsheet td.active-cell { outline-color: var(--accent); }
 .workspace.master-workspace .spreadsheet .active-column { color: var(--accent) !important; background: #edf5fd !important; }
@@ -416,7 +414,6 @@ dialog::backdrop, .activity-dialog::backdrop, .command-dialog::backdrop { backgr
   .workspace.master-workspace .master-toolbar-actions { gap: 4px; }
   .workspace.master-workspace .sheet-actions { gap: 6px; }
   .workspace.master-workspace .master-placeholder { padding: 32px 20px; }
-  .workspace.master-workspace .spreadsheet td.frozen { left: auto; }
   .reference-head { padding: 22px 20px; gap: 12px; align-items: flex-start; }
   .reference-head h2 { font-size: 22px; }
   .reference-tabs { padding: 0 14px; }

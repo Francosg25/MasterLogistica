@@ -32,6 +32,18 @@ from local_dev import (
 CONTROL_PORT = 8317
 
 
+def selected_database(args):
+    value = getattr(args, "database", None)
+    if value is None:
+        return None
+    if not value.strip() or "://" in value or any(char in value for char in "?#"):
+        raise LocalError("--database debe indicar un archivo SQLite local.")
+    path = Path(value).expanduser().resolve()
+    if path.is_dir():
+        raise LocalError("--database debe indicar un archivo, no una carpeta.")
+    return path
+
+
 def backend_install_command(python, lock, *, windows):
     command = [str(python), "-m", "pip", "install", "--require-hashes"]
     if windows:
@@ -111,6 +123,7 @@ class Native:
         self.token = secrets.token_urlsafe(32)
         self.mode = "database"
         self.is_ready = False
+        self.database_path = None
 
     def frontend(self, args):
         node = shutil.which("node")
@@ -242,23 +255,29 @@ class Native:
             marker.write_text(
                 json.dumps({"lock": digest, "python": str(python)}), encoding="utf-8"
             )
-        env_file = self.root / ".env.native"
-        _, raw = self.core.run(
-            [
-                str(python),
-                "-c",
-                (
-                    "import json,sys; from dotenv import dotenv_values; "
-                    "print(json.dumps(dotenv_values(sys.argv[1], interpolate=False)))"
-                ),
-                str(env_file),
-            ]
-        )
-        values = {
-            key: value
-            for key, value in json.loads(raw).items()
-            if value not in (None, "")
-        }
+        self.database_path = selected_database(args)
+        if self.database_path is not None:
+            # A separate SQLite session never reads a corporate .env.native connection.
+            values = {"DATABASE_URL": "sqlite+pysqlite:///" + str(self.database_path)}
+            self.core.say("Base local independiente: " + str(self.database_path))
+        else:
+            env_file = self.root / ".env.native"
+            _, raw = self.core.run(
+                [
+                    str(python),
+                    "-c",
+                    (
+                        "import json,sys; from dotenv import dotenv_values; "
+                        "print(json.dumps(dotenv_values(sys.argv[1], interpolate=False)))"
+                    ),
+                    str(env_file),
+                ]
+            )
+            values = {
+                key: value
+                for key, value in json.loads(raw).items()
+                if value not in (None, "")
+            }
         if values.get("APP_ENV", "development") != "development":
             raise LocalError(
                 "El lanzador nativo solo admite APP_ENV=development en .env.native."
@@ -389,7 +408,17 @@ class Native:
                     json_response(self, 403, {"detail": "No autorizado"})
                 elif self.command == "GET" and self.path == "/status":
                     json_response(
-                        self, 200, {"mode": owner.mode, "ready": owner.is_ready}
+                        self,
+                        200,
+                        {
+                            "mode": owner.mode,
+                            "ready": owner.is_ready,
+                            **(
+                                {"database": str(owner.database_path)}
+                                if owner.database_path
+                                else {}
+                            ),
+                        },
                     )
                 elif self.command == "POST" and self.path == "/stop":
                     json_response(self, 200, {"stopping": True})
@@ -406,8 +435,13 @@ class Native:
         return Control
 
     def start(self, args):
+        database = selected_database(args)
         current = control_request(self.state, "status")
         if current:
+            if current.get("database") != (str(database) if database else None):
+                raise LocalError(
+                    "Hay una sesion local con otra base. Usa DETENER_LOCAL.cmd antes de cambiar de sesion."
+                )
             self.core.say(f"La sesion local ya esta activa ({current['mode']}).")
             if not args.no_browser:
                 webbrowser.open(URL)
@@ -616,7 +650,12 @@ def main(argv=None):
         "--python", help="Interprete Python autorizado para el backend."
     )
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument(
+        "--database", help="Archivo SQLite independiente para esta sesion local."
+    )
     args = parser.parse_args(argv)
+    if args.database is not None and (args.action != "start" or args.demo):
+        parser.error("--database solo se usa al iniciar la API local editable")
     native = Native()
     signal.signal(signal.SIGTERM, lambda *_: native.stop.set())
     try:

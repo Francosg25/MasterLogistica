@@ -113,7 +113,6 @@
         <th class="row-number"></th>
         @for (column of columns(); track column.key; let c = $index) {
           <th
-            [class.frozen]="column.key === 'reference_raw'"
             [class.active-column]="active().col === c"
           >
             {{ letter(c) }}
@@ -123,7 +122,7 @@
       <tr>
         <th class="row-number" scope="col">#</th>
         @for (column of columns(); track column.key; let c = $index) {
-          <th scope="col" [class.frozen]="column.key === 'reference_raw'">{{ column.label }}</th>
+          <th scope="col">{{ column.label }}</th>
         }
       </tr>
     </thead>
@@ -151,7 +150,6 @@
               [attr.aria-description]="column.key === 'reference_raw' ? 'Ctrl+Enter abre el detalle del embarque.' : null"
               [attr.aria-selected]="isSelected(r, c)"
               [attr.aria-readonly]="!editable(r, c)"
-              [class.frozen]="column.key === 'reference_raw'"
               [class.selected-cell]="isSelected(r, c)"
               [class.active-cell]="isActive(r, c)"
               [class.dirty-cell]="isDirty(row, column)"

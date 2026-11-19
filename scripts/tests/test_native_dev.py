@@ -138,6 +138,84 @@ class NativeTests(unittest.TestCase):
             self.app.frontend(args)
         self.assertEqual(run.call_count, 1)
 
+    def test_separate_database_does_not_read_or_modify_existing_configuration(self):
+        (self.root / "backend").mkdir()
+        (self.root / "backend/requirements.lock").write_text("synthetic")
+        config = self.root / ".env.native"
+        config.write_text(
+            "APP_ENV=production\nDATABASE_URL=postgresql+psycopg://host/corporate\n"
+        )
+        self.app.core.env.update(
+            {
+                "DATABASE_URL": "postgresql+psycopg://host/corporate",
+                "AUTH_MODE": "entra",
+            }
+        )
+        path = self.root / "piloto demo/datos.db"
+        args = argparse.Namespace(
+            python=sys.executable, install=False, skip_install=True, database=str(path)
+        )
+        with patch.object(self.app.core, "run", return_value=(0, "")) as run:
+            self.app.backend(args)
+        self.assertFalse(
+            any("dotenv_values" in str(call) for call in run.call_args_list)
+        )
+        self.assertEqual(
+            self.app.core.env["DATABASE_URL"],
+            "sqlite+pysqlite:///" + str(path.resolve()),
+        )
+        self.assertEqual(self.app.core.env["AUTH_MODE"], "development")
+        self.assertEqual(self.app.database_path, path.resolve())
+        self.assertIn("APP_ENV=production", config.read_text())
+
+    def test_start_never_reuses_a_session_connected_to_another_database(self):
+        args = argparse.Namespace(database=str(self.root / "pilot.db"), no_browser=True)
+        for current in (
+            {"mode": "database", "ready": True},
+            {"mode": "database", "database": str(self.root / "other.db")},
+        ):
+            with (
+                self.subTest(current=current),
+                patch.object(native, "control_request", return_value=current),
+                self.assertRaisesRegex(native.LocalError, "otra base"),
+            ):
+                self.app.start(args)
+
+    def test_default_start_does_not_reuse_an_explicit_pilot_database(self):
+        args = argparse.Namespace(database=None, no_browser=True)
+        with (
+            patch.object(
+                native,
+                "control_request",
+                return_value={
+                    "mode": "database",
+                    "database": str(self.root / "pilot.db"),
+                },
+            ),
+            self.assertRaisesRegex(native.LocalError, "otra base"),
+        ):
+            self.app.start(args)
+
+    def test_same_separate_database_session_can_be_reused(self):
+        path = self.root / "pilot.db"
+        args = argparse.Namespace(database=str(path), no_browser=True)
+        with patch.object(
+            native,
+            "control_request",
+            return_value={"mode": "database", "database": str(path.resolve())},
+        ):
+            self.app.start(args)
+
+    def test_explicit_database_rejects_urls_and_non_file_paths(self):
+        for value in (
+            "",
+            "postgresql+psycopg://host/db",
+            str(self.root),
+            "test.db?mode=ro",
+        ):
+            with self.subTest(value=value), self.assertRaises(native.LocalError):
+                native.selected_database(argparse.Namespace(database=value))
+
     def test_default_backend_uses_sqlite_without_inheriting_corporate_settings(self):
         (self.root / "backend").mkdir()
         (self.root / "backend/requirements.lock").write_text("synthetic")
